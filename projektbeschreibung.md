@@ -28,12 +28,12 @@
 - Raspberry Pi (Modell 2, 3, 4 oder 5)
 - Holzrahmen zur Verkleidung des Fernsehers
 - Zwei-Wege-Spiegel:
-  - [Supreme Tech Acryl See-Through Spiegel](https://www.amazon.de/Supreme-Tech-x18-Acryl-See-Through-Spiegel/dp/B07XTRCTQL)
+  - [Supreme Tech Acryl See-Through Spiegel](https://www.amazon.de/Supreme-Tech-x18-Acryl-See-Through-Spiegel/dp/B07XTRCTQL) - **€50.48**
   - Maße sollten zum Fernseher passen
 
 ### Zubehör für Raspberry Pi
 - Micro HDMI zu HDMI Kabel:
-  - [Amazon-Link](https://www.amazon.de/dp/B0BP29QTJ6)
+  - [Amazon-Link](https://www.amazon.de/dp/B0BP29QTJ6) - **€9.79**
 - Stromkabel für den Pi
 - Gehäuse für den Pi
 
@@ -62,23 +62,23 @@ Dieses Beispiel zeigt die typischen Module eines MagicMirror² Systems in einem 
 ### Erforderliche Komponenten
 
 **LED-Beleuchtung:**
-- **LED Strip** (schneidbar, RGB): [TP-Link Tapo LED-Streifen](https://www.amazon.de/TP-Link-Tapo-schneidbar-kompatibel-energiesparend/dp/B098FJ6LXB)
+- **LED Strip** (schneidbar, RGB): [TP-Link Tapo LED-Streifen](https://www.amazon.de/TP-Link-Tapo-schneidbar-kompatibel-energiesparend/dp/B098FJ6LXB) - **€14.99**
   - Ermöglicht Hintergrundbeleuchtung des Spiegels
   - Schneidbar für individuelle Anpassung
   - Smart-Home-Kompatibilität
 
 **Elektronische Steuerung:**
-- **N-Channel MOSFET**: [Amazon-Link](https://www.amazon.com/gp/product/B07CTF1JVD)
+- **N-Channel MOSFET**: [Amazon-Link](https://www.amazon.com/gp/product/B07CTF1JVD) - **€6.02**
   - Zur Steuerung der LED-Streifen über den Raspberry Pi
   - Ermöglicht PWM-Kontrolle für Helligkeitsregelung
   
-- **Sonoff Smart Switch**: [Amazon-Link](https://www.amazon.com/gp/product/B07KP8THFG)
+- **Sonoff Smart Switch**: [Amazon-Link](https://www.amazon.com/gp/product/B07KP8THFG) - **€11.03**
   - Ein/Ausschalten des gesamten Spiegels
   - Smart-Home-Integration
   - Fernsteuerung möglich
 
 **Verkabelung & Prototyping:**
-- **Steckplatine + Kabel-Set**: [Amazon-Link](https://www.amazon.com/dp/B08Y59P6D1)
+- **Steckplatine + Kabel-Set**: [Amazon-Link](https://www.amazon.com/dp/B08Y59P6D1) - **€9.60**
   - Für Prototyping und Verkabelung
   - Jumperkabel verschiedener Längen
   - Breadboard für Testschaltungen
