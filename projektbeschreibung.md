@@ -41,7 +41,7 @@
 
 ## Beispiel eines fertigen Smart Mirrors
 
-![Smart Mirror Beispiel](smart-mirror-example.png)
+![Smart Mirror Beispiel](pics/smart-mirror-example.png)
 
 **Features des gezeigten Smart Mirrors:**
 - Kalenderansicht mit anstehenden Terminen
@@ -57,7 +57,7 @@ Dieses Beispiel zeigt die typischen Module eines MagicMirror² Systems in einem 
 
 ## LED Setup & Elektronik
 
-![LED Schaltplan](LED_Circuitboard.png)
+![LED Schaltplan](pics/LED_Circuitboard.png)
 
 ### Erforderliche Komponenten
 
@@ -93,7 +93,7 @@ Dieses Beispiel zeigt die typischen Module eines MagicMirror² Systems in einem 
 
 ## Allgemeines Layout
 
-![Layout Übersicht](Layout.png)
+![Layout Übersicht](pics/Layout.png)
 
 ---
 
@@ -117,10 +117,10 @@ Basierend auf [diesem YouTube-Tutorial](https://www.youtube.com/watch?v=q7wqm8h3
 ### Mögliche Mockups
 
 **Mockup 1 - Grundlayout:**
-![Mockup 1](Mockup1.jpg)
+![Mockup 1](pics/Mockup1.jpg)
 
 **Mockup 2 - Mit Beispielen:**
-![Mockup 2](Mockup2.jpg)
+![Mockup 2](pics/Mockup2.jpg)
 
 ---
 
