@@ -196,27 +196,27 @@ Damit alle im Team dieselbe Vorstellung vom Projekt haben, wurde eine umfassende
 
 **Projektphasen:**
 ```
-Phase 1: Grundgerüst (2-3 Wochen)
+Phase 1: Grundgerüst 
 ├── Vue 3 + TypeScript Frontend Setup
 ├── FastAPI Backend Setup
-├── Raspberry Pi Emulation
+├── Raspberry Pi Emulation + erste HUD Version
 └── Basis CI/CD Pipeline
 
-Phase 2: MVP (3-4 Wochen)
+Phase 2: MVP 
 ├── Zeit/Datum Widget
 ├── Wetter Widget
 ├── Kalender Widget
 ├── LED-Steuerung
 └── Basis Testing
 
-Phase 3: Erweiterte Features (4-6 Wochen)
+Phase 3: Erweiterte Features
 ├── Musikintegration
 ├── Spracherkennung (Vosk)
 ├── Gestensteuerung (MediaPipe)
 ├── Smart-Home MQTT
 └── Mobile App
 
-Phase 4: Polish & Deployment (2-3 Wochen)
+Phase 4: Polish & Deployment
 ├── UI/UX Verbesserungen
 ├── Performance Optimierung
 ├── Dokumentation
