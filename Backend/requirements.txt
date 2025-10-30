@@ -1,0 +1,49 @@
+# FastAPI and web dependencies
+fastapi>=0.104.0
+uvicorn[standard]>=0.24.0
+python-multipart>=0.0.6
+python-jose[cryptography]>=3.3.0
+passlib[bcrypt]>=1.7.4
+pydantic>=2.4.2
+pydantic-settings>=2.0.3
+websockets>=12.0
+
+# Image processing and gesture recognition
+mediapipe>=0.10.7
+opencv-python>=4.8.1.78
+numpy>=1.26.1
+
+# Speech recognition
+vosk>=0.3.45
+
+# Smart home and IoT
+paho-mqtt>=1.6.1
+
+# GPIO control for Raspberry Pi
+gpiozero>=2.0
+RPi.GPIO>=0.7.1
+
+# Date and time handling
+python-dateutil>=2.8.2
+pytz>=2023.3.post1
+
+# API integrations
+aiohttp>=3.8.6  # For async HTTP requests
+google-auth>=2.23.3
+google-auth-oauthlib>=1.1.0
+google-auth-httplib2>=0.1.1
+google-api-python-client>=2.105.0
+
+# Database
+sqlalchemy>=2.0.22
+alembic>=1.12.1
+asyncpg>=0.29.0  # For async PostgreSQL
+aiosqlite>=0.19.0  # For async SQLite
+
+# Development dependencies
+pytest>=7.4.3
+pytest-asyncio>=0.21.1
+httpx>=0.25.1
+black>=23.10.1
+flake8>=6.1.0
+mypy>=1.6.1

@@ -1,0 +1,46 @@
+classDiagram
+    class NimragSmartMirror {
+        <<System>>
+        +Raspberry Pi Platform
+        +Vue3 Frontend
+        +FastAPI Backend
+        +Hardware Integration
+    }
+    
+    class FrontendSubsystem {
+        <<Subsystem>>
+        +Vue 3 + TypeScript
+        +Widget System
+        +User Interface
+    }
+    
+    class BackendSubsystem {
+        <<Subsystem>>
+        +FastAPI REST API
+        +WebSocket Server
+        +Service Layer
+    }
+    
+    class HardwareSubsystem {
+        <<Subsystem>>
+        +GPIO Control
+        +Camera & Microphone
+        +LED Controller
+    }
+    
+    class ExternalSubsystem {
+        <<Subsystem>>
+        +Weather API
+        +Google Calendar
+        +Smart Home (MQTT)
+        +Spotify
+    }
+    
+    NimragSmartMirror --> FrontendSubsystem
+    NimragSmartMirror --> BackendSubsystem
+    NimragSmartMirror --> HardwareSubsystem
+    NimragSmartMirror --> ExternalSubsystem
+    
+    FrontendSubsystem --> BackendSubsystem : HTTP/WebSocket
+    BackendSubsystem --> HardwareSubsystem : GPIO/USB
+    BackendSubsystem --> ExternalSubsystem : REST/MQTT
