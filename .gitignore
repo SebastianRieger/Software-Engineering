@@ -6,6 +6,8 @@ env/
 ENV/
 env.bak/
 venv.bak/
+# Python virtual environments
+Backend/venv_py312/
 
 # Python Cache
 __pycache__/
