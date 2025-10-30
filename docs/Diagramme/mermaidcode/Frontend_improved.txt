@@ -1,0 +1,392 @@
+classDiagram
+    %% Core Vue.js Application Structure
+    class App {
+        <<Vue Root Component>>
+        -router: Router
+        -store: Store
+        +mounted()
+        +provide() GlobalProperties
+    }
+
+    %% Core Services
+    namespace Services {
+        class ApiService {
+            <<Service>>
+            -baseUrl: string
+            -axios: AxiosInstance
+            +get(endpoint: string)$ Promise
+            +post(endpoint: string, data: any)$ Promise
+            +put(endpoint: string, data: any)$ Promise
+            +delete(endpoint: string)$ Promise
+        }
+
+        class WebSocketService {
+            <<Service>>
+            -socket: WebSocket
+            -reconnectInterval: number
+            +connect()$ void
+            +disconnect()$ void
+            +on(event: string, callback: Function)$ void
+            +emit(event: string, data: any)$ void
+        }
+
+        class StorageService {
+            <<Service>>
+            +getItem(key: string)$ any
+            +setItem(key: string, value: any)$ void
+            +removeItem(key: string)$ void
+            +clear()$ void
+        }
+    }
+
+    %% Stores (Pinia)
+    namespace Stores {
+        class UserStore {
+            <<Store>>
+            -state: UserState
+            +user: User
+            +isAuthenticated: boolean
+            +login(credentials: LoginDTO)
+            +logout()
+            +updateProfile(data: ProfileDTO)
+        }
+
+        class WidgetStore {
+            <<Store>>
+            -state: WidgetState
+            +widgets: Widget[]
+            +activeWidgets: string[]
+            +registerWidget(widget: Widget)
+            +toggleWidget(widgetId: string)
+            +updateWidgetData(widgetId: string, data: any)
+        }
+
+        class ThemeStore {
+            <<Store>>
+            -state: ThemeState
+            +currentTheme: Theme
+            +isDarkMode: boolean
+            +setTheme(theme: Theme)
+            +toggleDarkMode()
+        }
+    }
+
+    %% Composables
+    namespace Composables {
+        class useWidget {
+            <<Composable>>
+            +widget: Ref~Widget~
+            +isLoading: Ref~boolean~
+            +error: Ref~Error~
+            +updateWidget()
+            +refreshData()
+        }
+
+        class useWebSocket {
+            <<Composable>>
+            +isConnected: Ref~boolean~
+            +messages: Ref~Message[]~
+            +connect()
+            +disconnect()
+            +send(data: any)
+        }
+
+        class useTheme {
+            <<Composable>>
+            +theme: Ref~Theme~
+            +isDark: Ref~boolean~
+            +toggleTheme()
+            +applyTheme(theme: Theme)
+        }
+    }
+
+    %% Components
+    namespace Components {
+        class BaseWidget {
+            <<Abstract Component>>
+            +props: WidgetProps
+            +emits: WidgetEmits
+            +setup()
+        }
+
+        namespace Layout {
+            class LayoutGrid {
+                <<Component>>
+                -layout: Layout
+                +onDrag(event: DragEvent)
+                +onResize(event: ResizeEvent)
+            }
+
+            class WidgetContainer {
+                <<Component>>
+                -widget: Widget
+                +render()
+                +move(position: Position)
+                +resize(size: Size)
+            }
+        }
+
+        namespace UI {
+            class SmartButton {
+                <<Component>>
+                +variant: ButtonVariant
+                +size: Size
+                +disabled: boolean
+                +onClick(event: Event)
+            }
+
+            class SmartCard {
+                <<Component>>
+                +title: string
+                +subtitle: string
+                +loading: boolean
+            }
+
+            class SmartModal {
+                <<Component>>
+                +isOpen: boolean
+                +title: string
+                +onClose()
+            }
+        }
+
+        namespace Widgets {
+            class WeatherWidget {
+                <<Component>>
+                -weatherData: WeatherData
+                +location: string
+                +update()
+                +changeLocation(loc: string)
+            }
+
+            class ClockWidget {
+                <<Component>>
+                -time: Ref~Date~
+                +format: string
+                +updateTime()
+                +formatTime()
+            }
+
+            class CalendarWidget {
+                <<Component>>
+                -events: CalendarEvent[]
+                +view: CalendarView
+                +fetchEvents()
+                +addEvent(event: CalendarEvent)
+            }
+        }
+    }
+
+    %% Interfaces
+    namespace Types {
+        class Widget {
+            <<Interface>>
+            +id: string
+            +type: WidgetType
+            +config: WidgetConfig
+            +data: any
+        }
+
+        class Theme {
+            <<Interface>>
+            +name: string
+            +colors: ThemeColors
+            +typography: Typography
+            +spacing: Spacing
+        }
+
+        class WidgetConfig {
+            <<Interface>>
+            +position: Position
+            +size: Size
+            +refreshInterval: number
+            +settings: Record~string,any~
+        }
+    }
+
+    %% Relationships
+    App --> "1" Router
+    App --> "1" Store
+
+    BaseWidget <|-- WeatherWidget
+    BaseWidget <|-- ClockWidget
+    BaseWidget <|-- CalendarWidget
+
+    LayoutGrid --> "*" WidgetContainer
+    WidgetContainer --> "1" BaseWidget
+
+    Components.UI.SmartCard ..> Types.Theme
+    Components.Widgets.WeatherWidget ..> Services.ApiService
+    Components.Widgets.CalendarWidget ..> Services.WebSocketService
+
+    Stores.WidgetStore --> "*" Types.Widget
+    Stores.ThemeStore --> "1" Types.Theme
+
+    Composables.useWidget ..> Stores.WidgetStore
+    Composables.useTheme ..> Stores.ThemeStore
+    Composables.useWebSocket ..> Services.WebSocketService
+
+classDiagram
+    %% Additional Type Definitions
+    namespace DTOs {
+        class LoginDTO {
+            <<DTO>>
+            +username: string
+            +password: string
+        }
+
+        class ProfileDTO {
+            <<DTO>>
+            +displayName: string
+            +email: string
+            +preferences: UserPreferences
+        }
+
+        class WidgetDTO {
+            <<DTO>>
+            +id: string
+            +type: string
+            +config: object
+            +data: object
+        }
+    }
+
+    namespace Enums {
+        class WidgetType {
+            <<Enumeration>>
+            WEATHER
+            CLOCK
+            CALENDAR
+            SMART_HOME
+            NEWS
+            NOTES
+            MUSIC
+        }
+
+        class ThemeMode {
+            <<Enumeration>>
+            LIGHT
+            DARK
+            SYSTEM
+        }
+
+        class ButtonVariant {
+            <<Enumeration>>
+            PRIMARY
+            SECONDARY
+            GHOST
+            DANGER
+        }
+    }
+
+    namespace Utils {
+        class DateFormatter {
+            <<Utility>>
+            +format(date: Date, format: string)$ string
+            +parse(dateStr: string, format: string)$ Date
+            +toLocal(date: Date)$ string
+        }
+
+        class ValidationUtils {
+            <<Utility>>
+            +validateEmail(email: string)$ boolean
+            +validatePassword(password: string)$ boolean
+            +validateWidget(widget: Widget)$ boolean
+        }
+
+        class EventBus {
+            <<Utility>>
+            +emit(event: string, data: any)$ void
+            +on(event: string, callback: Function)$ void
+            +off(event: string, callback: Function)$ void
+        }
+    }
+
+    %% Router Configuration
+    namespace Router {
+        class RouteGuard {
+            <<Interface>>
+            +beforeEach(to: Route, from: Route)
+            +afterEach(to: Route, from: Route)
+        }
+
+        class AuthGuard {
+            <<Service>>
+            +canActivate(to: Route)$ boolean
+            +redirect(to: Route)$ Route
+        }
+    }
+
+    %% Error Handling
+    namespace Errors {
+        class AppError {
+            <<Error>>
+            +name: string
+            +message: string
+            +stack?: string
+            +code: string
+        }
+
+        class ApiError {
+            <<Error>>
+            +statusCode: number
+            +response: any
+            +request: any
+        }
+
+        class ValidationError {
+            <<Error>>
+            +field: string
+            +constraints: string[]
+        }
+    }
+
+    %% Testing Utilities
+    namespace Testing {
+        class WidgetTestHarness {
+            <<TestUtility>>
+            +mount(widget: Widget)
+            +simulate(event: string)
+            +expectState(state: object)
+        }
+
+        class MockApiService {
+            <<Mock>>
+            +get(url: string)$ Promise
+            +post(url: string, data: any)$ Promise
+            +setResponse(mock: any)
+        }
+    }
+
+    %% Middleware
+    namespace Middleware {
+        class ErrorHandler {
+            <<Middleware>>
+            +handle(error: Error)
+            +report(error: Error)
+            +render(error: Error)
+        }
+
+        class AuthMiddleware {
+            <<Middleware>>
+            +handle(request: Request)
+            +authenticate()
+            +authorize(roles: string[])
+        }
+    }
+
+    %% Relationships for Additional Types
+    DTOs.LoginDTO ..> Stores.UserStore
+    DTOs.ProfileDTO ..> Stores.UserStore
+    DTOs.WidgetDTO ..> Stores.WidgetStore
+
+    Router.AuthGuard --> Stores.UserStore
+    Router.RouteGuard <|-- Router.AuthGuard
+
+    Testing.WidgetTestHarness ..> Components.BaseWidget
+    Testing.MockApiService --|> Services.ApiService
+
+    Middleware.ErrorHandler ..> Errors.AppError
+    Middleware.AuthMiddleware ..> Stores.UserStore
+
+    Utils.ValidationUtils ..> Errors.ValidationError

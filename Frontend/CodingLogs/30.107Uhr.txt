@@ -1,0 +1,40 @@
+Was ich gemacht habe (Zusammenfassung)
+
+Modal:
+Neu: src/components/ui/Modal.vue — ein zugängliches, typisiertes Modal mit slots (header/default/footer), Backdrop-Click-Handling und Events (update:isOpen, close).
+Dashboard:
+Aktualisiert: src/views/Widgets.vue — verwendet jetzt LayoutGrid, WidgetContainer und mountet das Beispiel WeatherWidget (widgetId="weather-1").
+Fehlerbehebungen und Cleanup:
+Korrigiert: LayoutGrid.vue (entfernte doppelte </script>).
+Korrigiert: BaseWidget.vue — ersetzt falsch escaped Inhalt, nutzte Modal korrekt.
+Korrigiert: SmartButton.vue — ersetzt escaped Inhalt, entfernte ungenutzte Importe.
+Diverse kleine TypeScript-Fehler bereinigt (ungelesene Variablen, fehlerhafte imports, etc.).
+Verifikation
+
+Ich habe lokal einen Produktions-Build ausgeführt:
+Befehl: npm run build
+Ergebnis: Build erfolgreich, dist/-Assets erstellt (Ausgabe im Terminal).
+Optional: Dev-Server starten (schnelle Iteration / HMR)
+Befehl:
+Öffne dann: http://localhost:5173
+Was du jetzt im Browser sehen / anklicken kannst
+
+App Shell: Header mit Navigation (Home, Widgets).
+Home (/): einfache Willkommensseite.
+Widgets (/widgets): Dashboard mit Grid, das ein Beispiel WeatherWidget rendert.
+WeatherWidget verwendet die vorhandene Composable useWidget. Wenn keine Backend-API vorhanden, zeigt es Platzhalterwerte (z. B. temperature -- oder leere Forecast-Liste) — das Widget ist sichtbar und interaktiv (Refresh-Button ist gerendert).
+Modal: Öffnet, wenn du das Settings-Icon (Zahnrad) im Widget klickst — das Modal ist implementiert und schließt per Backdrop-Click oder Schließen-Button.
+Offene / empfohlene nächste Schritte
+
+Backend/API: Wenn du echte Widget-Daten möchtest, starte das Backend oder setze VITE_API_BASE_URL auf dein API, damit ApiService Daten liefert.
+Verbesserung: erweitern WeatherWidget um tatsächliche API-Aufrufe oder Mock-Daten (ich kann MockApiService hinzufügen).
+Tests / CI: Ich empfehle Unit-Tests für Composables und Services (z. B. Jest / Vitest + @vue/test-utils).
+Drag & Resize: Implementieren der eigentlichen Drag/Resize-Logik in LayoutGrid / WidgetContainer (z. B. interactjs oder @vueuse/gesture) falls gewünscht.
+Refactor: optional Pfad-Aliases wiederherstellen (TS config) wenn du sie bevorzugst — aktuell habe ich relative imports verwendet um TS-LSP-Probleme zu vermeiden.
+Wenn du möchtest, mache ich jetzt einen der folgenden Schritte (oder mehrere, in Reihenfolge):
+
+A) Verbinde WeatherWidget mit einer Mock-API (so siehts produktrealistisch aus ohne Backend).
+B) Implementiere Drag&Resize (zuerst einfache drag & drop Bewegung).
+C) Schreibe Tests für useWidget + ApiService (Vitest).
+D) Starte dev-server und öffne die Seite kurz (ich kann dir sagen, welche URL auf deinem Rechner zu öffnen ist).
+Welche Option oder Kombination möchtest du als nächstes?
