@@ -66,4 +66,4 @@ pip-delete-this-directory.txt
 
 
 # Frontend
-/Frontend/node_modules/
+*/node_modules
