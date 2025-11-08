@@ -1,0 +1,569 @@
+
+# Event-Driven Architektur Entitäten und Kommunikation
+## Nimrag Smart Mirror System
+
+═══════════════════════════════════════════════════════════════════════════════
+1. EVENT-ENTITÄTEN UND IHRE VERANTWORTLICHKEITEN
+═══════════════════════════════════════════════════════════════════════════════
+
+┌─────────────────────────────────────────────────────────────────────────────┐
+│ 1.1 DOMAIN EVENTS (Fachliche Events)                                       │
+└─────────────────────────────────────────────────────────────────────────────┘
+
+• WeatherDataUpdated
+  - Payload: {temperature, humidity, condition, forecast, timestamp}
+  - Producer: Weather Service
+  - Consumers: Weather Widget (Frontend), LED Control Service
+
+• CalendarEventAdded / CalendarEventUpdated
+  - Payload: {eventId, title, startTime, endTime, location}
+  - Producer: Calendar Service
+  - Consumers: Calendar Widget, Notification Service
+
+• VoiceCommandDetected
+  - Payload: {command, confidence, parameters, userId}
+  - Producer: Voice Service (Vosk)
+  - Consumers: Command Router Service
+
+• GestureDetected
+  - Payload: {gestureType, coordinates, confidence, timestamp}
+  - Producer: Gesture Service (MediaPipe)
+  - Consumers: UI Navigation Service, Widget Controller
+
+• LEDStateChanged
+  - Payload: {brightness, color, pattern, zone}
+  - Producer: LED Control Service
+  - Consumers: LED Widget (Frontend), Smart Home Service
+
+• SmartHomeDeviceStateChanged
+  - Payload: {deviceId, deviceType, state, attributes}
+  - Producer: Smart Home Service (MQTT Client)
+  - Consumers: Smart Home Widget, Automation Service
+
+• WidgetConfigurationChanged
+  - Payload: {widgetId, position, visibility, settings}
+  - Producer: Configuration Service
+  - Consumers: All Widget Components (Frontend)
+
+┌─────────────────────────────────────────────────────────────────────────────┐
+│ 1.2 SYSTEM EVENTS (Technische Events)                                      │
+└─────────────────────────────────────────────────────────────────────────────┘
+
+• ApplicationStarted
+  - Payload: {version, timestamp, configuration}
+  - Producer: FastAPI Lifespan
+  - Consumers: All Services (Initialization)
+
+• ApplicationShutdown
+  - Payload: {timestamp, reason}
+  - Producer: FastAPI Lifespan
+  - Consumers: All Services (Cleanup)
+
+• ServiceHealthCheck
+  - Payload: {serviceName, status, metrics, timestamp}
+  - Producer: Health Check Service
+  - Consumers: Monitoring Service, Frontend Status Widget
+
+• ErrorOccurred
+  - Payload: {errorType, message, stackTrace, context, timestamp}
+  - Producer: Any Service
+  - Consumers: Error Handler, Logging Service, Frontend Error Display
+
+• ConnectionEstablished / ConnectionLost
+  - Payload: {connectionType, endpoint, timestamp}
+  - Producer: WebSocket Manager, MQTT Client
+  - Consumers: Connection Monitor, Frontend Status Indicator
+
+═══════════════════════════════════════════════════════════════════════════════
+2. EVENT BUS ARCHITEKTUR
+═══════════════════════════════════════════════════════════════════════════════
+
+┌─────────────────────────────────────────────────────────────────────────────┐
+│ 2.1 IN-MEMORY EVENT BUS (Primär für Backend-interne Kommunikation)         │
+└─────────────────────────────────────────────────────────────────────────────┘
+
+Implementierung: Python AsyncIO + Observer Pattern
+
+class EventBus:
+    def __init__(self):
+        self._subscribers: Dict[str, List[Callable]] = {}
+
+    def subscribe(self, event_type: str, handler: Callable):
+        if event_type not in self._subscribers:
+            self._subscribers[event_type] = []
+        self._subscribers[event_type].append(handler)
+
+    async def publish(self, event_type: str, event_data: dict):
+        if event_type in self._subscribers:
+            await asyncio.gather(
+                *[handler(event_data) for handler in self._subscribers[event_type]]
+            )
+
+Vorteile:
+✓ Sehr schnell (keine Netzwerk-Latenz)
+✓ Type-safe mit Python Type Hints
+✓ Einfaches Testing und Mocking
+✓ Direkte Integration mit FastAPI Dependency Injection
+
+Verwendung:
+- Kommunikation zwischen Backend-Services
+- Event Sourcing für Business Logic
+- Aggregation von Events vor WebSocket-Übertragung
+
+┌─────────────────────────────────────────────────────────────────────────────┐
+│ 2.2 MQTT BROKER (Mosquitto) - Für Smart Home Integration                   │
+└─────────────────────────────────────────────────────────────────────────────┘
+
+Topics Struktur:
+nimrag/
+├── smarthome/
+│   ├── devices/{deviceId}/state
+│   ├── devices/{deviceId}/command
+│   └── sensors/{sensorId}/data
+├── led/
+│   ├── brightness
+│   ├── color
+│   └── pattern
+└── system/
+    ├── health
+    └── status
+
+QoS Levels:
+- QoS 0 (At most once): Sensor-Daten, die häufig aktualisiert werden
+- QoS 1 (At least once): Befehle an Smart Home Devices
+- QoS 2 (Exactly once): Kritische Zustandsänderungen
+
+Verwendung:
+- Bidirektionale Kommunikation mit IoT-Geräten
+- LED-Steuerung über GPIO
+- Integration mit Home Assistant, Philips Hue, etc.
+
+┌─────────────────────────────────────────────────────────────────────────────┐
+│ 2.3 WEBSOCKET SERVER - Frontend-Backend Realtime Communication             │
+└─────────────────────────────────────────────────────────────────────────────┘
+
+Implementierung in FastAPI:
+
+@app.websocket("/ws")
+async def websocket_endpoint(websocket: WebSocket):
+    await websocket.accept()
+
+    # Subscribe to relevant events
+    async def event_handler(event_data):
+        await websocket.send_json(event_data)
+
+    event_bus.subscribe("WeatherDataUpdated", event_handler)
+    event_bus.subscribe("GestureDetected", event_handler)
+
+    try:
+        while True:
+            data = await websocket.receive_json()
+            # Handle incoming messages from frontend
+            await handle_frontend_event(data)
+    except WebSocketDisconnect:
+        # Cleanup subscriptions
+        pass
+
+Event Format (JSON):
+{
+    "eventType": "WeatherDataUpdated",
+    "timestamp": "2025-11-08T12:00:00Z",
+    "payload": {
+        "temperature": 22.5,
+        "condition": "sunny"
+    },
+    "metadata": {
+        "source": "weather_service",
+        "version": "1.0"
+    }
+}
+
+┌─────────────────────────────────────────────────────────────────────────────┐
+│ 2.4 REDIS PUB/SUB (Optional - für Multi-Instance Deployment)               │
+└─────────────────────────────────────────────────────────────────────────────┘
+
+Verwendung: Wenn mehrere FastAPI Instanzen laufen (Load Balancing)
+
+Channels:
+- nimrag:events:weather
+- nimrag:events:calendar
+- nimrag:events:system
+
+Vorteil: Event-Synchronisation zwischen mehreren Backend-Instanzen
+
+═══════════════════════════════════════════════════════════════════════════════
+3. FASTAPI ROLLE IN DER EVENT-ARCHITEKTUR
+═══════════════════════════════════════════════════════════════════════════════
+
+┌─────────────────────────────────────────────────────────────────────────────┐
+│ 3.1 FASTAPI ALS EVENT ORCHESTRATOR                                         │
+└─────────────────────────────────────────────────────────────────────────────┘
+
+FastAPI übernimmt folgende Rollen:
+
+1. APPLICATION LIFECYCLE MANAGEMENT
+   ├── Lifespan Events (startup/shutdown)
+   ├── Service Initialisierung
+   └── Resource Cleanup
+
+2. EVENT BUS HOSTING
+   ├── In-Memory Event Bus als Singleton
+   ├── Dependency Injection für Event Bus
+   └── Event Handler Registration
+
+3. WEBSOCKET SERVER
+   ├── Bidirektionale Kommunikation mit Frontend
+   ├── Event Streaming an Clients
+   └── Connection Management
+
+4. REST API ENDPOINTS
+   ├── Trigger für Events (z.B. POST /api/led/control)
+   ├── Query-Interface (CQRS Read-Side)
+   └── Configuration Endpoints
+
+5. BACKGROUND TASK MANAGEMENT
+   ├── Async Tasks für lange laufende Prozesse
+   ├── Scheduled Tasks (Periodic Updates)
+   └── Event Processing in Background
+
+┌─────────────────────────────────────────────────────────────────────────────┐
+│ 3.2 KONKRETE FASTAPI IMPLEMENTIERUNG                                       │
+└─────────────────────────────────────────────────────────────────────────────┘
+
+# main.py - FastAPI Application Setup
+
+from fastapi import FastAPI, WebSocket, Depends
+from contextlib import asynccontextmanager
+from services.event_bus import EventBus
+from services.mqtt_service import MQTTService
+from services.weather_service import WeatherService
+import asyncio
+
+# Global Event Bus Instance
+event_bus = EventBus()
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    # STARTUP: Initialize Services
+    print("🚀 Starting Nimrag Smart Mirror...")
+
+    # Start MQTT Client
+    mqtt_service = MQTTService(event_bus)
+    await mqtt_service.connect()
+
+    # Start Weather Service (periodic updates)
+    weather_service = WeatherService(event_bus)
+    asyncio.create_task(weather_service.start_periodic_updates())
+
+    # Start Voice Service
+    voice_service = VoiceService(event_bus)
+    asyncio.create_task(voice_service.start_listening())
+
+    # Publish ApplicationStarted Event
+    await event_bus.publish("ApplicationStarted", {
+        "version": "1.0.0",
+        "timestamp": datetime.utcnow().isoformat()
+    })
+
+    yield
+
+    # SHUTDOWN: Cleanup
+    print("🛑 Shutting down Nimrag Smart Mirror...")
+    await event_bus.publish("ApplicationShutdown", {
+        "timestamp": datetime.utcnow().isoformat()
+    })
+    await mqtt_service.disconnect()
+
+app = FastAPI(lifespan=lifespan)
+
+# Dependency Injection für Event Bus
+def get_event_bus() -> EventBus:
+    return event_bus
+
+# REST API Endpoints
+@app.post("/api/led/control")
+async def control_led(
+    color: str,
+    brightness: int,
+    event_bus: EventBus = Depends(get_event_bus)
+):
+    await event_bus.publish("LEDControlCommand", {
+        "color": color,
+        "brightness": brightness
+    })
+    return {"status": "command_sent"}
+
+# WebSocket Endpoint
+@app.websocket("/ws")
+async def websocket_endpoint(
+    websocket: WebSocket,
+    event_bus: EventBus = Depends(get_event_bus)
+):
+    await websocket.accept()
+
+    # Create event handler for this connection
+    async def send_to_client(event_data: dict):
+        try:
+            await websocket.send_json(event_data)
+        except:
+            pass
+
+    # Subscribe to all frontend-relevant events
+    event_bus.subscribe("WeatherDataUpdated", send_to_client)
+    event_bus.subscribe("CalendarEventAdded", send_to_client)
+    event_bus.subscribe("GestureDetected", send_to_client)
+
+    try:
+        while True:
+            # Handle messages from frontend
+            data = await websocket.receive_json()
+            await event_bus.publish(f"Frontend{data['eventType']}", data)
+    except WebSocketDisconnect:
+        # Cleanup on disconnect
+        pass
+
+┌─────────────────────────────────────────────────────────────────────────────┐
+│ 3.3 FASTAPI BACKGROUND TASKS FÜR EVENT PROCESSING                          │
+└─────────────────────────────────────────────────────────────────────────────┘
+
+# services/weather_service.py
+
+class WeatherService:
+    def __init__(self, event_bus: EventBus):
+        self.event_bus = event_bus
+        self.running = False
+
+    async def start_periodic_updates(self):
+        self.running = True
+        while self.running:
+            try:
+                # Fetch weather data
+                weather_data = await self.fetch_weather()
+
+                # Publish event
+                await self.event_bus.publish("WeatherDataUpdated", weather_data)
+
+                # Wait 10 minutes before next update
+                await asyncio.sleep(600)
+            except Exception as e:
+                await self.event_bus.publish("ErrorOccurred", {
+                    "service": "WeatherService",
+                    "error": str(e)
+                })
+
+    async def fetch_weather(self):
+        async with httpx.AsyncClient() as client:
+            response = await client.get(WEATHER_API_URL)
+            return response.json()
+
+┌─────────────────────────────────────────────────────────────────────────────┐
+│ 3.4 FASTAPI MQTT INTEGRATION                                               │
+└─────────────────────────────────────────────────────────────────────────────┘
+
+# services/mqtt_service.py
+
+from fastapi_mqtt import FastMQTT, MQTTConfig
+
+mqtt_config = MQTTConfig(
+    host="localhost",
+    port=1883,
+    keepalive=60,
+    username="nimrag",
+    password="secure_password"
+)
+
+mqtt_client = FastMQTT(config=mqtt_config)
+
+@mqtt_client.on_connect()
+def on_connect(client, flags, rc, properties):
+    print("Connected to MQTT Broker")
+    client.subscribe("nimrag/smarthome/#")
+    client.subscribe("nimrag/led/#")
+
+@mqtt_client.on_message()
+async def on_message(client, topic, payload, qos, properties):
+    # Parse MQTT message and convert to internal event
+    event_type = topic.split("/")[-1]
+    event_data = json.loads(payload.decode())
+
+    # Publish to internal event bus
+    await event_bus.publish(f"MQTT_{event_type}", event_data)
+
+# Publish internal events to MQTT
+async def publish_led_event(event_data: dict):
+    mqtt_client.publish(
+        "nimrag/led/state",
+        json.dumps(event_data),
+        qos=1
+    )
+
+event_bus.subscribe("LEDStateChanged", publish_led_event)
+
+═══════════════════════════════════════════════════════════════════════════════
+4. VUE.JS FRONTEND EVENT INTEGRATION
+═══════════════════════════════════════════════════════════════════════════════
+
+┌─────────────────────────────────────────────────────────────────────────────┐
+│ 4.1 WEBSOCKET CLIENT IM FRONTEND                                           │
+└─────────────────────────────────────────────────────────────────────────────┘
+
+// composables/useWebSocket.ts
+
+import { ref, onMounted, onUnmounted } from 'vue'
+import { useStore } from 'vuex'
+
+export function useWebSocket() {
+  const store = useStore()
+  const socket = ref<WebSocket | null>(null)
+  const connected = ref(false)
+
+  const connect = () => {
+    socket.value = new WebSocket('ws://localhost:8000/ws')
+
+    socket.value.onopen = () => {
+      console.log('WebSocket connected')
+      connected.value = true
+    }
+
+    socket.value.onmessage = (event) => {
+      const data = JSON.parse(event.data)
+
+      // Dispatch to Vuex store based on event type
+      switch(data.eventType) {
+        case 'WeatherDataUpdated':
+          store.commit('weather/updateWeather', data.payload)
+          break
+        case 'CalendarEventAdded':
+          store.commit('calendar/addEvent', data.payload)
+          break
+        case 'GestureDetected':
+          store.commit('gesture/handleGesture', data.payload)
+          break
+      }
+    }
+
+    socket.value.onerror = (error) => {
+      console.error('WebSocket error:', error)
+    }
+
+    socket.value.onclose = () => {
+      connected.value = false
+      // Reconnect after 5 seconds
+      setTimeout(connect, 5000)
+    }
+  }
+
+  const send = (eventType: string, payload: any) => {
+    if (socket.value && connected.value) {
+      socket.value.send(JSON.stringify({
+        eventType,
+        payload,
+        timestamp: new Date().toISOString()
+      }))
+    }
+  }
+
+  onMounted(connect)
+  onUnmounted(() => {
+    socket.value?.close()
+  })
+
+  return { connected, send }
+}
+
+┌─────────────────────────────────────────────────────────────────────────────┐
+│ 4.2 VUEX STORE ALS EVENT CONSUMER                                          │
+└─────────────────────────────────────────────────────────────────────────────┘
+
+// store/modules/weather.ts
+
+export default {
+  namespaced: true,
+
+  state: () => ({
+    currentWeather: null,
+    forecast: []
+  }),
+
+  mutations: {
+    updateWeather(state, weatherData) {
+      state.currentWeather = weatherData.current
+      state.forecast = weatherData.forecast
+
+      // Trigger local event for animations
+      window.dispatchEvent(new CustomEvent('weather-updated', {
+        detail: weatherData
+      }))
+    }
+  }
+}
+
+┌─────────────────────────────────────────────────────────────────────────────┐
+│ 4.3 VUE COMPONENTS ALS EVENT EMITTERS                                      │
+└─────────────────────────────────────────────────────────────────────────────┘
+
+// components/LEDControl.vue
+
+<script setup lang="ts">
+import { useWebSocket } from '@/composables/useWebSocket'
+
+const { send } = useWebSocket()
+
+const changeLEDColor = (color: string, brightness: number) => {
+  // Send command via WebSocket
+  send('LEDControlCommand', {
+    color,
+    brightness,
+    timestamp: new Date().toISOString()
+  })
+}
+</script>
+
+═══════════════════════════════════════════════════════════════════════════════
+5. EVENT FLOW BEISPIELE
+═══════════════════════════════════════════════════════════════════════════════
+
+BEISPIEL 1: WETTER UPDATE FLOW
+──────────────────────────────────
+
+1. [WeatherService] Periodic Task läuft alle 10 Min
+   └─> HTTP Request zu OpenWeatherMap API
+
+2. [WeatherService] Publishes "WeatherDataUpdated" Event
+   └─> event_bus.publish("WeatherDataUpdated", weather_data)
+
+3. [EventBus] Notifiziert alle Subscriber:
+   ├─> [WebSocket Handler] → Sendet zu allen verbundenen Clients
+   ├─> [LED Control Service] → Ändert LED Farbe basierend auf Wetter
+   └─> [Cache Service] → Speichert Daten für Offline-Modus
+
+4. [Vue Frontend] Empfängt via WebSocket
+   └─> Vuex Mutation → State Update → UI Re-Render
+
+BEISPIEL 2: GESTEN-STEUERUNG FLOW
+──────────────────────────────────
+
+1. [MediaPipe Service] Erkennt Swipe-Geste von Kamera
+   └─> event_bus.publish("GestureDetected", {type: "swipe_left"})
+
+2. [EventBus] Notifiziert Subscriber:
+   └─> [WebSocket Handler] → Sendet zu Frontend
+
+3. [Vue Frontend] Empfängt Event
+   └─> Vuex Action → Widget Navigation → Animierter Übergang
+
+BEISPIEL 3: SMART HOME INTEGRATION
+───────────────────────────────────
+
+1. [Philips Hue Lampe] Ändert Status
+   └─> MQTT Message zu "nimrag/smarthome/devices/hue-1/state"
+
+2. [MQTT Service] Empfängt Message
+   └─> event_bus.publish("SmartHomeDeviceStateChanged", device_data)
+
+3. [EventBus] Notifiziert:
+   ├─> [WebSocket Handler] → Frontend Update
+   └─> [Smart Home Widget] → Display aktualisiert
+
+4. [Vue Frontend] Zeigt neuen Status in Echtzeit
+
