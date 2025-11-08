@@ -28,19 +28,19 @@ class SmartMirrorSetup {
     }
 
     success(message) {
-        console.log(`${colors.green}✅ ${message}${colors.reset}`);
+        console.log(`${colors.green}[SUCCESS] ${message}${colors.reset}`);
     }
 
     warning(message) {
-        console.log(`${colors.yellow}⚠️  ${message}${colors.reset}`);
+        console.log(`${colors.yellow}[WARNING] ${message}${colors.reset}`);
     }
 
     error(message) {
-        console.log(`${colors.red}❌ ${message}${colors.reset}`);
+        console.log(`${colors.red}[ERROR] ${message}${colors.reset}`);
     }
 
     info(message) {
-        console.log(`${colors.blue}ℹ️  ${message}${colors.reset}`);
+        console.log(`${colors.blue}[INFO] ${message}${colors.reset}`);
     }
 
     async execCommand(command, cwd = process.cwd()) {
@@ -72,7 +72,7 @@ class SmartMirrorSetup {
     }
 
     async checkPrerequisites() {
-        this.log('🔍 Checking prerequisites...');
+        this.log('Checking prerequisites...');
         
         // Check Node.js
         const hasNode = await this.checkCommand('node');
@@ -114,7 +114,7 @@ class SmartMirrorSetup {
             return false;
         }
 
-        this.log('📦 Installing Frontend dependencies...');
+        this.log('Installing Frontend dependencies...');
         try {
             await this.execCommand('npm install', frontendPath);
             this.success('Frontend dependencies installed!');
@@ -147,7 +147,7 @@ class SmartMirrorSetup {
             return;
         }
 
-        this.log('🚀 Starting Frontend development server...');
+        this.log('Starting Frontend development server...');
         this.info('Frontend will open in your browser automatically');
         this.info('Press Ctrl+C to stop the server');
         
@@ -162,7 +162,7 @@ class SmartMirrorSetup {
         console.log(`
 ${colors.cyan}
 ======================================
-  🪞 Smart Mirror Project Setup 🪞
+  Smart Mirror Project Setup
 ======================================${colors.reset}
 `);
 
@@ -177,7 +177,7 @@ ${colors.cyan}
             await this.checkPrerequisites();
             
             console.log('');
-            this.log('🔧 Starting installation process...');
+            this.log('Starting installation process...');
             
             const frontendInstalled = await this.installFrontendDependencies();
             await this.checkBackend();
@@ -185,17 +185,17 @@ ${colors.cyan}
             console.log(`
 ${colors.green}
 ======================================
-  🎉 Setup Complete! 🎉
+  Setup Complete!
 ======================================${colors.reset}
 
 ${colors.yellow}Next steps:${colors.reset}
-  ${colors.blue}•${colors.reset} Start Frontend: ${colors.magenta}npm run dev${colors.reset}
-  ${colors.blue}•${colors.reset} Or use: ${colors.magenta}node setup.js --dev${colors.reset}
-  ${colors.blue}•${colors.reset} Backend: ${colors.magenta}cd Backend && python main.py${colors.reset}
+  ${colors.blue}-${colors.reset} Start Frontend: ${colors.magenta}npm run dev${colors.reset}
+  ${colors.blue}-${colors.reset} Or use: ${colors.magenta}node setup.js --dev${colors.reset}
+  ${colors.blue}-${colors.reset} Backend: ${colors.magenta}cd Backend && python main.py${colors.reset}
 
 ${colors.yellow}Quick commands:${colors.reset}
-  ${colors.blue}•${colors.reset} Setup: ${colors.magenta}node setup.js${colors.reset}
-  ${colors.blue}•${colors.reset} Start dev: ${colors.magenta}node setup.js --dev${colors.reset}
+  ${colors.blue}-${colors.reset} Setup: ${colors.magenta}node setup.js${colors.reset}
+  ${colors.blue}-${colors.reset} Start dev: ${colors.magenta}node setup.js --dev${colors.reset}
 `);
 
             if (frontendInstalled) {

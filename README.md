@@ -1,10 +1,10 @@
-# 🪞 Smart Mirror Project "Nimrag"
+# Smart Mirror Project "Nimrag"
 
 Ein intelligenter Spiegel mit modularer Software-Architektur, entwickelt für Raspberry Pi Hardware mit LED-Beleuchtung und webbasierter Benutzeroberfläche.
 
 ![Smart Mirror Example](pics/smart-mirror-example.png)
 
-## 🚀 Quick Start
+## Quick Start
 
 ### Einfachste Installation (alle Betriebssysteme):
 ```bash
@@ -13,12 +13,12 @@ node setup.js
 
 Das war's! Das Skript installiert automatisch alle Dependencies und startet das Frontend.
 
-## 📋 Systemanforderungen
+## Systemanforderungen
 
 ### Hardware:
 - **Raspberry Pi** (Modell 2, 3, 4 oder 5)
 - **Monitor/TV** mit HDMI-Eingang
-- **Zwei-Wege-Spiegel** (siehe [Hardware-Liste](#-hardware-einkaufsliste))
+- **Zwei-Wege-Spiegel** (siehe [Hardware-Liste](#hardware-einkaufsliste))
 - **LED-Strip** für Hintergrundbeleuchtung (optional)
 
 ### Software:
@@ -26,7 +26,7 @@ Das war's! Das Skript installiert automatisch alle Dependencies und startet das 
 - **Python** (für Backend) - [Download](https://python.org/)
 - **Git** - [Download](https://git-scm.com/)
 
-## 📦 Installation & Setup
+## Installation & Setup
 
 ### Option 1: Automatisches Setup (Empfohlen)
 ```bash
@@ -36,6 +36,7 @@ node setup.js
 # Oder mit NPM
 npm run setup
 ```
+
 ### Option 2: Manuell
 ```bash
 # Frontend Dependencies
@@ -47,7 +48,7 @@ cd Backend
 pip install -r requirements.txt
 ```
 
-## 🎯 Entwicklung starten
+## Entwicklung starten
 
 ### Frontend Development Server:
 ```bash
@@ -65,7 +66,7 @@ cd Backend/src
 python main.py
 ```
 
-## 📁 Projekt-Struktur
+## Projekt-Struktur
 
 ```
 Smart-Mirror-Project/
@@ -89,7 +90,7 @@ Smart-Mirror-Project/
 └── README.md                 # Diese Datei
 ```
 
-## 🛒 Hardware-Einkaufsliste
+## Hardware-Einkaufsliste
 
 ### Grundausstattung (€102.67):
 - **Spiegel**: [Supreme Tech Acryl See-Through](https://www.amazon.de/Supreme-Tech-x18-Acryl-See-Through-Spiegel/dp/B07XTRCTQL) - **€50.48**
@@ -101,7 +102,7 @@ Smart-Mirror-Project/
 - **Smart Switch**: [Sonoff Basic R2](https://www.amazon.com/gp/product/B07KP8THFG) - **€11.79**
 - **Breadboard Set**: [Steckplatine + Kabel](https://www.amazon.com/dp/B08Y59P6D1) - **€9.19**
 
-## 🔧 Verfügbare Scripts
+## Verfügbare Scripts
 
 ```bash
 # Setup & Installation
@@ -117,7 +118,7 @@ npm run dev                # Alternative mit NPM
 ./setup.sh                 # Linux/macOS Shell
 ```
 
-## 🏗️ Software-Architektur
+## Software-Architektur
 
 ### Frontend:
 - **Framework**: React/Vue.js
@@ -131,15 +132,15 @@ npm run dev                # Alternative mit NPM
 - **API**: RESTful Endpoints
 
 ### Module:
-- 📅 **Kalender** - Termine und Events
-- 🌤️ **Wetter** - Aktuelle Bedingungen & Vorhersage
-- 🕒 **Uhrzeit** - Digitale Zeitanzeige
-- 📰 **Nachrichten** - RSS Feeds
-- 🎵 **Musik** - Wiedergabesteuerung
-- 🏠 **Smart Home** - Gerätesteuerung
-- 🌡️ **Sensoren** - Temperatur/Luftfeuchtigkeit
+- **Kalender** - Termine und Events
+- **Wetter** - Aktuelle Bedingungen & Vorhersage
+- **Uhrzeit** - Digitale Zeitanzeige
+- **Nachrichten** - RSS Feeds
+- **Musik** - Wiedergabesteuerung
+- **Smart Home** - Gerätesteuerung
+- **Sensoren** - Temperatur/Luftfeuchtigkeit
 
-## 🔌 Hardware-Integration
+## Hardware-Integration
 
 ### LED-Steuerung:
 ```
@@ -151,7 +152,7 @@ Raspberry Pi GPIO → N-Channel MOSFET → LED Strip
 - LED-Beleuchtung (12V)
 - Smart Switch für Gesamtsteuerung
 
-## 🐛 Troubleshooting
+## Troubleshooting
 
 ### Node.js nicht gefunden:
 ```bash
@@ -181,7 +182,7 @@ python main.py
 - Verwenden Sie `sudo` für Hardware-Zugriff
 - Überprüfen Sie Verkabelung und Spannungen
 
-## 🤝 Entwicklung & Beitrag
+## Entwicklung & Beitrag
 
 ### Git Workflow:
 ```bash
@@ -192,16 +193,16 @@ node setup.js
 
 ### Branches:
 - `main` - Stabile Version
-- `Demo-Layout` - Aktuelle Entwicklung
+- `autosetup` - Aktuelle Entwicklung
 - `feature/*` - Neue Features
 
-## 📚 Weitere Dokumentation
+## Weitere Dokumentation
 
 - [Projektbeschreibung](projektbeschreibung.md) - Detaillierte Hardware & Software Specs
 - [Frontend Dokumentation](Frontend/README.md)
 - [Backend API Dokumentation](Backend/README.md)
 
-## 🌟 Features (Geplant)
+## Features (Geplant)
 
 - [x] Automatisches Setup-System
 - [x] Cross-Platform Kompatibilität
@@ -212,7 +213,7 @@ node setup.js
 - [ ] Personalisierte Profile
 - [ ] Cloud-Synchronisation
 
-## 📄 Lizenz
+## Lizenz
 
 MIT License - Siehe [LICENSE](LICENSE) für Details.
 
