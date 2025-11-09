@@ -7,12 +7,13 @@ onBeforeUnmount(() => clearInterval(timer))
 </script>
 
 <template>
-  <div class="card">
+  <div class="w-full h-full card flex flex-col justify-center">
     <h3>Uhr</h3>
     <p style="font-size:2rem; margin:0;">{{ now.toLocaleTimeString() }}</p>
   </div>
 </template>
 
 <style scoped>
-.card { background:#111; color:#eee; border-radius:16px; padding:16px; }
+.card { background:#111; color:#eee; padding:16px; }
+
 </style>

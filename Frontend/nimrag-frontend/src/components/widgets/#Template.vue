@@ -1,11 +1,14 @@
 <script setup lang="ts">
-const data = { temp: "21°C", city: "Karlsruhe", cond: "Wolkig" };
+//startet beim laden der seite -> imports und so hier rein
+</script>
+
+<script lang="ts">
+//startet nicht beim init der seite -> eigene Funktionen und so hier rein
 </script>
 
 <template>
   <div class="w-full h-full card flex flex-col justify-center">
-    <h3>Wetter</h3>
-    <p>{{ data.city }} · {{ data.cond }} · {{ data.temp }}</p>
+    <h3>Template</h3>
   </div>
 </template>
 
