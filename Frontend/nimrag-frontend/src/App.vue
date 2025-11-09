@@ -1,8 +1,7 @@
 <script setup lang="ts">
-import GridBoard from "./components/GridBoard.vue";
-
+import ModuleManager from './components/manager/ModuleManager.vue';
 </script>
 
 <template>
-  <GridBoard />
+  <ModuleManager />
 </template>
