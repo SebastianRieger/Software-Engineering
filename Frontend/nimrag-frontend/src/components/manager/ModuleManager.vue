@@ -72,18 +72,27 @@ const clearCell = (cellId: number) => {
   cell.className = 'rounded-xl bg-neutral-800 shadow-inner overflow-hidden';
 };
 
+const handleKeydown = (event: KeyboardEvent) => {
+  if (event.key === 'e') {
+    document.querySelector('.control-panel')?.classList.toggle('hidden');
+  }
+};
+
 onMounted(() => {
   // Beispiel: Automatisch Widgets beim Laden hinzufügen
   // setTimeout(() => {
   //   addWeatherToCell(1);
   //   addClockToCell(2);
   // }, 1000);
+  
+  // Keyboard event listener hinzufügen
+  window.addEventListener('keydown', handleKeydown);
 });
 </script>
 
 <template>
   <div>
-    <div class="control-panel fixed top-4 left-4 z-10 bg-neutral-700 p-4 rounded-lg space-y-2">
+    <div class="control-panel fixed top-4 left-4 z-10 bg-neutral-700 p-4 rounded-lg space-y-2 hidden">
       <h4 class="text-white font-semibold">Widget Manager</h4>
       <div class="space-y-1">
         <button @click="addWeatherToCell1" class="block w-full bg-blue-600 text-white px-3 py-1 rounded text-sm">
