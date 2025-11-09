@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import GridBoard from "./components/GridBoard.vue";
+import GridBoard from "./components/manager/GridBoard.vue";
 
 </script>
 
