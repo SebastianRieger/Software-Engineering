@@ -1,0 +1,481 @@
+
+═══════════════════════════════════════════════════════════════════════════════
+TECHNOLOGIE-STACK UND TOOLS FÜR EVENT-DRIVEN ARCHITEKTUR
+Nimrag Smart Mirror Projekt
+═══════════════════════════════════════════════════════════════════════════════
+
+┌─────────────────────────────────────────────────────────────────────────────┐
+│ FRONTEND TECHNOLOGIEN                                                       │
+└─────────────────────────────────────────────────────────────────────────────┘
+
+1. VUE 3 (Composition API)
+   ├── Version: 3.x
+   ├── Rolle: Reactive UI Framework
+   ├── Event-Integration:
+   │   ├── WebSocket Client Integration
+   │   ├── Custom Events mit EventEmitter
+   │   └── Reactive State Management
+   └── Packages:
+       ├── vue@^3.3.0
+       └── @vue/runtime-dom
+
+2. VUEX 4 (State Management)
+   ├── Version: 4.x
+   ├── Rolle: Zentraler State Container
+   ├── Event-Integration:
+   │   ├── Mutations für Event-basierte State Updates
+   │   ├── Actions für asynchrone Event-Handling
+   │   └── Module pro Widget/Feature
+   └── Package: vuex@^4.0.0
+
+3. TYPESCRIPT
+   ├── Version: 5.x
+   ├── Rolle: Type-Safe Development
+   ├── Event-Integration:
+   │   ├── Type Definitions für Events
+   │   ├── Interface für Event Payloads
+   │   └── Generic Event Handler Types
+   └── Package: typescript@^5.0.0
+
+4. VITE (Build Tool)
+   ├── Version: 5.x
+   ├── Rolle: Fast Development & Build
+   ├── Features:
+   │   ├── Hot Module Replacement (HMR)
+   │   ├── WebSocket Dev Server
+   │   └── Fast Builds
+   └── Package: vite@^5.0.0
+
+5. TAILWIND CSS
+   ├── Version: 3.x
+   ├── Rolle: Utility-First Styling
+   └── Package: tailwindcss@^3.0.0
+
+┌─────────────────────────────────────────────────────────────────────────────┐
+│ BACKEND TECHNOLOGIEN (Python)                                               │
+└─────────────────────────────────────────────────────────────────────────────┘
+
+1. FASTAPI
+   ├── Version: 0.104+
+   ├── Rolle: Async Web Framework & API Server
+   ├── Event-Funktionen:
+   │   ├── Lifespan Events (startup/shutdown)
+   │   ├── WebSocket Support (bidirektional)
+   │   ├── Background Tasks
+   │   ├── Dependency Injection System
+   │   └── Async/Await Native Support
+   └── Package: fastapi==0.104.0
+
+2. UVICORN (ASGI Server)
+   ├── Version: 0.24+
+   ├── Rolle: Production ASGI Server
+   ├── Features:
+   │   ├── WebSocket Support
+   │   ├── Multiple Workers
+   │   └── Auto-Reload (Development)
+   └── Package: uvicorn[standard]==0.24.0
+
+3. PYDANTIC
+   ├── Version: 2.x
+   ├── Rolle: Data Validation & Serialization
+   ├── Event-Integration:
+   │   ├── Event Schema Validation
+   │   ├── Type-Safe Event Payloads
+   │   └── Automatic JSON Serialization
+   └── Package: pydantic==2.0.0
+
+4. ASYNCIO (Standard Library)
+   ├── Rolle: Async/Await Runtime
+   ├── Event-Integration:
+   │   ├── Event Loop Management
+   │   ├── Concurrent Event Processing
+   │   ├── Task Scheduling
+   │   └── Queue Management
+   └── Built-in (Python 3.11+)
+
+┌─────────────────────────────────────────────────────────────────────────────┐
+│ MESSAGE BROKER & EVENT BUS TECHNOLOGIEN                                     │
+└─────────────────────────────────────────────────────────────────────────────┘
+
+1. MQTT BROKER - MOSQUITTO
+   ├── Version: 2.0+
+   ├── Rolle: IoT Message Broker
+   ├── Verwendung:
+   │   ├── Smart Home Device Communication
+   │   ├── LED Control via GPIO
+   │   └── Sensor Data Streaming
+   ├── Features:
+   │   ├── QoS Levels (0, 1, 2)
+   │   ├── Retained Messages
+   │   ├── Last Will & Testament
+   │   └── TLS/SSL Support
+   └── Installation: apt-get install mosquitto
+
+2. FASTAPI-MQTT (Python Client)
+   ├── Version: 2.2.0
+   ├── Rolle: MQTT Integration für FastAPI
+   ├── Features:
+   │   ├── Decorator-Based Event Handlers
+   │   ├── Automatic Reconnection
+   │   ├── MQTT v5.0 Support
+   │   └── FastAPI Lifespan Integration
+   ├── Event-Pattern:
+   │   @mqtt.on_connect()
+   │   @mqtt.on_message()
+   │   @mqtt.subscribe(topic)
+   └── Package: fastapi-mqtt==2.2.0
+
+3. PAHO-MQTT (Alternative)
+   ├── Version: 1.6+
+   ├── Rolle: Standard MQTT Client Library
+   └── Package: paho-mqtt==1.6.1
+
+4. WEBSOCKET (FastAPI Built-in)
+   ├── Rolle: Frontend-Backend Real-time Communication
+   ├── Protocol: WebSocket (RFC 6455)
+   ├── Features:
+   │   ├── Bidirektionale Kommunikation
+   │   ├── Low Latency
+   │   ├── JSON Message Format
+   │   └── Connection State Management
+   └── Package: websockets==12.0
+
+5. REDIS PUB/SUB (Optional - Multi-Instance)
+   ├── Version: 7.x
+   ├── Rolle: Distributed Event Bus
+   ├── Verwendung (wenn mehrere Backend-Instanzen):
+   │   ├── Event Synchronisation
+   │   ├── Shared State
+   │   └── Session Management
+   ├── Python Client: redis-py
+   └── Packages:
+       ├── redis==5.0.0
+       └── redis[hiredis] (Performance)
+
+┌─────────────────────────────────────────────────────────────────────────────┐
+│ DOMAIN SERVICE TECHNOLOGIEN                                                 │
+└─────────────────────────────────────────────────────────────────────────────┘
+
+1. VOSK (Offline Speech Recognition)
+   ├── Version: 0.3.45
+   ├── Rolle: Voice Service / ASR
+   ├── Features:
+   │   ├── Offline Processing
+   │   ├── Real-time Recognition
+   │   ├── Multiple Languages (DE, EN)
+   │   └── Low Resource Usage
+   ├── Event-Flow:
+   │   Mikrofon → Audio Stream → Vosk → VoiceCommandDetected Event
+   └── Packages:
+       ├── vosk==0.3.45
+       └── pyaudio==0.2.13
+
+2. MEDIAPIPE (Gesture Recognition)
+   ├── Version: 0.10+
+   ├── Rolle: Gesture Service / Computer Vision
+   ├── Features:
+   │   ├── Hand Tracking
+   │   ├── Gesture Classification
+   │   ├── Real-time Processing
+   │   └── GPU Acceleration (optional)
+   ├── Event-Flow:
+   │   USB Camera → OpenCV → MediaPipe → GestureDetected Event
+   └── Packages:
+       ├── mediapipe==0.10.0
+       └── opencv-python==4.8.0
+
+3. GPIO CONTROL (Raspberry Pi)
+   ├── Library: RPi.GPIO oder gpiozero
+   ├── Rolle: LED Control Service
+   ├── Features:
+   │   ├── PWM für Brightness Control
+   │   ├── RGB LED Control
+   │   └── Event-Triggered Actions
+   └── Package: gpiozero==2.0
+
+4. HTTPX (Async HTTP Client)
+   ├── Version: 0.25+
+   ├── Rolle: External API Calls
+   ├── Verwendung:
+   │   ├── Weather API
+   │   ├── Google Calendar API
+   │   └── Spotify API
+   ├── Features:
+   │   ├── Async/Await Support
+   │   ├── Connection Pooling
+   │   └── Timeout Management
+   └── Package: httpx==0.25.0
+
+┌─────────────────────────────────────────────────────────────────────────────┐
+│ DATENBANK & PERSISTENCE                                                     │
+└─────────────────────────────────────────────────────────────────────────────┘
+
+1. SQLITE (Local Database)
+   ├── Version: 3.x
+   ├── Rolle: Persistent Storage
+   ├── Verwendung:
+   │   ├── Configuration Storage
+   │   ├── Event Sourcing (optional)
+   │   ├── Widget Settings
+   │   └── Offline Cache
+   ├── Event-Integration:
+   │   ├── Store Events für Replay
+   │   └── Audit Log
+   └── Python: Built-in sqlite3 module
+
+2. SQLALCHEMY (Optional - ORM)
+   ├── Version: 2.0+
+   ├── Rolle: Database Abstraction
+   ├── Features:
+   │   ├── Async Support
+   │   ├── Migration Management
+   │   └── Type-Safe Queries
+   └── Packages:
+       ├── sqlalchemy==2.0.0
+       └── alembic==1.12.0 (Migrations)
+
+┌─────────────────────────────────────────────────────────────────────────────┐
+│ ENTWICKLUNGS- UND TESTING TOOLS                                             │
+└─────────────────────────────────────────────────────────────────────────────┘
+
+1. PYTEST (Testing Framework)
+   ├── Version: 7.x
+   ├── Rolle: Unit & Integration Tests
+   ├── Event-Testing:
+   │   ├── Mock Event Bus
+   │   ├── Test Event Handlers
+   │   └── WebSocket Testing
+   └── Packages:
+       ├── pytest==7.4.0
+       ├── pytest-asyncio==0.21.0
+       └── pytest-mock==3.11.0
+
+2. DOCKER & DOCKER COMPOSE
+   ├── Version: 24.x
+   ├── Rolle: Containerization & Orchestration
+   ├── Services:
+   │   ├── FastAPI Backend Container
+   │   ├── Mosquitto MQTT Broker
+   │   ├── Redis (optional)
+   │   └── Development Environment
+   └── Files:
+       ├── Dockerfile
+       └── docker-compose.yml
+
+3. GITHUB ACTIONS (CI/CD)
+   ├── Rolle: Automated Testing & Deployment
+   ├── Workflows:
+   │   ├── Pytest on Push
+   │   ├── Type Checking (mypy)
+   │   └── Lint (ruff/black)
+   └── File: .github/workflows/ci.yml
+
+4. MYPY (Type Checking)
+   ├── Version: 1.5+
+   ├── Rolle: Static Type Analysis
+   └── Package: mypy==1.5.0
+
+5. RUFF (Linting & Formatting)
+   ├── Version: 0.1+
+   ├── Rolle: Fast Python Linter
+   └── Package: ruff==0.1.0
+
+┌─────────────────────────────────────────────────────────────────────────────┐
+│ ZUSÄTZLICHE LIBRARIES FÜR EVENT-ARCHITEKTUR                                 │
+└─────────────────────────────────────────────────────────────────────────────┘
+
+1. PYTHON-DOTENV
+   ├── Rolle: Environment Configuration
+   └── Package: python-dotenv==1.0.0
+
+2. LOGURU
+   ├── Rolle: Structured Logging
+   ├── Event-Integration:
+   │   ├── Log all Events
+   │   ├── Debug Event Flow
+   │   └── Error Tracking
+   └── Package: loguru==0.7.0
+
+3. AIOFILES
+   ├── Rolle: Async File I/O
+   └── Package: aiofiles==23.2.0
+
+4. PYTHON-MULTIPART
+   ├── Rolle: File Upload Support
+   └── Package: python-multipart==0.0.6
+
+┌─────────────────────────────────────────────────────────────────────────────┐
+│ HARDWARE REQUIREMENTS                                                        │
+└─────────────────────────────────────────────────────────────────────────────┘
+
+1. RASPBERRY PI
+   ├── Model: Raspberry Pi 4B (4GB RAM) oder Pi 5
+   ├── OS: Raspberry Pi OS (Debian-based)
+   └── Required:
+       ├── Python 3.11+
+       └── Node.js 18+ (für Frontend Build)
+
+2. PERIPHERIE
+   ├── USB Kamera (Gesture Recognition)
+   ├── USB Mikrofon (Voice Recognition)
+   ├── RGB LED Strip (WS2812B)
+   ├── HDMI Display
+   └── GPIO Pins für LED Control
+
+┌─────────────────────────────────────────────────────────────────────────────┐
+│ INSTALLATION & SETUP                                                         │
+└─────────────────────────────────────────────────────────────────────────────┘
+
+BACKEND SETUP:
+──────────────
+
+# 1. Create Virtual Environment
+python -m venv venv
+source venv/bin/activate  # Linux/Mac
+# venv\Scripts\activate  # Windows
+
+# 2. Install Dependencies
+pip install -r requirements.txt
+
+# requirements.txt
+fastapi==0.104.0
+uvicorn[standard]==0.24.0
+pydantic==2.0.0
+fastapi-mqtt==2.2.0
+websockets==12.0
+httpx==0.25.0
+vosk==0.3.45
+mediapipe==0.10.0
+opencv-python==4.8.0
+gpiozero==2.0
+redis==5.0.0
+loguru==0.7.0
+python-dotenv==1.0.0
+pytest==7.4.0
+pytest-asyncio==0.21.0
+
+# 3. Install MQTT Broker
+sudo apt-get update
+sudo apt-get install mosquitto mosquitto-clients
+
+# 4. Start Backend
+uvicorn main:app --reload --host 0.0.0.0 --port 8000
+
+FRONTEND SETUP:
+───────────────
+
+# 1. Install Node.js Dependencies
+npm install
+
+# package.json dependencies
+{
+  "dependencies": {
+    "vue": "^3.3.0",
+    "vuex": "^4.0.0",
+    "typescript": "^5.0.0",
+    "vite": "^5.0.0",
+    "@types/node": "^20.0.0"
+  }
+}
+
+# 2. Development Server
+npm run dev
+
+# 3. Build for Production
+npm run build
+
+DOCKER SETUP:
+─────────────
+
+# docker-compose.yml
+version: '3.8'
+
+services:
+  backend:
+    build: ./backend
+    ports:
+      - "8000:8000"
+    depends_on:
+      - mosquitto
+      - redis
+    environment:
+      - MQTT_BROKER=mosquitto
+      - REDIS_HOST=redis
+
+  mosquitto:
+    image: eclipse-mosquitto:2.0
+    ports:
+      - "1883:1883"
+      - "9001:9001"
+    volumes:
+      - ./mosquitto/config:/mosquitto/config
+
+  redis:
+    image: redis:7-alpine
+    ports:
+      - "6379:6379"
+
+  frontend:
+    build: ./frontend
+    ports:
+      - "5173:5173"
+    depends_on:
+      - backend
+
+# Start all services
+docker-compose up -d
+
+═══════════════════════════════════════════════════════════════════════════════
+ZUSAMMENFASSUNG: TECH-STACK ENTSCHEIDUNGEN
+═══════════════════════════════════════════════════════════════════════════════
+
+FRONTEND:
+✓ Vue 3: Modern, reactive, excellent TypeScript support
+✓ Vuex 4: Zentrales State Management für Event-basierte Updates
+✓ WebSocket API: Native Browser Support, kein Extra-Library nötig
+✓ TypeScript: Type-safe Event Handling
+
+BACKEND:
+✓ FastAPI: Async-first, WebSocket native, Dependency Injection
+✓ Uvicorn: Production-ready ASGI Server
+✓ AsyncIO: Native async/await für Event Processing
+
+MESSAGE LAYER:
+✓ MQTT (Mosquitto): IoT-Standard, QoS Support, bewährt
+✓ WebSocket: Low-latency Frontend-Backend Communication
+✓ Redis Pub/Sub: Optional für Multi-Instance Deployments
+
+DOMAIN SERVICES:
+✓ Vosk: Offline ASR, low resource usage
+✓ MediaPipe: State-of-the-art Gesture Recognition
+✓ GPIO: Direct Hardware Control
+
+WARUM DIESE KOMBINATION?
+────────────────────────
+
+1. ASYNC-FIRST ARCHITECTURE
+   - FastAPI + AsyncIO ermöglicht non-blocking Event Processing
+   - Alle I/O-Operationen (API Calls, MQTT, WebSocket) sind async
+
+2. TYPE-SAFETY
+   - TypeScript im Frontend
+   - Pydantic im Backend
+   - Weniger Runtime Errors
+
+3. REAL-TIME KOMMUNIKATION
+   - WebSocket für Frontend-Backend
+   - MQTT für Hardware/IoT
+   - Event Bus für interne Services
+
+4. RESOURCE EFFICIENCY
+   - Wichtig für Raspberry Pi
+   - Async statt Threading
+   - Lightweight Components
+
+5. DEVELOPER EXPERIENCE
+   - FastAPI Auto-Documentation (Swagger)
+   - Vue DevTools
+   - Type Checking
+   - Hot Reload
+
+═══════════════════════════════════════════════════════════════════════════════
