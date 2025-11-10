@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { createApp, ref, onMounted } from 'vue';
-import GridBoard from '../GridBoard.vue';
+import GridBoard from './GridBoard.vue';
 import WeatherWidget from '../widgets/WeatherWidget.vue';
 import ClockWidget from '../widgets/ClockWidget.vue';
 
