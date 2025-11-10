@@ -1,63 +1,78 @@
 <!-- src/components/GridBoard.vue -->
 <script setup lang="ts">
-import { ref } from 'vue'
-import ModuleManager from './ModuleManager.vue'
-
-type Cell = string | null
-
 // 4x4 Grid -> 16 Zellen
-const COLS = 4
-const ROWS = 4
-const total = COLS * ROWS
-
-// Initial-Belegung: Uhr in Zelle 0, Wetter in Zelle 1, Rest leer
-const grid = ref<Cell[]>(Array.from({ length: total }, (_, i) =>
-    i === 0 ? 'ClockWidget' : i === 1 ? 'WeatherWidget' : null
-))
 
 function onDragStart(e: DragEvent, index: number) {
-  // Nur echte Module dürfen gezogen werden
-  if (!grid.value[index]) return
-  e.dataTransfer?.setData('text/plain', String(index))
-  e.dataTransfer?.setDragImage?.(createGhost(), 0, 0)
+  const cellId = index // Cell IDs sind 1-basiert
+  const cell = document.getElementById(cellId.toString())
+  if (!cell) return
+  
+  // Prüfe ob die Zelle ein Widget enthält (kein Platzhalter)
+  const hasPlaceholder = cell.querySelector('.opacity-70')
+  if (hasPlaceholder) return // Leere Zellen können nicht gezogen werden
+  
+  e.dataTransfer?.setData('text/plain', String(cellId))
+  if (e.dataTransfer) {
+    e.dataTransfer.effectAllowed = 'move'
+  }
+  
+  // Ghost Image
+  const ghost = document.createElement('div')
+  ghost.style.width = '1px'
+  ghost.style.height = '1px'
+  ghost.style.opacity = '0'
+  document.body.appendChild(ghost)
+  e.dataTransfer?.setDragImage(ghost, 0, 0)
+  setTimeout(() => ghost.remove(), 0)
+  
+  // Visuelles Feedback
+  cell.style.opacity = '0.5'
 }
 
 function onDragOver(e: DragEvent) {
-  // Erlaubt Drop (sonst feuert 'drop' nicht)
   e.preventDefault()
+  if (e.dataTransfer) {
+    e.dataTransfer.dropEffect = 'move'
+  }
 }
 
 function onDrop(e: DragEvent, targetIndex: number) {
   e.preventDefault()
   const data = e.dataTransfer?.getData('text/plain')
   if (data == null) return
-  const sourceIndex = Number(data)
-  if (Number.isNaN(sourceIndex) || sourceIndex === targetIndex) return
+  
+  const sourceCellId = Number(data)
+  const targetCellId = targetIndex
+  
+  if (Number.isNaN(sourceCellId) || sourceCellId === targetCellId) return
 
-  const src = grid.value[sourceIndex]
-  const dst = grid.value[targetIndex]
-
-  // Verhalten:
-  // - Drop auf leere Zelle: verschieben, Quelle wird null (gewünschtes "leeres div")
-  // - Drop auf belegte Zelle: tauschen
-  if (src == null) return
-  if (dst == null) {
-    grid.value[targetIndex] = src
-    grid.value[sourceIndex] = null
-  } else {
-    grid.value[targetIndex] = src
-    grid.value[sourceIndex] = dst
-  }
+  const sourceCell = document.getElementById(sourceCellId.toString())
+  const targetCell = document.getElementById(targetCellId.toString())
+  
+  if (!sourceCell || !targetCell) return
+  
+  // Inhalte tauschen (HTML swap)
+  const sourceContent = sourceCell.innerHTML
+  const targetContent = targetCell.innerHTML
+  
+  sourceCell.innerHTML = targetContent
+  targetCell.innerHTML = sourceContent
+  
+  // Styling zurücksetzen
+  sourceCell.style.opacity = '1'
+  
+  // Classes auch tauschen
+  const sourceClasses = sourceCell.className
+  const targetClasses = targetCell.className
+  sourceCell.className = targetClasses
+  targetCell.className = sourceClasses
 }
 
-// Kleiner, unsichtbarer Drag-Ghost, damit das Modul nicht unter dem Cursor „wegzuckt“
-function createGhost() {
-  const el = document.createElement('div')
-  el.style.width = '1px'
-  el.style.height = '1px'
-  el.style.opacity = '0'
-  document.body.appendChild(el)
-  return el
+function onDragEnd(e: DragEvent, index: number) {
+  e; //damit kein Fehler in IDE angezeigt wird
+  const cellId = index + 1
+  const cell = document.getElementById(cellId.toString())
+  if (cell) cell.style.opacity = '1'
 }
 </script>
 
@@ -66,32 +81,20 @@ function createGhost() {
       class="grid h-screen w-screen grid-cols-4 grid-rows-4 gap-4 bg-neutral-900 text-white p-4"
       :style="{'--cols': 4, '--rows': 4}"
   >
+    <!-- generiert leere Zellen mit Platzhaltern -->
     <div
-        v-for="(cell, i) in grid"
+        v-for="(i) in 16"
         :key="i"
-        class="rounded-xl bg-neutral-800 shadow-inner overflow-hidden p-3 relative"
-        :class="{
-        // Visuelle Hilfe für leere Slots
-        'border border-dashed border-neutral-700': cell === null
-      }"
+        :id="(i).toString()"
+        class="rounded-xl bg-neutral-800 shadow-inner overflow-hidden"
         draggable="true"
         @dragstart="onDragStart($event, i)"
         @dragover="onDragOver"
         @drop="onDrop($event, i)"
+        @dragend="onDragEnd($event, i)"
     >
-      <!-- Belegte Zelle: Modul rendern -->
-      <ModuleManager
-          v-if="cell"
-          :module="cell"
-          class="w-full h-full"
-      />
-
-      <!-- Leere Zelle: Platzhalter-Zahl / Hint -->
-      <div
-          v-else
-          class="w-full h-full grid place-items-center text-2xl font-semibold opacity-60 select-none"
-      >
-        {{ String(i + 1).padStart(2, '0') }}
+      <div class="w-full h-full grid place-items-center text-2xl font-semibold opacity-70">
+        {{ String(i).padStart(2, '0') }}
       </div>
     </div>
   </div>
