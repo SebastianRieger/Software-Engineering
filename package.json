@@ -1,0 +1,16 @@
+{
+  "name": "smart-mirror-setup",
+  "version": "1.0.0",
+  "description": "Smart Mirror Project Cross-Platform Setup",
+  "main": "setup.js",
+  "scripts": {
+    "setup": "node setup.js",
+    "dev": "node setup.js --dev",
+    "start": "node setup.js --start"
+  },
+  "dependencies": {},
+  "devDependencies": {},
+  "keywords": ["smart-mirror", "setup", "cross-platform"],
+  "author": "Smart Mirror Team",
+  "license": "MIT"
+}
