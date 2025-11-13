@@ -3,6 +3,7 @@ import { createApp, ref, onMounted } from 'vue';
 import GridBoard from './GridBoard.vue';
 import WeatherWidget from '../widgets/WeatherWidget.vue';
 import ClockWidget from '../widgets/ClockWidget.vue';
+import ModuleShop from './ModuleShop.vue'
 
 // Store für aktive Widgets
 const activeWidgets = ref<{[key: string]: any}>({});
@@ -93,6 +94,7 @@ onMounted(() => {
 <template>
   <div>
     <div class="control-panel fixed top-4 left-4 z-10 bg-neutral-700 p-4 rounded-lg space-y-2 hidden">
+      <ModuleShop></ModuleShop>
       <h4 class="text-white font-semibold">Widget Manager</h4>
       <div class="space-y-1">
         <button @click="addWeatherToCell1" class="block w-full bg-blue-600 text-white px-3 py-1 rounded text-sm">
