@@ -1,14 +1,21 @@
 <script setup lang="ts">
-import { createApp, ref, onMounted } from 'vue';
+import { createApp, ref, onMounted, onBeforeUnmount} from 'vue';
+import type { ComponentPublicInstance } from 'vue';
 import GridBoard from './GridBoard.vue';
-import WeatherWidget from '../widgets/WeatherWidget.vue';
-import ClockWidget from '../widgets/ClockWidget.vue';
-import ModuleShop from './ModuleShop.vue'
+import ModuleShop from './ModuleShop.vue';
 
-// Store für aktive Widgets
+// Define an interface for the exposed methods
+interface ModuleShopExposed {
+  nextModule: () => void;
+  prevModule: () => void;
+}
+
+// Store for active widgets
 const activeWidgets = ref<{[key: string]: any}>({});
+const isShopOpen = ref(false);
+const moduleShopRef = ref<ComponentPublicInstance<{}, ModuleShopExposed> | null>(null);
 
-// Funktion zum Einfügen einer echten Vue-Komponente in eine Zelle
+// Function to insert a Vue component into a cell
 const insertVueWidgetIntoCell = (cellId: number, widgetComponent: any) => {
   const cell = document.getElementById(cellId.toString());
   if (!cell) {
@@ -16,105 +23,127 @@ const insertVueWidgetIntoCell = (cellId: number, widgetComponent: any) => {
     return;
   }
 
-  // Alte Komponente aufräumen falls vorhanden
+  // Clean up old component if exists
   if (activeWidgets.value[cellId]) {
     activeWidgets.value[cellId].unmount();
   }
 
-  // Zellen-Inhalt leeren
+  // Clear cell content
   cell.innerHTML = '';
-  
-  // Container für die Vue-Komponente erstellen
+
+  // Create container for Vue component
   const widgetContainer = document.createElement('div');
   widgetContainer.className = 'w-full h-full';
   cell.appendChild(widgetContainer);
-  
-  // Vue-App für diese Komponente erstellen und mounten
+
+  // Create and mount Vue app for this component
   const app = createApp(widgetComponent);
   app.mount(widgetContainer);
-  
-  // App für späteres Cleanup speichern
+
+  // Store app for later cleanup
   activeWidgets.value[cellId] = app;
-  
-  // Styling anpassen für Widget-Container
+
+  // Update cell styling
   cell.className = 'rounded-xl bg-neutral-800 shadow-inner overflow-hidden';
 };
 
-// Vereinfachte Funktionen mit echten Vue-Komponenten
-const addWeatherToCell = (cellId: number) => {
-  insertVueWidgetIntoCell(cellId, WeatherWidget);
+// Handle adding widget from shop
+const handleAddWidget = ({ cellId, component }: { cellId: number; component: any }) => {
+  insertVueWidgetIntoCell(cellId, component);
 };
 
-const addClockToCell = (cellId: number) => {
-  insertVueWidgetIntoCell(cellId, ClockWidget);
-};
+// // Clear a cell
+// const clearCell = (cellId: number) => {
+//   const cell = document.getElementById(cellId.toString());
+//   if (!cell) return;
+//
+//   // Clean up Vue app if exists
+//   if (activeWidgets.value[cellId]) {
+//     activeWidgets.value[cellId].unmount();
+//     delete activeWidgets.value[cellId];
+//   }
+//
+//   cell.innerHTML = `
+//     <div class="w-full h-full grid place-items-center text-2xl font-semibold opacity-70">
+//       ${String(cellId).padStart(2, '0')}
+//     </div>
+//   `;
+//   cell.className = 'rounded-xl bg-neutral-800 shadow-inner overflow-hidden';
+// };
 
-// Beispiel-Funktionen
-const addWeatherToCell1 = () => addWeatherToCell(1);
-const addClockToCell2 = () => addClockToCell(2);
-const addWeatherToCell5 = () => addWeatherToCell(5);
-
-// Zelle wieder leer machen
-const clearCell = (cellId: number) => {
-  const cell = document.getElementById(cellId.toString());
-  if (!cell) return;
-  
-  // Vue-App aufräumen falls vorhanden
-  if (activeWidgets.value[cellId]) {
-    activeWidgets.value[cellId].unmount();
-    delete activeWidgets.value[cellId];
-  }
-  
-  cell.innerHTML = `
-    <div class="w-full h-full grid place-items-center text-2xl font-semibold opacity-70">
-      ${String(cellId).padStart(2, '0')}
-    </div>
-  `;
-  cell.className = 'rounded-xl bg-neutral-800 shadow-inner overflow-hidden';
-};
-
+// Handle keydown events
 const handleKeydown = (event: KeyboardEvent) => {
   if (event.key === 'e') {
-    document.querySelector('.control-panel')?.classList.toggle('hidden');
+    isShopOpen.value = !isShopOpen.value;
+  } else if (event.key === 'Escape') {
+    isShopOpen.value = false;
+  } else if (isShopOpen.value && moduleShopRef.value) {
+    // Only when shop is open and ref is available
+    if (event.key === 'ArrowRight') {
+      moduleShopRef.value.nextModule();
+    } else if (event.key === 'ArrowLeft') {
+      moduleShopRef.value.prevModule();
+    }
   }
 };
 
 onMounted(() => {
-  // Beispiel: Automatisch Widgets beim Laden hinzufügen
-  // setTimeout(() => {
-  //   addWeatherToCell(1);
-  //   addClockToCell(2);
-  // }, 1000);
-  
-  // Keyboard event listener hinzufügen
+  // Add keyboard event listener
   window.addEventListener('keydown', handleKeydown);
+});
+
+onBeforeUnmount(() => {
+  // Remove keyboard event listener
+  window.removeEventListener('keydown', handleKeydown);
 });
 </script>
 
 <template>
   <div>
-    <div class="control-panel fixed top-4 left-4 z-10 bg-neutral-700 p-4 rounded-lg space-y-2 hidden">
-      <ModuleShop></ModuleShop>
-      <h4 class="text-white font-semibold">Widget Manager</h4>
-      <div class="space-y-1">
-        <button @click="addWeatherToCell1" class="block w-full bg-blue-600 text-white px-3 py-1 rounded text-sm">
-          Weather → Cell 1
-        </button>
-        <button @click="addClockToCell2" class="block w-full bg-green-600 text-white px-3 py-1 rounded text-sm">
-          Clock → Cell 2
-        </button>
-        <button @click="addWeatherToCell5" class="block w-full bg-blue-600 text-white px-3 py-1 rounded text-sm">
-          Weather → Cell 5
-        </button>
-        <button @click="clearCell(1)" class="block w-full bg-red-600 text-white px-3 py-1 rounded text-sm">
-          Clear Cell 1
-        </button>
+    <!-- Module Shop Popup -->
+    <div v-if="isShopOpen" class="shop-overlay" @click.self="isShopOpen = false">
+      <div class="shop-modal">
+        <button class="close-btn" @click="isShopOpen = false">×</button>
+        <ModuleShop ref="moduleShopRef" @addWidget="handleAddWidget" />
       </div>
     </div>
+
     <GridBoard />
   </div>
 </template>
 
 <style scoped>
+.shop-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: rgba(0, 0, 0, 0.7);
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  z-index: 1000;
+}
 
+.shop-modal {
+  position: relative;
+  background: #222;
+  border-radius: 8px;
+  padding: 20px;
+  max-width: 80%;
+  max-height: 80%;
+  overflow: auto;
+}
+
+.close-btn {
+  position: absolute;
+  top: 10px;
+  right: 10px;
+  background: none;
+  border: none;
+  color: white;
+  font-size: 24px;
+  cursor: pointer;
+}
 </style>
