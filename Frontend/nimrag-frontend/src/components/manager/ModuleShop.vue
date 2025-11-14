@@ -172,7 +172,7 @@ defineExpose({
 .module-shop {
   background: radial-gradient(circle at top, #333 0, #181818 40%, #050505 100%);
   color: #eee;
-  padding: 20px 24px 20px;
+  padding: 15px 24px 15px;
   border-radius: 16px;
   width: min(900px, 100vw - 48px);
   max-height: 85vh;
@@ -220,7 +220,7 @@ defineExpose({
   perspective-origin: center center;
 }
 
-/* PlayStation-Style Animationen */
+/*animation*/
 @keyframes slideInFromLeft {
   from {
     opacity: 0;
@@ -277,11 +277,11 @@ defineExpose({
   border-radius: 16px;
   padding: 14px;
   overflow: hidden;
-  opacity: 0.4;
-  transform: scale(0.75) translateY(25px);
-  filter: blur(1.5px) brightness(0.75);
+  opacity: 0.8;
+  transform: scale(0.8) translateY(25px);
+  filter: blur(0.75px) brightness(0.9);
   box-shadow: 0 10px 30px rgba(0, 0, 0, 0.8);
-  border: 1px solid rgba(255, 255, 255, 0.08);
+  border: 1px solid rgba(255, 255, 255, 0.12);
   transition:
       transform 350ms cubic-bezier(0.34, 1.56, 0.64, 1),
       opacity 350ms ease,
@@ -296,7 +296,7 @@ defineExpose({
   margin-left: -160px;
 }
 
-/* PlayStation-Glow-Effekt für aktive Karte */
+/* glow Effect for active card */
 .module-card::before {
   content: '';
   position: absolute;
@@ -359,7 +359,7 @@ defineExpose({
   letter-spacing: 0.05em;
 }
 
-/* Aktive Karte (PlayStation-Style) */
+/* active card*/
 .module-card.is-active {
   opacity: 1;
   transform: scale(1.2) translateY(-8px);
@@ -388,7 +388,7 @@ defineExpose({
   opacity: 0.8;
 }
 
-/* Linke Karte - PlayStation Perspective */
+/* left card */
 .module-card.pos-left {
   transform: translateX(-240px) translateY(25px) scale(0.75) rotateY(10deg);
   transform-origin: right center;
@@ -396,7 +396,7 @@ defineExpose({
   animation: none;
 }
 
-/* Rechte Karte - PlayStation Perspective */
+/* right card */
 .module-card.pos-right {
   transform: translateX(240px) translateY(25px) scale(0.75) rotateY(-10deg);
   transform-origin: left center;
@@ -404,7 +404,7 @@ defineExpose({
   animation: none;
 }
 
-/* Navigation Buttons - PlayStation Style */
+/* navigation buttons */
 .nav-btn {
   position: absolute;
   top: 50%;
@@ -413,9 +413,9 @@ defineExpose({
   color: #d0d0d0;
   border: 1px solid rgba(255, 255, 255, 0.12);
   border-radius: 50%;
-  width: 38px;
-  height: 38px;
-  font-size: 20px;
+  width: 44px;
+  height: 44px;
+  font-size: 30px;
   font-weight: 300;
   cursor: pointer;
   display: flex;
