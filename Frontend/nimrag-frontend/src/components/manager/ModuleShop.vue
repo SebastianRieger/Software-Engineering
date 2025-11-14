@@ -114,31 +114,33 @@ defineExpose({
 
       <!-- Track mit 3 Karten -->
       <div class="carousel-track">
-        <div
-            v-for="item in displayedModules"
-            :key="item.index"
-            class="module-card"
-            :class="[
-    `pos-${item.position}`,
-    { 'is-active': item.index === currentIndex }
-  ]"
-        >
-          <h4 class="module-name">{{ item.name }}</h4>
+        <TransitionGroup name="card-transition">
+          <div
+              v-for="item in displayedModules"
+              :key="`${item.index}`"
+              class="module-card"
+              :class="[
+                `pos-${item.position}`,
+                { 'is-active': item.index === currentIndex }
+              ]"
+          >
+            <h4 class="module-name">{{ item.name }}</h4>
 
-          <div class="preview-container">
-            <!-- Nur das mittlere Widget wirklich rendern (Performance) -->
-            <component
-                v-if="item.position === 'center'"
-                :is="item.component"
-            />
-            <div
-                v-else
-                class="preview-placeholder"
-            >
-              Vorschau
+            <div class="preview-container">
+              <!-- Nur das mittlere Widget wirklich rendern (Performance) -->
+              <component
+                  v-if="item.position === 'center'"
+                  :is="item.component"
+              />
+              <div
+                  v-else
+                  class="preview-placeholder"
+              >
+                Vorschau
+              </div>
             </div>
           </div>
-        </div>
+        </TransitionGroup>
       </div>
 
       <button @click="nextModule" class="nav-btn nav-btn-right">›</button>
@@ -393,7 +395,6 @@ defineExpose({
   transform: translateX(-240px) translateY(25px) scale(0.75) rotateY(10deg);
   transform-origin: right center;
   z-index: 1;
-  animation: none;
 }
 
 /* right card */
@@ -401,7 +402,6 @@ defineExpose({
   transform: translateX(240px) translateY(25px) scale(0.75) rotateY(-10deg);
   transform-origin: left center;
   z-index: 1;
-  animation: none;
 }
 
 /* navigation buttons */
