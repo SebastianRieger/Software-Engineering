@@ -152,7 +152,7 @@ defineExpose({
       <p>Add to cell:</p>
       <div class="cell-buttons">
         <button
-            v-for="cellId in [1, 2, 3, 4, 5, 6, 7, 8, 9]"
+            v-for="cellId in [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16]"
             :key="cellId"
             @click="addCurrentWidgetToCell(cellId)"
             class="cell-btn"
@@ -271,7 +271,9 @@ defineExpose({
   }
 }
 
+/*
 @keyframes pulseGlow {
+
   0%, 100% {
     box-shadow:
         0 20px 60px rgba(0, 0, 0, 0.9),
@@ -285,6 +287,7 @@ defineExpose({
         inset 0 0 35px rgba(80, 160, 255, 0.2);
   }
 }
+*/
 
 @keyframes shimmer {
   0% {
