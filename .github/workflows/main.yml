@@ -4,14 +4,13 @@ name: Build and Deploy to GitHub Pages
 
 on:
   push:
-    branches: [ "main" ] 
-  workflow_dispatch: 
+    branches: [ "main" ]
+  workflow_dispatch:
 
 permissions:
   contents: read
   pages: write
   id-token: write
-
 
 concurrency:
   group: "pages"
@@ -36,13 +35,16 @@ jobs:
       - name: Build Project
         run: npm run build
         
+      - name: Create CNAME file
+        run: echo "nimrag-frontend.io" > ./dist/CNAME
+        
       - name: Setup Pages
         uses: actions/configure-pages@v3
         
       - name: Upload Artifact
         uses: actions/upload-pages-artifact@v2
         with:
-          path: './dist'
+          path: './dist' 
 
   deploy:
     environment:
