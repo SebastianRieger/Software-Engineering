@@ -114,33 +114,27 @@ defineExpose({
 
       <!-- Track mit 3 Karten -->
       <div class="carousel-track">
-        <TransitionGroup name="card-transition">
-          <div
-              v-for="item in displayedModules"
-              :key="`${item.index}`"
-              class="module-card"
-              :class="[
-                `pos-${item.position}`,
-                { 'is-active': item.index === currentIndex }
-              ]"
-          >
-            <h4 class="module-name">{{ item.name }}</h4>
+        <div
+            v-for="item in displayedModules"
+            :key="item.index"
+            class="module-card"
+            :class="[
+      `pos-${item.position}`,
+      { 'is-active': item.index === currentIndex }
+    ]"
+        >
+          <h4 class="module-name">{{ item.name }}</h4>
 
-            <div class="preview-container">
-              <!-- Nur das mittlere Widget wirklich rendern (Performance) -->
-              <component
-                  v-if="item.position === 'center'"
-                  :is="item.component"
-              />
-              <div
-                  v-else
-                  class="preview-placeholder"
-              >
-                Vorschau
-              </div>
+          <div class="preview-container">
+            <component
+                v-if="item.position === 'center'"
+                :is="item.component"
+            />
+            <div v-else class="preview-placeholder">
+              Vorschau
             </div>
           </div>
-        </TransitionGroup>
+        </div>
       </div>
 
       <button @click="nextModule" class="nav-btn nav-btn-right">›</button>
@@ -224,35 +218,56 @@ defineExpose({
 
 /*animation*/
 @keyframes slideInFromLeft {
-  from {
+  0% {
     opacity: 0;
-    transform: translateX(-100px) translateY(40px) scale(0.6) rotateY(25deg);
+    transform: translateX(-180px) translateY(60px) scale(0.5) rotateY(35deg) rotateZ(-8deg);
+    filter: blur(4px) brightness(0.6);
   }
-  to {
+  60% {
+    opacity: 0.3;
+    transform: translateX(-240px) translateY(28px) scale(0.72) rotateY(12deg) rotateZ(-2deg);
+    filter: blur(1px) brightness(0.85);
+  }
+  100% {
     opacity: 0.25;
-    transform: translateX(-12px) translateY(30px) scale(0.7) rotateY(12deg);
+    transform: translateX(-240px) translateY(25px) scale(0.75) rotateY(10deg) rotateZ(0deg);
+    filter: blur(0.75px) brightness(0.9);
   }
 }
 
 @keyframes slideInFromRight {
-  from {
+  0% {
     opacity: 0;
-    transform: translateX(100px) translateY(40px) scale(0.6) rotateY(-25deg);
+    transform: translateX(180px) translateY(60px) scale(0.5) rotateY(-35deg) rotateZ(8deg);
+    filter: blur(4px) brightness(0.6);
   }
-  to {
+  60% {
+    opacity: 0.3;
+    transform: translateX(240px) translateY(28px) scale(0.72) rotateY(-12deg) rotateZ(2deg);
+    filter: blur(1px) brightness(0.85);
+  }
+  100% {
     opacity: 0.25;
-    transform: translateX(12px) translateY(30px) scale(0.7) rotateY(-12deg);
+    transform: translateX(240px) translateY(25px) scale(0.75) rotateY(-10deg) rotateZ(0deg);
+    filter: blur(0.75px) brightness(0.9);
   }
 }
 
 @keyframes slideToCenter {
-  from {
+  0% {
     opacity: 0.25;
-    transform: scale(0.7) translateY(30px);
+    transform: scale(0.75) translateY(25px) rotateY(0deg);
+    filter: blur(0.75px) brightness(0.9);
   }
-  to {
+  40% {
+    opacity: 0.6;
+    transform: scale(0.95) translateY(5px) rotateY(0deg);
+    filter: blur(0.3px) brightness(0.95);
+  }
+  100% {
     opacity: 1;
-    transform: scale(1.2) translateY(-8px);
+    transform: scale(1.2) translateY(-8px) rotateY(0deg);
+    filter: none;
   }
 }
 
@@ -265,12 +280,20 @@ defineExpose({
   }
   50% {
     box-shadow:
-        0 25px 70px rgba(0, 0, 0, 0.95),
-        0 0 60px rgba(80, 160, 255, 0.5),
-        inset 0 0 30px rgba(80, 160, 255, 0.15);
+        0 28px 80px rgba(0, 0, 0, 0.95),
+        0 0 70px rgba(80, 160, 255, 0.6),
+        inset 0 0 35px rgba(80, 160, 255, 0.2);
   }
 }
 
+@keyframes shimmer {
+  0% {
+    background-position: -200% center;
+  }
+  100% {
+    background-position: 200% center;
+  }
+}
 .module-card {
   position: absolute;
   width: 320px;
