@@ -39,9 +39,21 @@ const prevModule = () => {
 // Drei sichtbare Karten: links – center – rechts
 const displayedModules = computed<DisplayItem[]>(() => {
   const result: DisplayItem[] = []
-
   const len = moduleList.value.length
   if (!len) return result
+
+  // Spezialfall: nur ein Modul -> nur Center anzeigen
+  if (len === 1) {
+    const base = moduleList.value[0]!
+    result.push({
+      name: base.name,
+      path: base.path,
+      component: base.component,
+      position: 'center',
+      index: 0
+    })
+    return result
+  }
 
   const center = currentIndex.value
   const left = (center - 1 + len) % len
