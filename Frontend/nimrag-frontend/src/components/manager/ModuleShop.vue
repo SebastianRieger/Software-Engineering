@@ -21,7 +21,7 @@ const currentIndex = ref(0)
 // Widget in Zelle einfügen
 const addCurrentWidgetToCell = (cellId: number) => {
   if (!moduleList.value.length) return
-  emit('addWidget', { cellId, component: moduleList.value[currentIndex.value].component })
+  emit('addWidget', { cellId, component: moduleList.value[currentIndex.value]!.component })
 }
 
 // Navigation
