@@ -11,70 +11,66 @@ interface ModuleShopExposed {
 }
 
 // Store for active widgets
-const activeWidgets = ref<{[key: string]: any}>({});
+const activeWidgets: { [key: number]: any } = {}
+
 const isShopOpen = ref(false);
 const isEditMode = ref(false);
 const moduleShopRef = ref<ComponentPublicInstance<{}, ModuleShopExposed> | null>(null);
 
 // Function to insert a Vue component into a cell
 const insertVueWidgetIntoCell = (cellId: number, widgetComponent: any) => {
-  const cell = document.getElementById(cellId.toString());
-  if (!cell) {
-    console.error(`Cell with ID ${cellId} not found`);
-    return;
+  const mount = document.getElementById(`cell-content-${cellId}`)
+  if (!mount) {
+    console.error(`Mount for cell ${cellId} not found`)
+    return
   }
 
   // Clean up old component if exists
-  if (activeWidgets.value[cellId]) {
-    activeWidgets.value[cellId].unmount();
+  if (activeWidgets[cellId]) {
+    activeWidgets[cellId].unmount()
   }
 
-  // Clear cell content
-  cell.innerHTML = '';
+  // Clear mount content
+  mount.innerHTML = ''
 
   // Create container for Vue component
-  const widgetContainer = document.createElement('div');
-  widgetContainer.className = 'w-full h-full';
-  cell.appendChild(widgetContainer);
+  const widgetContainer = document.createElement('div')
+  widgetContainer.className = 'w-full h-full'
+  mount.appendChild(widgetContainer)
 
   // Create and mount Vue app for this component
-  const app = createApp(widgetComponent);
-  app.mount(widgetContainer);
+  const app = createApp(widgetComponent)
+  app.mount(widgetContainer)
 
   // Store app for later cleanup
-  activeWidgets.value[cellId] = app;
-
-  // Update cell styling with relative positioning
-  cell.className = 'rounded-xl bg-neutral-800 shadow-inner overflow-hidden';
-  cell.style.position = 'relative';
-
-};
+  activeWidgets[cellId] = app
+}
 
 // Handle adding widget from shop
 const handleAddWidget = ({ cellId, component }: { cellId: number; component: any }) => {
   insertVueWidgetIntoCell(cellId, component);
   console.log('Widget added to cell:', cellId);
-  console.log('Active widgets:', Object.keys(activeWidgets.value));
+  console.log('Active widgets:', Object.keys(activeWidgets[cellId]));
 };
 
 // Clear a cell
 const clearCell = (cellId: number) => {
-  const cell = document.getElementById(cellId.toString());
-  if (!cell) return;
+  const mount = document.getElementById(`cell-content-${cellId}`)
+  if (!mount) return
 
   // Clean up Vue app if exists
-  if (activeWidgets.value[cellId]) {
-    activeWidgets.value[cellId].unmount();
-    delete activeWidgets.value[cellId];
+  if (activeWidgets[cellId]) {
+    activeWidgets[cellId].unmount()
+    delete activeWidgets[cellId]
   }
 
-  cell.innerHTML = `
+  // Platzhalter wiederherstellen
+  mount.innerHTML = `
     <div class="w-full h-full grid place-items-center text-2xl font-semibold opacity-70">
       ${String(cellId).padStart(2, '0')}
     </div>
-  `;
-  cell.className = 'rounded-xl bg-neutral-800 shadow-inner overflow-hidden';
-};
+  `
+}
 
 // Toggle edit mode
 const toggleEditMode = () => {
@@ -83,33 +79,20 @@ const toggleEditMode = () => {
 
 // Handle widgets moved event from GridBoard
 const handleWidgetsMoved = ({ sourceCellId, targetCellId }) => {
-  console.log('Widgets moved event received:', sourceCellId, targetCellId);
-
-  // Vier mögliche Fälle:
-  // 1. Beide Zellen haben Widgets
-  const sourceApp = activeWidgets.value[sourceCellId];
-  const targetApp = activeWidgets.value[targetCellId];
+  const sourceApp = activeWidgets[sourceCellId]
+  const targetApp = activeWidgets[targetCellId]
 
   if (sourceApp && targetApp) {
-    // Beide Zellen haben Widgets - tausche die Referenzen
-    activeWidgets.value[targetCellId] = sourceApp;
-    activeWidgets.value[sourceCellId] = targetApp;
+    activeWidgets[targetCellId] = sourceApp
+    activeWidgets[sourceCellId] = targetApp
+  } else if (sourceApp && !targetApp) {
+    activeWidgets[targetCellId] = sourceApp
+    delete activeWidgets[sourceCellId]
+  } else if (!sourceApp && targetApp) {
+    activeWidgets[sourceCellId] = targetApp
+    delete activeWidgets[targetCellId]
   }
-  else if (sourceApp && !targetApp) {
-    // Nur Quellzelle hat ein Widget - verschiebe es zur Zielzelle
-    activeWidgets.value[targetCellId] = sourceApp;
-    delete activeWidgets.value[sourceCellId];
-  }
-  else if (!sourceApp && targetApp) {
-    // Nur Zielzelle hat ein Widget - verschiebe es zur Quellzelle
-    activeWidgets.value[sourceCellId] = targetApp;
-    delete activeWidgets.value[targetCellId];
-  }
-  // 4. Fall: Keine der Zellen hat ein Widget - nichts zu tun
-
-  console.log('Updated active widgets:', Object.keys(activeWidgets.value));
-
-};
+}
 
 // Handle keydown events
 const handleKeydown = (event: KeyboardEvent) => {
@@ -163,6 +146,7 @@ onBeforeUnmount(() => {
     <!-- GridBoard mit Event-Listener für widgetsMoved -->
     <GridBoard
         :is-edit-mode="isEditMode"
+        :filled-cells="filledCells"
         @widgets-moved="handleWidgetsMoved"
         @delete-widget="clearCell"
     />

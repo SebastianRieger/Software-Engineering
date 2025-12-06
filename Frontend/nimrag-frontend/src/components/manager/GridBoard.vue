@@ -5,9 +5,10 @@ const emit = defineEmits(['widgetsMoved', 'deleteWidget']);
 
 const props = defineProps<{
   isEditMode: boolean
+  filledCells: number[];
 }>();
 
-const { isEditMode } = toRefs(props);
+const { isEditMode, filledCells } = toRefs(props);
 
 // 4x4 Grid -> 16 Zellen
 function onDragStart(e: DragEvent, index: number) {
@@ -54,32 +55,27 @@ function onDrop(e: DragEvent, targetIndex: number) {
 
   if (Number.isNaN(sourceCellId) || sourceCellId === targetCellId) return
 
-  const sourceCell = document.getElementById(sourceCellId.toString())
-  const targetCell = document.getElementById(targetCellId.toString())
+  const sourceMount = document.getElementById(`cell-content-${sourceCellId}`)
+  const targetMount = document.getElementById(`cell-content-${targetCellId}`)
 
-  if (!sourceCell || !targetCell) return
+  if (!sourceMount || !targetMount) return
 
-  // Inhalte tauschen (HTML swap)
-  const sourceContent = sourceCell.innerHTML
-  const targetContent = targetCell.innerHTML
+  // Inhalte tauschen innerhalb der Mount-Container
+  const sourceContent = sourceMount.innerHTML
+  const targetContent = targetMount.innerHTML
 
-  sourceCell.innerHTML = targetContent
-  targetCell.innerHTML = sourceContent
+  sourceMount.innerHTML = targetContent
+  targetMount.innerHTML = sourceContent
 
-  // Styling zurücksetzen
-  sourceCell.style.opacity = '1'
+  //visuelles Feedback wiederherstellen
+  const sourceCell = sourceMount.parentElement as HTMLElement | null
+  if (sourceCell) sourceCell.style.opacity = '1'
 
-  // Classes auch tauschen
-  const sourceClasses = sourceCell.className
-  const targetClasses = targetCell.className
-  sourceCell.className = targetClasses
-  targetCell.className = sourceClasses
-
-  // Event emittieren, um ModuleManager zu informieren
+  // Vue-Event damit ModuleManager die Widget-Map updaten kann
   emit('widgetsMoved', {
-    sourceCellId: sourceCellId,
-    targetCellId: targetCellId
-  });
+    sourceCellId,
+    targetCellId
+  })
 }
 
 function onDragEnd(e: DragEvent, index: number) {
@@ -97,9 +93,8 @@ function onDragEnd(e: DragEvent, index: number) {
   >
     <!-- generiert leere Zellen mit Platzhaltern -->
     <div
-        v-for="(i) in 16"
+        v-for="i in 16"
         :key="i"
-        :id="(i).toString()"
         class="grid-cell rounded-xl bg-neutral-800 shadow-inner overflow-hidden"
         draggable="true"
         @dragstart="onDragStart($event, i)"
@@ -107,9 +102,18 @@ function onDragEnd(e: DragEvent, index: number) {
         @drop="onDrop($event, i)"
         @dragend="onDragEnd($event, i)"
     >
-      <div class="w-full h-full grid place-items-center text-2xl font-semibold opacity-70">
-        {{ String(i).padStart(2, '0') }}
+      <!-- Mount-Container für Widget-Inhalt -->
+      <div
+          class="w-full h-full"
+          :id="`cell-content-${i}`"
+      >
+        <!--Platzhalter, bis ein Widget gemountet wird -->
+        <div class="w-full h-full grid place-items-center text-2xl font-semibold opacity-70">
+          {{ String(i).padStart(2, '0') }}
+        </div>
       </div>
+
+      <!-- Delete-Button von Vue kontrolliert -->
       <button
           v-if="isEditMode"
           class="delete-widget-btn"
