@@ -155,7 +155,7 @@ onBeforeUnmount(() => {
 <style scoped>
 .edit-mode-banner {
   position: fixed;
-  top: 20px;
+  bottom: 20px;
   left: 50%;
   transform: translateX(-50%);
   background: linear-gradient(135deg, #6366f1 0%, #8b5cf6 100%);
