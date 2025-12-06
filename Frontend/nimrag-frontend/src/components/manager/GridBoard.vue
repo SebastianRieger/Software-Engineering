@@ -1,8 +1,13 @@
 <script setup lang="ts">
-import { defineEmits } from 'vue';
+import { defineEmits, defineProps, toRefs } from 'vue';
 
-// Event-Emitter definieren
-const emit = defineEmits(['widgetsMoved']);
+const emit = defineEmits(['widgetsMoved', 'deleteWidget']);
+
+const props = defineProps<{
+  isEditMode: boolean
+}>();
+
+const { isEditMode } = toRefs(props);
 
 // 4x4 Grid -> 16 Zellen
 function onDragStart(e: DragEvent, index: number) {
@@ -95,7 +100,7 @@ function onDragEnd(e: DragEvent, index: number) {
         v-for="(i) in 16"
         :key="i"
         :id="(i).toString()"
-        class="rounded-xl bg-neutral-800 shadow-inner overflow-hidden"
+        class="grid-cell rounded-xl bg-neutral-800 shadow-inner overflow-hidden"
         draggable="true"
         @dragstart="onDragStart($event, i)"
         @dragover="onDragOver"
@@ -105,12 +110,49 @@ function onDragEnd(e: DragEvent, index: number) {
       <div class="w-full h-full grid place-items-center text-2xl font-semibold opacity-70">
         {{ String(i).padStart(2, '0') }}
       </div>
+      <button
+          v-if="isEditMode"
+          class="delete-widget-btn"
+          @click.stop="emit('deleteWidget', i)"
+      >
+        x
+      </button>
     </div>
   </div>
 </template>
 
 <style scoped>
-/* Optional: Zusätzliche Styles für Drag-and-Drop Effekte */
+.grid-cell {
+  position: relative;
+}
+
+.delete-widget-btn {
+  position: absolute;
+  visibility: visible;
+  top: 8px;
+  right: 8px;
+  width: 28px;
+  height: 28px;
+  background: rgba(239, 68, 68, 0.9);
+  color: white;
+  border: none;
+  border-radius: 6px;
+  font-size: 20px;
+  font-weight: bold;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 100;
+  transition: all 0.2s;
+  line-height: 1;
+  padding: 0;
+}
+
+.delete-widget-btn:hover {
+  background: rgb(239, 68, 68);
+  transform: scale(1.1);
+}
 .cell-dragging {
   opacity: 0.5;
   transition: opacity 0.2s ease;

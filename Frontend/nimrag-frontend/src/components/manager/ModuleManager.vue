@@ -48,10 +48,6 @@ const insertVueWidgetIntoCell = (cellId: number, widgetComponent: any) => {
   cell.className = 'rounded-xl bg-neutral-800 shadow-inner overflow-hidden';
   cell.style.position = 'relative';
 
-  // If in edit mode, add delete button immediately
-  if (isEditMode.value) {
-    setTimeout(() => addDeleteButtonToCell(cellId), 0);
-  }
 };
 
 // Handle adding widget from shop
@@ -80,42 +76,10 @@ const clearCell = (cellId: number) => {
   cell.className = 'rounded-xl bg-neutral-800 shadow-inner overflow-hidden';
 };
 
-// Add delete button to a specific cell
-const addDeleteButtonToCell = (cellId: number | string) => {
-  const cell = document.getElementById(cellId.toString());
-  if (!cell) return;
-
-  // Check if delete button already exists
-  if (cell.querySelector('.delete-widget-btn')) return;
-
-  const deleteBtn = document.createElement('button');
-  deleteBtn.className = 'delete-widget-btn';
-  deleteBtn.innerHTML = '×';
-  deleteBtn.onclick = () => clearCell(Number(cellId));
-  cell.appendChild(deleteBtn);
-};
-
-// Add delete buttons to cells with widgets
-const addDeleteButtons = () => {
-  Object.keys(activeWidgets.value).forEach(cellId => {
-    addDeleteButtonToCell(cellId);
-  });
-};
-
-// Remove delete buttons
-const removeDeleteButtons = () => {
-  document.querySelectorAll('.delete-widget-btn').forEach(btn => btn.remove());
-};
-
 // Toggle edit mode
 const toggleEditMode = () => {
   isEditMode.value = !isEditMode.value;
-  if (isEditMode.value) {
-    addDeleteButtons();
-  } else {
-    removeDeleteButtons();
-  }
-};
+}
 
 // Handle widgets moved event from GridBoard
 const handleWidgetsMoved = ({ sourceCellId, targetCellId }) => {
@@ -145,17 +109,6 @@ const handleWidgetsMoved = ({ sourceCellId, targetCellId }) => {
 
   console.log('Updated active widgets:', Object.keys(activeWidgets.value));
 
-  // Wenn im Edit-Modus, aktualisiere die Delete-Buttons
-  if (isEditMode.value) {
-    // Vollständig entfernen und neu hinzufügen
-    removeDeleteButtons();
-    setTimeout(() => {
-      // Kurze Verzögerung, um sicherzustellen, dass DOM aktualisiert ist
-      Object.keys(activeWidgets.value).forEach(cellId => {
-        addDeleteButtonToCell(cellId);
-      });
-    }, 10);
-  }
 };
 
 // Handle keydown events
@@ -186,6 +139,7 @@ onBeforeUnmount(() => {
   // Remove keyboard event listener
   window.removeEventListener('keydown', handleKeydown);
 });
+
 </script>
 
 <template>
@@ -207,7 +161,11 @@ onBeforeUnmount(() => {
     </div>
 
     <!-- GridBoard mit Event-Listener für widgetsMoved -->
-    <GridBoard @widgets-moved="handleWidgetsMoved" />
+    <GridBoard
+        :is-edit-mode="isEditMode"
+        @widgets-moved="handleWidgetsMoved"
+        @delete-widget="clearCell"
+    />
   </div>
 </template>
 
@@ -290,30 +248,4 @@ onBeforeUnmount(() => {
   cursor: pointer;
 }
 
-:deep(.delete-widget-btn) {
-  position: absolute;
-  top: 8px;
-  right: 8px;
-  width: 28px;
-  height: 28px;
-  background: rgba(239, 68, 68, 0.9);
-  color: white;
-  border: none;
-  border-radius: 6px;
-  font-size: 20px;
-  font-weight: bold;
-  cursor: pointer;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  z-index: 100;
-  transition: all 0.2s;
-  line-height: 1;
-  padding: 0;
-}
-
-:deep(.delete-widget-btn:hover) {
-  background: rgb(239, 68, 68);
-  transform: scale(1.1);
-}
 </style>
