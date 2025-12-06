@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { defineEmits, defineProps, toRefs } from 'vue';
+import { defineEmits, defineProps, toRefs, ref } from 'vue';
 
 const emit = defineEmits(['widgetsMoved', 'deleteWidget']);
 
@@ -9,32 +9,32 @@ const props = defineProps<{
 
 const { isEditMode } = toRefs(props);
 
+// Reaktiver "Refresh-Trigger" für die Delete-Buttons
+const widgetVersion = ref(0);
+
 // Hilfsfunktion um zu prüfen ob eine Zelle ein Widget hat
 function hasWidget(cellId: number): boolean {
   const mount = document.getElementById(`cell-content-${cellId}`)
   if (!mount) return false
 
-  // Prüfe ob die Zelle einen Platzhalter hat (keine Widget)
   const hasPlaceholder = mount.querySelector('.opacity-70')
   return !hasPlaceholder
 }
 
 // 4x4 Grid -> 16 Zellen
 function onDragStart(e: DragEvent, index: number) {
-  const cellId = index // Cell IDs sind 1-basiert
+  const cellId = index
   const cell = document.getElementById(cellId.toString())
   if (!cell) return
 
-  // Prüfe ob die Zelle ein Widget enthält (kein Platzhalter)
   const hasPlaceholder = cell.querySelector('.opacity-70')
-  if (hasPlaceholder) return // Leere Zellen können nicht gezogen werden
+  if (hasPlaceholder) return
 
   e.dataTransfer?.setData('text/plain', String(cellId))
   if (e.dataTransfer) {
     e.dataTransfer.effectAllowed = 'move'
   }
 
-  // Ghost Image
   const ghost = document.createElement('div')
   ghost.style.width = '1px'
   ghost.style.height = '1px'
@@ -43,7 +43,6 @@ function onDragStart(e: DragEvent, index: number) {
   e.dataTransfer?.setDragImage(ghost, 0, 0)
   setTimeout(() => ghost.remove(), 0)
 
-  // Visuelles Feedback
   cell.style.opacity = '0.5'
 }
 
@@ -69,18 +68,18 @@ function onDrop(e: DragEvent, targetIndex: number) {
 
   if (!sourceMount || !targetMount) return
 
-  // Inhalte tauschen innerhalb der Mount-Container
   const sourceContent = sourceMount.innerHTML
   const targetContent = targetMount.innerHTML
 
   sourceMount.innerHTML = targetContent
   targetMount.innerHTML = sourceContent
 
-  //visuelles Feedback wiederherstellen
   const sourceCell = sourceMount.parentElement as HTMLElement | null
   if (sourceCell) sourceCell.style.opacity = '1'
 
-  // Vue-Event damit ModuleManager die Widget-Map updaten kann
+  // ⚡ Vue zwingen, Buttons neu zu berechnen
+  widgetVersion.value++
+
   emit('widgetsMoved', {
     sourceCellId,
     targetCellId
@@ -93,7 +92,18 @@ function onDragEnd(e: DragEvent, index: number) {
   const cell = document.getElementById(cellId.toString())
   if (cell) cell.style.opacity = '1'
 }
+
+// Delete-Button-Click kapseln, damit wir refreshen können
+function onDeleteClick(cellId: number) {
+  emit('deleteWidget', cellId)
+
+  // Parent räumt DOM auf (Platzhalter rein) → danach neu prüfen
+  setTimeout(() => {
+    widgetVersion.value++
+  }, 0)
+}
 </script>
+
 
 <template>
   <div
@@ -104,6 +114,7 @@ function onDragEnd(e: DragEvent, index: number) {
     <div
         v-for="i in 16"
         :key="i"
+        :id="String(i)"
         class="grid-cell rounded-xl bg-neutral-800 shadow-inner overflow-hidden"
         draggable="true"
         @dragstart="onDragStart($event, i)"
@@ -124,9 +135,9 @@ function onDragEnd(e: DragEvent, index: number) {
 
       <!-- Delete-Button von Vue kontrolliert -->
       <button
-          v-if="isEditMode  && hasWidget(i)"
+          v-if="isEditMode && widgetVersion >= 0 && hasWidget(i)"
           class="delete-widget-btn"
-          @click.stop="emit('deleteWidget', i)"
+          @click.stop="onDeleteClick(i)"
       >
         x
       </button>
