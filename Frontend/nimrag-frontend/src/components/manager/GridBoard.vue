@@ -5,10 +5,19 @@ const emit = defineEmits(['widgetsMoved', 'deleteWidget']);
 
 const props = defineProps<{
   isEditMode: boolean
-  filledCells: number[];
 }>();
 
-const { isEditMode, filledCells } = toRefs(props);
+const { isEditMode } = toRefs(props);
+
+// Hilfsfunktion um zu prüfen ob eine Zelle ein Widget hat
+function hasWidget(cellId: number): boolean {
+  const mount = document.getElementById(`cell-content-${cellId}`)
+  if (!mount) return false
+
+  // Prüfe ob die Zelle einen Platzhalter hat (keine Widget)
+  const hasPlaceholder = mount.querySelector('.opacity-70')
+  return !hasPlaceholder
+}
 
 // 4x4 Grid -> 16 Zellen
 function onDragStart(e: DragEvent, index: number) {
@@ -115,7 +124,7 @@ function onDragEnd(e: DragEvent, index: number) {
 
       <!-- Delete-Button von Vue kontrolliert -->
       <button
-          v-if="isEditMode"
+          v-if="isEditMode  && hasWidget(i)"
           class="delete-widget-btn"
           @click.stop="emit('deleteWidget', i)"
       >

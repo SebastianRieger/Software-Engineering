@@ -78,7 +78,7 @@ const toggleEditMode = () => {
 }
 
 // Handle widgets moved event from GridBoard
-const handleWidgetsMoved = ({ sourceCellId, targetCellId }) => {
+const handleWidgetsMoved = ({ sourceCellId, targetCellId }: { sourceCellId: number; targetCellId: number }) => {
   const sourceApp = activeWidgets[sourceCellId]
   const targetApp = activeWidgets[targetCellId]
 
@@ -146,7 +146,6 @@ onBeforeUnmount(() => {
     <!-- GridBoard mit Event-Listener für widgetsMoved -->
     <GridBoard
         :is-edit-mode="isEditMode"
-        :filled-cells="filledCells"
         @widgets-moved="handleWidgetsMoved"
         @delete-widget="clearCell"
     />
