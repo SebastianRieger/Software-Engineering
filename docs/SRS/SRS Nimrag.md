@@ -1,6 +1,6 @@
 # Nimrag – Software Requirements Specification
 
-**Version:** 1.0  
+**Version:** 1.1  
 **Datum:** 20.10.2025  
 **Autoren:** Sebastian, Jannik, Jan, Louis  
 **Status:** In Entwicklung
@@ -11,8 +11,9 @@
 
 | Datum       | Version | Beschreibung                      | Autor(en)                    |
 |-------------|---------|-----------------------------------|------------------------------|
-| 17.10.2025  | 0.9     | Erste Dokumentstruktur           | Sebastian, Jannik, Jan, Louis  |
-| 20.10.2025  | 1.0     | Vollständige SRS mit Blogeintrag | Sebastian, Jannik, Jan, Louis  |
+| 17.10.2025  | 0.9     | Erste Dokumentstruktur            | Sebastian, Jannik, Jan, Louis  |
+| 20.10.2025  | 1.0     | Vollständige SRS mit Blogeintrag  | Sebastian, Jannik, Jan, Louis  |
+| 22.12.2025  | 1.1     | Abgeschlossene SRS                | Louis                          |
 
 ---
 
@@ -148,15 +149,17 @@ Das Nimrag-System ist ein eigenständiges Smart-Home-Gerät, das als zentrale In
 - **Zeit und Datum**: Aktuelle Uhrzeit und Datum mit anpassbaren Formaten
 - **Wetterinformationen**: Aktuelle Bedingungen und Vorhersage
 - **Kalenderintegration**: Anstehende Termine und Ereignisse
-- **LED-Steuerung**: Hintergrundbeleuchtung mit RGB-LEDs
+- **Multimediakintegration**: Anzeige aktueller Wiedergabe, grundlegende Steuerung
+- **Sprachsteuerung**: Vosk ASR für offline Spracherkennung
+- **Gestensteuerung**: MediaPipe und OpenCV für berührungslose Bedienung
+
 
 **Erweiterte Funktionen (geplant):**
-- **Musikintegration**: Anzeige aktueller Wiedergabe, grundlegende Steuerung
-- **Sprachsteuerung**: Vosk ASR für offline Spracherkennung
+
+- **LED-Steuerung**: Hintergrundbeleuchtung mit RGB-LEDs
 - **Smart-Home-Integration**: MQTT-basierte Gerätesteuerung und -status
-- **Gestensteuerung**: MediaPipe und OpenCV für berührungslose Bedienung
-- **Modulares Layout**: Drag-and-Drop Widget-Anordnung
-- **Mobile App**: Fernsteuerung über Smartphone
+- **erweiterte Sprachverarbeitung**
+- **Widget für persönliche Notizen und To-Do-Listen**
 
 ### 2.3 Technology Stack Decision
 
@@ -195,6 +198,7 @@ Damit alle im Team dieselbe Vorstellung vom Projekt haben, wurde eine umfassende
 5. **Hardware Integration**: Testen mit echter Raspberry Pi Hardware
 
 **Projektphasen:**
+- gibt grobe Struktur des Projektablaufs. Jede Phase kann mehrere Sprints beinhalten, in denen einzelne Funktionen inkrementell implementiert werden.
 ```
 Phase 1: Grundgerüst 
 ├── Vue 3 + TypeScript Frontend Setup
@@ -202,21 +206,20 @@ Phase 1: Grundgerüst
 ├── Raspberry Pi Emulation + erste HUD Version
 └── Basis CI/CD Pipeline
 
-Phase 2: MVP 
+Phase 2: MVP: Frontend mit Dummy-Daten
 ├── Zeit/Datum Widget
 ├── Wetter Widget
 ├── Kalender Widget
-├── LED-Steuerung
 └── Basis Testing
 
-Phase 3: Erweiterte Features
+Phase 3: Entwicklung rechenintensiverer Backend Prozesse für Kernfunktionen
 ├── Musikintegration
 ├── Spracherkennung (Vosk)
 ├── Gestensteuerung (MediaPipe)
 ├── Smart-Home MQTT
-└── Mobile App
 
 Phase 4: Polish & Deployment
+├── Ergänzungen um erweiterte Funktionen
 ├── UI/UX Verbesserungen
 ├── Performance Optimierung
 ├── Dokumentation
@@ -251,31 +254,42 @@ Phase 4: Polish & Deployment
 - Farbcodierung nach Kalender-Kategorien
 - Terminbenachrichtigungen
 
-**LED-Steuerung**
-- RGB-LED-Streifen Ansteuerung via GPIO
-- Farbwechsel basierend auf Uhrzeit/Wetter
-- Helligkeitssteuerung mit PWM
-- Vordefinierte Szenen (Morgen, Abend, Nacht)
-
-#### 3.1.2 Erweiterte Funktionen
-
-**Modulares Layout**
-- Drag-and-Drop Widget-Anordnung
-- Responsive Design für verschiedene Bildschirmgrößen
-- Widget-spezifische Konfigurationen
-- Layout-Profile für verschiedene Benutzer
-
 **Multimedia-Integration**
 - Spotify-Integration für aktuelle Wiedergabe
 - Grundlegende Mediensteuerung (Play/Pause/Skip)
 - Podcast/Audiobook-Status
 - Lautstärkeregelung
 
+**Sprachsteuerung**: 
+- Vosk ASR oder Whisper für offline Spracherkennung
+- lokal auf Pi nur Erkennung bestimmter, vordefinierter Befehle
+
+**Gestensteuerung**: 
+- Streaming der Kameraaufnahme
+- lokale Verarbeitung und Erkennung von Gesten, durch die Funktionen aufgerufen werden
+- MediaPipe und OpenCV als zugrundeliegende Bibliotheken
+
+
+#### 3.1.2 Erweiterte Funktionen
+
+**LED-Steuerung**
+- RGB-LED-Streifen Ansteuerung via GPIO
+- Farbwechsel basierend auf Uhrzeit/Wetter
+- Helligkeitssteuerung mit PWM
+- Vordefinierte Szenen (Morgen, Abend, Nacht)
+
 **Smart-Home-Integration**
 - MQTT-Broker Kommunikation
 - Geräte-Status Anzeige (Lichter, Sensoren, Schalter)
 - Grundlegende Gerätesteuerung
 - Energieverbrauch-Monitoring
+
+**erweiterte Sprachverarbeitung**
+- vollständige Transkription gesprochenen Textes mit Verarbeitung des Textes auf LLM Basis und generierter Antwort
+- nicht auf Pi, sondern als zusätzlicher Cloud Service verfügbar
+
+**Widget für persönliche Notizen und To-Do-Listen**
+- einzelne Notes und To-Dos können angelegt und als Widget beliebig auf der UI angeordnet werden als Erinnerungshilfe
 
 ### 3.2 Usability
 
@@ -286,13 +300,14 @@ Phase 4: Polish & Deployment
 - Smart-Home-Enthusiasten
 - Familienhaushalte mit technischer Affinität
 
-**Barrierefreiheit:**
-- Sprach- und Gestensteuerung für berührungslose Bedienung
-- Hohe Kontrastverhältnisse für Sichtbarkeit durch Spiegel
-- Skalierbare Schriftgrößen
-- Einfache, intuitive Navigation
 
 #### 3.2.2 Benutzeroberfläche
+
+**Modulares Layout**
+- Drag-and-Drop Widget-Anordnung
+- Responsive Design für verschiedene Bildschirmgrößen
+- Widget-spezifische Konfigurationen
+- Layout-Profile für verschiedene Benutzer
 
 **Design-Prinzipien:**
 - **Minimalistisch**: Schlichtes, übersichtliches Design
@@ -320,6 +335,12 @@ Phase 4: Polish & Deployment
 - Live-Vorschau bei Änderungen
 - Import/Export von Konfigurationen
 
+**Barrierefreiheit:**
+- Sprach- und Gestensteuerung für berührungslose Bedienung
+- Hohe Kontrastverhältnisse für Sichtbarkeit durch Spiegel
+- Skalierbare Schriftgrößen
+- Einfache, intuitive Navigation
+
 ### 3.3 Reliability
 
 #### 3.3.1 Availability
@@ -327,7 +348,7 @@ Phase 4: Polish & Deployment
 **Systemverfügbarkeit:**
 - 24/7 Betrieb mit automatischem Neustart bei Fehlern
 - Graceful Degradation bei API-Ausfällen
-- Offline-Modus für Kernfunktionen
+- Offline-Modus für Kernfunktionen, die keine Online-Anbindung benötigen
 - Automatische Updates ohne Downtime
 
 #### 3.3.2 Accuracy
@@ -523,14 +544,12 @@ Phase 4: Polish & Deployment
 - Entwickelt mit Vue 3, TypeScript und Tailwind CSS
 - Dark Theme optimiert für Zwei-Wege-Spiegel
 - Modulare Widget-Anordnung
-- Touch-optimierte Bedienelemente
 
 **Widget-Kategorien:**
 - Zeit/Datum mit anpassbaren Formaten
 - Wetter mit Icons und Vorhersage
 - Kalender mit Terminen und Erinnerungen
 - Smart-Home-Status und -Steuerung
-- Nachrichten und RSS-Feeds
 - Musik-Player-Informationen
 - Persönliche Notizen und To-Do-Listen
 
@@ -614,11 +633,9 @@ smart-home/+/status        - Smart-Home-Device-Status
 - **HTTP/HTTPS**: Frontend ↔ Backend Kommunikation
 - **WebSocket**: Echtzeit-Datenübertragung
 - **MQTT over TCP/TLS**: Smart-Home-Integration
-- **mDNS**: Service-Discovery im lokalen Netzwerk
 
 **API-Kommunikation:**
 - RESTful JSON APIs für externe Services
-- OAuth 2.0 für Google Calendar Integration
 - API-Keys für Weather Services
 - Rate-Limiting und Retry-Mechanismen
 
@@ -741,4 +758,4 @@ Das Nimrag-Projekt entstand aus dem Bedürfnis nach einem flexiblen, modernen Sm
 ---
 
 **Ende des Dokuments**  
-*Dieses Dokument umfasst die vollständigen Anforderungen für das Nimrag Smart Mirror System v1.0*
+*Dieses Dokument umfasst die vollständigen Anforderungen für das Nimrag Smart Mirror System v1.1*
