@@ -296,3 +296,136 @@ class GestureService:
 
 # Module-level singleton convenient for endpoints
 gesture_service = GestureService()
+
+
+def process_video_file(video_path: str) -> Dict:
+    """
+    Process a video file and detect gestures from frames.
+    
+    Args:
+        video_path: Path to video file (MP4, MKV, etc.)
+    
+    Returns:
+        {"gestures": [gesture_list], "frames_processed": int, "trajectory_points": int}
+    """
+    if not HAS_MEDIAPIPE or cv2 is None:
+        raise RuntimeError("MediaPipe/OpenCV nicht verfügbar")
+    
+    cap = cv2.VideoCapture(video_path)
+    if not cap.isOpened():
+        raise RuntimeError(f"Video konnte nicht geöffnet werden: {video_path}")
+    
+    try:
+        # Initialize MediaPipe Pose detector
+        mp_pose = mp.solutions.pose
+        pose = mp_pose.Pose(min_detection_confidence=0.5, min_tracking_confidence=0.5)
+        
+        trajectory = []
+        detected_gestures = []
+        frame_count = 0
+        prev_center = None
+        smoothed_center = None
+        alpha = 0.6
+        
+        # Process all frames
+        while True:
+            ret, frame = cap.read()
+            if not ret:
+                break
+            
+            frame_count += 1
+            
+            # Pose detection
+            rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+            results = pose.process(rgb)
+            
+            center = None
+            if results.pose_landmarks:
+                lm = results.pose_landmarks.landmark
+                # Use nose (0) and shoulders (11, 12)
+                indices = [0, 11, 12]
+                points = [lm[i] for i in indices if i < len(lm)]
+                xs = [p.x for p in points if p.visibility > 0.2]
+                ys = [p.y for p in points if p.visibility > 0.2]
+                if xs and ys:
+                    cx = float(np.mean(xs))
+                    cy = float(np.mean(ys))
+                    center = (cx, cy)
+            
+            # Apply smoothing
+            if center:
+                if smoothed_center is None:
+                    smoothed_center = center
+                else:
+                    sx = alpha * center[0] + (1 - alpha) * smoothed_center[0]
+                    sy = alpha * center[1] + (1 - alpha) * smoothed_center[1]
+                    smoothed_center = (sx, sy)
+                trajectory.append(smoothed_center)
+                # Keep trajectory to last 200 points
+                if len(trajectory) > 200:
+                    trajectory.pop(0)
+        
+        pose.close()
+        
+        # Detect gesture from accumulated trajectory
+        if trajectory and len(trajectory) >= 6:
+            gesture = _detect_gesture_from_trajectory(trajectory)
+            if gesture:
+                detected_gestures.append(gesture)
+        
+        return {
+            "gestures": detected_gestures,
+            "frames_processed": frame_count,
+            "trajectory_points": len(trajectory),
+        }
+    
+    finally:
+        cap.release()
+
+
+def _detect_gesture_from_trajectory(trajectory: List[Tuple[float, float]]) -> Optional[str]:
+    """
+    Detect a single gesture from trajectory (simplified version).
+    """
+    if len(trajectory) < 6:
+        return None
+    
+    xs = [p[0] for p in trajectory]
+    ys = [p[1] for p in trajectory]
+    
+    # Try circle detection first (more specific)
+    cx = float(np.mean(xs))
+    cy = float(np.mean(ys))
+    
+    if cx == 0 and cy == 0:
+        return None
+    
+    vecs = [(x - cx, y - cy) for x, y in trajectory]
+    radii = [np.hypot(v[0], v[1]) for v in vecs]
+    
+    if not radii or np.mean(radii) < 0.001:  # Lower threshold from 0.01 to 0.001
+        return None
+    
+    angles = [np.arctan2(v[1], v[0]) for v in vecs]
+    ang_unwrap = np.unwrap(angles)
+    total_sweep = abs(ang_unwrap[-1] - ang_unwrap[0])
+    radius_cv = np.std(radii) / (np.mean(radii) + 1e-6)
+    
+    # Circle: large sweep + stable radius (lowered thresholds for real video)
+    # Lower thresholds: sweep > 3.0 rad (~172°), radius variance < 0.7
+    if total_sweep > 3.0 and radius_cv < 0.7:
+        return "circle"
+    
+    # Swipe detection
+    dx_total = xs[-1] - xs[0]
+    dy_total = ys[-1] - ys[0]
+    span_x = max(xs) - min(xs)
+    span_y = max(ys) - min(ys)
+    
+    if abs(dx_total) > 0.12 and abs(dx_total) > abs(dy_total) * 1.5 and span_x > 0.06:
+        return "swipe_right" if dx_total > 0 else "swipe_left"
+    
+    if dy_total > 0.12 and dy_total > abs(dx_total) * 1.2 and span_y > 0.06:
+        return "swipe_down"
+    
+    return None

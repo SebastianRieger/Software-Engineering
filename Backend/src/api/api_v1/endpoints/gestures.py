@@ -1,7 +1,9 @@
-from fastapi import APIRouter, HTTPException, Query, WebSocket
+from fastapi import APIRouter, HTTPException, Query, WebSocket, File, UploadFile
 from pydantic import BaseModel
+import os
+import tempfile
 
-from services.gestures import gesture_service
+from services.gestures import gesture_service, process_video_file
 from services.ws_manager import manager
 
 router = APIRouter()
@@ -68,3 +70,41 @@ async def websocket_endpoint(websocket: WebSocket):
         pass
     finally:
         manager.disconnect(websocket)
+
+
+@router.post("/process-video")
+async def process_video(
+    video_path: str = Query(None, description="Pfad zur MKV/MP4 Datei"),
+    file: UploadFile = None,
+):
+    """
+    Verarbeitet ein Video und erkennt Gesten (Kreis, Swipes).
+    Entweder video_path (lokal) oder file (Upload) angeben.
+    
+    Returns: {"gestures": [...], "frames_processed": int}
+    """
+    if not video_path and not file:
+        raise HTTPException(status_code=400, detail="video_path oder file erforderlich")
+    
+    path_to_process = video_path
+    
+    # Wenn Upload, temporäre Datei speichern
+    if file:
+        with tempfile.NamedTemporaryFile(delete=False, suffix=".mkv") as tmp:
+            content = await file.read()
+            tmp.write(content)
+            path_to_process = tmp.name
+    
+    try:
+        if not os.path.exists(path_to_process):
+            raise HTTPException(status_code=404, detail=f"Video nicht gefunden: {path_to_process}")
+        
+        result = process_video_file(path_to_process)
+        return result
+    finally:
+        # Cleanup temporary file
+        if file and os.path.exists(path_to_process):
+            try:
+                os.remove(path_to_process)
+            except Exception:
+                pass
