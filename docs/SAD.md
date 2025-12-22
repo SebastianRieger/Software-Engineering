@@ -6,9 +6,9 @@ Version 0.1
 
 ## Revision History
 
-| Date       | Version | Description                                      | Author              |
-| ---------- | ------- | ------------------------------------------------ | ------------------- |
-| 01/Dec/25  | 0.1     | Initial SAD-Auszug (Kap. 3, 6, 8, 11 ausgefüllt) | Nimrag Team (TINF24B5) |
+| Date      | Version | Description    | Author                 |
+| --------- | ------- | -------------- | ---------------------- |
+| 01/Dec/25 | 1.0     | SAD Completion | Nimrag Team (TINF24B5) |
 
 ---
 
@@ -50,42 +50,42 @@ Version 0.1
 
 ## 1. Introduction
 
-> **Template:**  
-> The introduction of the Software Architecture Document should provide an overview of the entire Software Architecture Document. It should include the purpose, scope, definitions, acronyms, abbreviations, references, and overview of the Software Architecture Document.
-
 ### 1.1 Purpose
-
-This document provides a comprehensive architectural overview of the **Nimrag Smart Mirror** system, using a number of different architectural views to depict different aspects of the system. It is intended to capture and convey the significant architectural decisions which have been made on the system.
-
-> **Template:**  
-> This section defines the purpose of the Software Architecture Document, in the overall project documentation, and briefly describes the structure of the document. The specific audiences for the document should be identified, with an indication of how they are expected to use the document.
+Dieses Dokument beschreibt die Softwarearchitektur des **Nimrag Smart Mirror**. Es schafft ein gemeinsames Verständnis über Ziele, Randbedingungen, Qualitätsanforderungen und die gewählte Struktur (Frontend, Backend, Infrastruktur). Es dient als Referenz für Entwickler, Tester und Stakeholder, um Entscheidungen nachzuvollziehen und Änderungen kontrolliert umzusetzen. 
 
 ### 1.2 Scope
-
-> **Template:**  
-> A brief description of what the Software Architecture Document applies to; what is affected or influenced by this document.
+- **Produktumfang:** Interaktiver Smart Mirror mit visuellen Widgets (Uhr, Wetter, Kalender), Gesten- und optionaler Sprachsteuerung, sowie lokaler/entkoppelter Verarbeitung auf ressourcenbegrenzter Hardware (Raspberry Pi).  
+- **Funktionaler Rahmen:** Anzeige und Aktualisierung personalisierter Informationen, Steuerung von Hardware (Licht/LED), Kommunikation mit externen APIs (Wetter, ggf. Kalender), Event-getriebene UI-Updates via WebSockets/MQTT.  
+- **Zielplattformen:** Kiosk-Modus auf Raspberry Pi; moderne Browser für Administration/Bedienung.  
 
 ### 1.3 Definitions, Acronyms and Abbreviations
-
-> **Template:**  
-> This subsection should provide the definitions of all terms, acronyms, and abbreviations required to properly interpret the Software Architecture Document. This information may be provided by reference to the project Glossary.
+- **EDA**: Event Driven Architecture – entkopplte, eventbasierte Kommunikation.  
+- **MQTT**: Message Queuing Telemetry Transport – leichtgewichtiges Pub/Sub-Protokoll.  
+- **WebSocket**: Bidirektionale, zustandsbehaftete Verbindung für Echtzeit-Events.  
+- **Widget**: UI-Komponente zur Anzeige/Interaktion (z. B. Wetter-, Kalender-, LED-Widget).  
+- **Repository Pattern**: Abstraktionsschicht für Datenzugriff auf externe APIs und Persistenz.
 
 ### 1.4 References
-
-> **Template:**  
-> This subsection should provide a complete list of all documents referenced elsewhere in the Software Architecture Document. Each document should be identified by title, report number (if applicable), date, and publishing organization. Specify the sources from which the references can be obtained. This information may be provided by reference to an appendix or to another document.
+- Projekt-SRS: [SRS](./SRS/SRS_Smart_Mirror_Nimrag_complete.pdf) 
+- Architekturentscheidungen: [Architekturentscheidungen](./Architekturentscheidungen%20und%20Entwurfsmuster%20–%20Nim.md)  
+- Sequenz-/Klassendiagramme: Verzeichnis [Diagramme](./Diagramme/) 
+- Event-Driven-Dokumente: [EDA-Dokumente](./Event-driven%20architecture/)
+- Implementierungs-README: Backend/Frontend READMEs in den jeweiligen Ordnern
 
 ### 1.5 Overview
-
-> **Template:**  
-> This subsection should describe what the rest of the Software Architecture Document contains and explain how the Software Architecture Document is organized.
+Kapitel 2–5 beschreiben Architekturziele, Use-Cases und logische Struktur. Kapitel 6–8 erläutern Prozess-, Deployment- und Implementierungsansichten. Kapitel 9–11 behandeln Datenhaltung, Dimensionierung/Performance sowie Qualitätsanforderungen und Taktiken.
 
 ---
-
 ## 2. Architectural Representation
+Die Nimrag Software verfolgt eine Event Driven Architekture. Folgende Ansichten sind für das architektonische Verständnis notwendig:
 
-> **Template:**  
-> This section describes what software architecture is for the current system, and how it is represented. Of the Use-Case, Logical, Process, Deployment, and Implementation Views, it enumerates the views that are necessary, and for each view, explains what types of model elements it contains.
+[Use-Case-Ansicht](#4-use-case-view): Dokumentiert die wesentlichen Benutzerinteraktionen und Geschäftsprozesse in einem Use-Case-Diagramm
+[Logische Ansicht](#5-logical-view): Zeigt die strukturelle Zerlegung des Systems anhand eines gesamten Klassendiagramms
+[Prozessansicht](#6-process-view): Beschreibt die dynamischen Abläufe in Aktivitäts- und Sequenzdiagrammen
+[Einsatzansicht](#7-deployment-view): Definiert die physische Verteilung auf Hardware. Der Frontend- und Backend-Programmcode wird in getrennten Repositories auf GitHub gespeichert. Das Frontend wird über GitHub Pages bereitgestellt und das Backend auf Web-Service Render. Die Datenbank wird voraussichtlich auf Neon deployed.
+[Datenansicht](#9-data-view-optional): Zeigt die Datenstrukturen der Datenbank und die häufigsten Zugriffe darauf
+Jede Ansicht enthält spezifische Modellelemente wie Klassen, Komponenten oder Prozesse, die zusammen ein vollständiges Bild der Systemarchitektur ergeben.
+
 
 ---
 
@@ -157,32 +157,26 @@ Wesentliche Randbedingungen, die die Architektur beeinflussen:
 ---
 
 ## 4. Use-Case View
-
-> **Template:**  
-> This section lists use cases or scenarios from the use-case model if they represent some significant, central functionality of the final system, or if they have a large architectural coverage - they exercise many architectural elements, or if they stress or illustrate a specific, delicate point of the architecture.
+Das Usecase Diagramm zeigt die Interaktion zwischen Benutzer und der Software.
+![Usecase-Diagramm](./Diagramme/UseCase%20Diagramm%20komplette%20Anwendung.png)
 
 ---
 
 ## 5. Logical View
 
-> **Template:**  
-> This section describes the architecturally significant parts of the design model, such as its decomposition into subsystems and packages. And for each significant package, its decomposition into classes and class utilities. You should introduce architecturally significant classes and describe their responsibilities, as well as a few very important relationships, operations, and attributes.
-
 ### 5.1 Overview
-
-> **Template:**  
-> This subsection describes the overall decomposition of the design model in terms of its package hierarchy and layers.
+- **Gesamtstruktur:** Zweiteilige Lösung mit **Vue 3 SPA** im Frontend und **FastAPI** im Backend; entkoppelt über REST/WebSockets/MQTT.  
+- **Frontend-Fokus:** Drag-and-Drop-Layout, Modulshop zum Hinzufügen/Aktivieren von Widgets, Live-Visualisierung über WebSocket-Events, State-Management via Pinia.  
+- **Backend-Fokus:** REST-Endpunkte für Wetter/Kalender/Systemstatus, WebSocket-Push für Events, MQTT-Anbindung für lokale Hardware und Sensoren, Validierung und Normalisierung externer Daten.  
+- **Schichtenprinzip:** Klare Trennung von Präsentation, Anwendung (Controller/Endpoints), Domäne (Services/Repositories) und Infrastruktur (MQTT, DB, externe APIs).  
+- **Erweiterbarkeit:** Neue Widgets und Services werden über klar definierte Schnittstellen (Events, Repositories) ergänzt, ohne den Kern neu zu koppeln.
 
 ### 5.2 Architecturally Significant Design Packages
 
-> **Template:**  
-> For each significant package, include a subsection with its name, its brief description, and a diagram with all significant classes and packages contained within the package. For each significant class in the package, include its name, brief description, and, optionally a description of some of its major responsibilities, operations and attributes.
-
-### 5.3 Use-Case Realizations
-
-> **Template:**  
-> This section illustrates how the software actually works by giving a few selected use-case (or scenario) realizations, and explains how the various design model elements contribute to their functionality.
-
+| Bereich  | Packages |
+| -------- | -------- |
+| Frontend | `manager` - beinhaltet Manager, die Komponenten validieren und Daten zuweisen. `widgets` - beinhaltet eigens erstellte Komponenten, die in das Gridlayout eingefügt werden können. |
+| Backend  | `tests` - beinhaltet Unit-Tests zum Testen des Backends. `API` - beinhaltet die API-Endpunkte und deren Logik. `Services` - beinhaltet Methoden der Funktionalitäten, wie z. B. Gestensteuerung, der Software |
 ---
 
 ## 6. Process View
@@ -266,9 +260,11 @@ Periodische Aktualisierung des Wetter-Widgets mit Fallback über Cache und Circu
 6. Der Endpoint liefert eine JSON-Antwort an die Vue-Anwendung, die das Weather Widget aktualisiert.
  
 ## 7. Deployment View
-
-> **Template:**  
-> This section describes one or more physical network (hardware) configurations on which the software is deployed and run. It is a view of the Deployment Model. At a minimum for each configuration it should indicate the physical nodes (computers, CPUs) that execute the software, and their interconnections (bus, LAN, point-to-point, and so on.) Also include a mapping of the processes of the Process View onto the physical nodes.
+- **Frontend-Bereitstellung:** Build der Vue SPA via CI-Pipeline, Hosting über GitHub Pages oder statisches Hosting auf dem Gerät.  
+- **Backend-Bereitstellung:** FastAPI-Service läuft auf dem Raspberry Pi (oder lokalem PC) als Systemdienst; optionales Remote-Deployment auf Render nur für nicht-hardwaregebundene Teile.  
+- **Kommunikation:** Intern WebSockets (Frontend ↔ Backend) und MQTT (Backend ↔ Hardware/Services). Externe Kommunikation über HTTPS zu Wetter-/Kalender-APIs.  
+- **Persistenz:** Lokale SQLite-DB/Key-Value-Store auf dem Gerät; optionale Auslagerung in gehostete DB (Neon) für Backups oder geteilte Nutzung.  
+- **Netzwerk-Topologie:** Einzelknoten (Pi) mit offenem MQTT-Port im LAN; ausgehende Verbindungen zu externen APIs; eingehende Verbindungen primär vom lokalen Browser im selben Netz.
 
 ---
 
@@ -347,17 +343,22 @@ Die Implementierung folgt einer klaren Schichtenarchitektur:
 ---
 
 ## 9. Data View (optional)
-
-> **Template:**  
-> A description of the persistent data storage perspective of the system. This section is optional if there is little or no persistent data, or the translation between the Design Model and the Data Model is trivial.
+- **Datenquellen:** Externe APIs (Wetter, optional Kalender) und lokale Sensor-/Hardware-Events.  
+- **Persistenz:** SQLite/Key-Value-Store für gecachte Wetterdaten, Widget-Konfigurationen (Layout, Aktivierung, API-Keys), zuletzt bekannte Hardware-States.  
+- **Datenmodelle:** Normalisierte Domänenobjekte (WeatherModel, CalendarEntry, DeviceState) mit Timestamps und TTL für Cache-Gültigkeit.  
+- **Zugriffsschicht:** Repository-Pattern kapselt Lese-/Schreibzugriffe; validiert, cached und vereinheitlicht Antworten.  
+- **Sicherheitsaspekte:** API-Keys in Konfigurationsdateien mit restriktiven Dateirechten; keine sensiblen Personendaten vorgesehen.  
+- **Backup/Recovery:** Optionale Synchronisation/Export von Konfiguration und Cache auf externen Speicher; Fallback auf Default-Layouts bei leerem Speicher.
 
 ---
 
 ## 10. Size and Performance
-
-> **Template:**  
-> A description of the major dimensioning characteristics of the software that impact the architecture, as well as the target performance constraints.
-
+- **Zielhardware:** Raspberry Pi (begrenzte CPU/RAM); Design priorisiert geringe Latenz und niedrigen Ressourcenverbrauch.  
+- **Frontend-Performance:** Code-Splitting/Lazy Loading der Widgets, sparsame Re-Renders über Virtual DOM und Pinia-Store-Selektoren.  
+- **Backend-Performance:** AsyncIO in FastAPI, Caching im Repository, Circuit Breaker für externe APIs, Rate-Limiting für ausgehende Requests.  
+- **Datenvolumen:** Geringe Datenmengen (Wetter, Konfiguration), daher kompakte SQLite/Key-Value-DB; Log-Rotation für begrenzten Speicher.  
+- **Latenz-Ziele:** UI-Updates in Echtzeit (<200 ms im LAN) über WebSockets; Wetter-Refresh alle 10–15 Minuten mit Cache-Fallback <50 ms.  
+- **Skalierung:** Primär Single-Node; horizontale Skalierung nicht vorgesehen, aber Services bleiben entkoppelt (MQTT/REST) für spätere Auslagerungen.
 ---
 
 ## 11. Quality
