@@ -1,38 +1,39 @@
-from fastapi import APIRouter, HTTPException
-from pydantic import BaseModel
-from typing import List, Optional
-from datetime import datetime
+from fastapi import APIRouter, Depends, HTTPException, Query
+
+from core.config import settings
+from repositories.weather import WeatherRepositoryError
+from schemas.weather import WeatherCurrentResponse, WeatherForecastResponse
 from services.weather import WeatherService
+
 
 router = APIRouter()
 
-class WeatherData(BaseModel):
-    temperature: float
-    humidity: float
-    condition: str
-    wind_speed: float
-    timestamp: datetime
 
-class WeatherForecast(BaseModel):
-    date: datetime
-    min_temp: float
-    max_temp: float
-    condition: str
+async def get_weather_service() -> WeatherService:
+    return WeatherService()
 
-@router.get("/current", response_model=WeatherData)
-async def get_current_weather():
-    """Get current weather data"""
+
+@router.get("/", response_model=WeatherCurrentResponse)
+@router.get("/current", response_model=WeatherCurrentResponse)
+async def get_current_weather(
+    lat: float = Query(default=settings.DEFAULT_LAT),
+    lon: float = Query(default=settings.DEFAULT_LON),
+    weather_service: WeatherService = Depends(get_weather_service),
+):
     try:
-        weather_service = WeatherService()
-        return await weather_service.get_current_weather()
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        return await weather_service.get_current_weather(lat=lat, lon=lon)
+    except WeatherRepositoryError as exc:
+        raise HTTPException(status_code=exc.status_code, detail=str(exc)) from exc
 
-@router.get("/forecast", response_model=List[WeatherForecast])
-async def get_weather_forecast(days: Optional[int] = 5):
-    """Get weather forecast for the next X days"""
+
+@router.get("/forecast", response_model=WeatherForecastResponse)
+async def get_weather_forecast(
+    days: int = Query(default=5, ge=1, le=7),
+    lat: float = Query(default=settings.DEFAULT_LAT),
+    lon: float = Query(default=settings.DEFAULT_LON),
+    weather_service: WeatherService = Depends(get_weather_service),
+):
     try:
-        weather_service = WeatherService()
-        return await weather_service.get_forecast(days)
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        return await weather_service.get_forecast(days=days, lat=lat, lon=lon)
+    except WeatherRepositoryError as exc:
+        raise HTTPException(status_code=exc.status_code, detail=str(exc)) from exc

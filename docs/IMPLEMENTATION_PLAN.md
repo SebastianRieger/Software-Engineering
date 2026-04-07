@@ -1,0 +1,164 @@
+# Umsetzungsplan
+
+## Grundsatz
+
+Der Weg zur Zielarchitektur erfolgt in kleinen vertikalen Schritten.
+Erst stabile Kernfunktionen, dann Realtime und Hardware, zuletzt optionale High-Risk-Features.
+
+## Phase 0: Scope und Dokumentation stabilisieren
+
+### Ziel
+
+Eine kleine, aktuelle und verbindliche Dokumentationsbasis schaffen.
+
+### Ergebnis
+
+- aktive Kernseiten statt vieler konkurrierender Dokumente
+- Archiv fuer alte Artefakte
+- klares Sollbild fuer Teamarbeit und Reviews
+
+## Phase 1: Frontend-Grundstruktur reparieren
+
+### Ziel
+
+Das Frontend von imperativer DOM-Logik auf datengetriebenen Vue-State umstellen.
+
+### Aufgaben
+
+- Grid-State als Datenmodell einfuehren
+- Widget-Instanzen sauber rendern
+- `innerHTML`-Swap und manuelles `createApp()` entfernen
+- Widget-Registry aufbauen
+- Konfigurationsdialog vereinfachen
+
+### Done-Kriterien
+
+- Widgets werden rein ueber Vue-State verwaltet
+- Drag-and-Drop oder Layout-Aenderungen zerstoeren keine Komponenteninstanzen
+- Frontend baut lokal stabil
+
+## Phase 2: Backend als belastbare Basis aufbauen
+
+### Ziel
+
+Aus Platzhalter-API wird ein kleines, konsistentes Backend.
+
+### Status
+
+Weitgehend umgesetzt.
+Die Basis fuer Wetter, Konfiguration, SQLite, Repository-Schicht und API-Tests steht.
+
+### Aufgaben
+
+- Request- und Response-Schemas vereinheitlichen
+- `config`, `repositories` und `schemas` einfuehren
+- SQLite fuer Konfiguration und Cache anbinden
+- Logging und Fehlerbehandlung strukturieren
+- Tests auf echte API-Contracts ausrichten
+
+### Done-Kriterien
+
+- Wetter- und Konfigurationsdaten sind persistierbar
+- Tests passen zur echten API
+- keine widerspruechlichen Endpunkte mehr
+
+### Ergebnis
+
+- Wetter-Endpunkte liefern typisierte Antworten und nutzen Cache plus Fallback
+- Layout-Konfiguration kann gespeichert und wieder geladen werden
+- Systemstatus spiegelt reale Backend-Metadaten
+- Backend-Tests sind gruen
+- offen bleiben vor allem Kalender, Smart-Home, echte Hardware-Adapter und Frontend-Anbindung
+
+## Phase 3: Erste echte Verticals liefern
+
+### Ziel
+
+Wetter, Uhr und Kalender als zusammenhaengende Kernfunktionen fertigstellen.
+
+### Aufgaben
+
+- Wetter mit Cache, Timeout und Fallback
+- Kalender mindestens mit klarer Mock- oder echter Integration
+- Layout + Widget-Konfiguration speichern und laden
+- Frontend an Backend anbinden
+
+### Done-Kriterien
+
+- Anwendung startet mit gespeicherter Konfiguration
+- Wetter und Kalender kommen aus echter Backend-Logik
+- API-Ausfaelle blockieren die UI nicht
+
+## Phase 4: Realtime und optionale Hardware vorbereiten
+
+### Ziel
+
+WebSocket, LED und MQTT sauber, aber klein integrieren.
+
+### Status
+
+Teilweise umgesetzt.
+Der gemeinsame WebSocket-Kanal existiert jetzt als kleiner Realtime-Hub und wird bereits fuer `GestureDetected`-Events genutzt.
+
+### Aufgaben
+
+- WebSocket-Nachrichtenformat definieren
+- Backend-Status- und Update-Events einfuehren
+- LED-Adapter mit Mock und echtem Adapter aufbauen
+- MQTT nur fuer reale Hardware- oder Smart-Home-Faelle nutzen
+
+### Done-Kriterien
+
+- WebSocket uebertraegt fachliche Updates statt Echo-Text
+- LED- und MQTT-Integration ist austauschbar und testbar
+
+### Offene Punkte
+
+- weitere fachliche Eventtypen definieren
+- Frontend an den gemeinsamen WebSocket anbinden
+- LED und MQTT auf echte Adapter heben
+
+## Phase 5: High-Risk-Features isoliert angehen
+
+### Ziel
+
+Voice, Gesture und weitere ambitionierte Features ohne Kernsystem-Risiko evaluieren.
+
+### Status
+
+Teilweise vorgezogen.
+Im Backend existiert jetzt ein optionaler Gesten-Kern mit Hand-basierter Erkennung, Start/Stop-Sessionmodell und Dev-Videoverarbeitung.
+
+### Aufgaben
+
+- Voice- und Gesture-Adapter als separate Module
+- Performance-Messung auf Raspberry Pi
+- klare Fallbacks bei Ausfall oder Ueberlastung
+
+### Done-Kriterien
+
+- Kernsystem bleibt ohne diese Features stabil
+- Zusatzfeatures koennen bei Bedarf deaktiviert werden
+
+### Offene Punkte
+
+- echte Hardware- und Kamera-Validierung auf Zielplattform
+- Frontend-Nutzung der Gesture-Events
+- moegliche spaetere Verfeinerung von Heuristiken oder Handlandmarks
+
+## Prioritaeten fuer das Team
+
+1. Frontend-State und Layout-Modell
+2. Frontend an Wetter- und Konfigurations-API anbinden
+3. Kalender als naechste echte Kernfunktion
+4. Realtime
+5. LED und MQTT
+6. Voice und Gesture
+
+## Was bewusst nicht zuerst gebaut werden sollte
+
+- Mobile App
+- Cloud-LLM
+- komplexe Rechte- und Rollensysteme
+- verteilte Event-Infrastruktur
+- neue Features ohne stabile Kernbasis
