@@ -37,6 +37,11 @@ Das Frontend von imperativer DOM-Logik auf datengetriebenen Vue-State umstellen.
 - Drag-and-Drop oder Layout-Aenderungen zerstoeren keine Komponenteninstanzen
 - Frontend baut lokal stabil
 
+### Status
+
+In Arbeit, aber der erste tragende Teil ist umgesetzt.
+Das Grid rendert Widgets inzwischen ueber Vue-State, nutzt eine Widget-Registry und ist nicht mehr auf HTML-Swap plus `createApp()` fuer den Normalfall angewiesen.
+
 ## Phase 2: Backend als belastbare Basis aufbauen
 
 ### Ziel
@@ -83,11 +88,30 @@ Wetter, Uhr und Kalender als zusammenhaengende Kernfunktionen fertigstellen.
 - Layout + Widget-Konfiguration speichern und laden
 - Frontend an Backend anbinden
 
+### Status
+
+Teilweise umgesetzt.
+Der erste B1/B2-Schnitt ist geliefert: Backend-Konfiguration deckt jetzt Layout plus Systemkonfiguration ab, das Frontend nutzt einen kleinen API-Client, das Wetter-Widget arbeitet gegen echte Backend-Daten und das Layout wird geladen und gespeichert.
+
 ### Done-Kriterien
 
 - Anwendung startet mit gespeicherter Konfiguration
 - Wetter und Kalender kommen aus echter Backend-Logik
 - API-Ausfaelle blockieren die UI nicht
+
+### Bereits geliefert in diesem Schnitt
+
+- `GET/PUT /api/v1/config/layout` bleibt die Basis fuer Widget-Layout-Persistenz
+- `GET/PUT /api/v1/config/system` liefert den ersten Vertrag fuer allgemeine Systemeinstellungen
+- Frontend-API-Client fuer Wetter und Konfiguration ist vorhanden
+- Weather-Widget hat Loading- und Fehlerzustand statt statischer Demo-Daten
+- Frontend-Build ist mit dem neuen Integrationsschnitt validiert
+
+### Offen in Phase 3
+
+- Kalender weiter von Platzhalter auf echte oder klar gemockte Integration heben
+- Systemkonfiguration im Frontend editierbar machen
+- weitere Widgets auf denselben API- und State-Ansatz umstellen
 
 ## Phase 4: Realtime und optionale Hardware vorbereiten
 

@@ -52,7 +52,7 @@ flowchart LR
 - `app/` fuer App-Shell, Routing und globale Initialisierung
 - `widgets/` fuer fachliche Widget-Komponenten
 - `features/layout/` fuer Board, Platzierung und Konfiguration
-- `services/api/` fuer REST-Zugriffe
+- `services/api/` oder schlanke API-Module fuer REST-Zugriffe
 - `services/ws/` fuer WebSocket
 - `stores/` oder klarer lokaler State fuer Layout- und Widget-Daten
 
@@ -62,6 +62,12 @@ flowchart LR
 - Widget-Instanzen haben IDs, Typen, Positionen und Einstellungen
 - Widget-Registrierung laeuft ueber ein klares Registry-/Manifest-Konzept
 - Konfigurationsaenderungen koennen lokal angezeigt und serverseitig gespeichert werden
+
+### Erster umgesetzter Schnitt
+
+- Layout- und Widget-Zuordnung werden im Frontend bereits ueber lokalen Vue-State und ein Widget-Registry-Modul abgebildet
+- Ein kleiner API-Client kapselt Wetter- und Konfigurationszugriffe ohne zusaetzliche Client-Bibliothek
+- Das Frontend nutzt zuerst genau zwei Backend-Domaenen: Konfiguration und Wetter
 
 ## Backend
 
@@ -81,6 +87,12 @@ flowchart LR
 - Wetter und Kalender laufen ueber Repositories mit Timeout, Retry und Cache
 - optionale Features wie Gesten haengen sich als Adapter und fachliche Events an den gemeinsamen Backend-Kanal
 - FastAPI-Lifespan initialisiert optionale Hintergrundjobs sauber
+
+### Konfigurationsdomänen
+
+- `layout` bleibt profilspezifisch und beschreibt Widget-Typ, Position und widgetbezogene Settings
+- `system` beschreibt allgemeine Systemeinstellungen wie Ort, Koordinaten, Einheiten, Theme und Refresh-Intervall
+- beide Domaenen nutzen denselben Router unter `/api/v1/config`, aber getrennte Schemas und getrennte Persistenzkeys
 
 ## Persistenz
 
@@ -133,6 +145,13 @@ Solange keine stabile Hardwareintegration existiert, muessen Mock- oder Null-Ada
 2. Frontend aktualisiert lokalen State
 3. Backend speichert Konfiguration in SQLite
 4. Frontend laedt Konfiguration beim Start wieder ein
+
+### Wetter mit Systemkonfiguration
+
+1. Frontend laedt die Systemkonfiguration
+2. Frontend fordert Wetterdaten mit den konfigurierten Koordinaten an
+3. Backend prueft Cache und faellt bei Bedarf kontrolliert auf gecachte Daten zurueck
+4. Frontend zeigt Loading-, Fehler- oder Live/Cache-Zustand je nach Rueckgabe
 
 ## Qualitaetsziele in realistischer Prioritaet
 

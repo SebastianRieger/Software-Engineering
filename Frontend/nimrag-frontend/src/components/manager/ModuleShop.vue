@@ -1,13 +1,17 @@
 <script setup lang="ts">
-import { ref, onMounted, defineEmits, defineExpose, computed } from 'vue'
+import { computed, defineEmits, defineExpose, ref } from 'vue'
 
-const emit = defineEmits(['addWidget'])
-const modules = import.meta.glob("../widgets/*.vue")
+import { listWidgetDefinitions } from '../../widgets/registry'
+
+const emit = defineEmits<{
+  addWidget: [payload: { cellId: number; widgetType: string }]
+}>()
 
 type ModuleItem = {
   name: string
-  path: string
-  component: any
+  type: string
+  defaultTitle: string
+  component: unknown
 }
 
 type DisplayItem = ModuleItem & {
@@ -15,13 +19,16 @@ type DisplayItem = ModuleItem & {
   index: number
 }
 
-const moduleList = ref<ModuleItem[]>([])
+const moduleList = ref<ModuleItem[]>(listWidgetDefinitions())
 const currentIndex = ref(0)
 
 // Widget in Zelle einfügen
 const addCurrentWidgetToCell = (cellId: number) => {
   if (!moduleList.value.length) return
-  emit('addWidget', { cellId, component: moduleList.value[currentIndex.value]!.component })
+  emit('addWidget', {
+    cellId,
+    widgetType: moduleList.value[currentIndex.value]!.type,
+  })
 }
 
 // Navigation
@@ -46,8 +53,9 @@ const displayedModules = computed<DisplayItem[]>(() => {
   if (len === 1) {
     const base = moduleList.value[0]!
     result.push({
-      name: base.name,
-      path: base.path,
+          name: base.name,
+          type: base.type,
+          defaultTitle: base.defaultTitle,
       component: base.component,
       position: 'center',
       index: 0
@@ -65,7 +73,8 @@ const displayedModules = computed<DisplayItem[]>(() => {
 
   result.push({
     name: leftBase.name,
-    path: leftBase.path,
+    type: leftBase.type,
+    defaultTitle: leftBase.defaultTitle,
     component: leftBase.component,
     position: 'left',
     index: left
@@ -73,7 +82,8 @@ const displayedModules = computed<DisplayItem[]>(() => {
 
   result.push({
     name: centerBase.name,
-    path: centerBase.path,
+    type: centerBase.type,
+    defaultTitle: centerBase.defaultTitle,
     component: centerBase.component,
     position: 'center',
     index: center
@@ -81,7 +91,8 @@ const displayedModules = computed<DisplayItem[]>(() => {
 
   result.push({
     name: rightBase.name,
-    path: rightBase.path,
+    type: rightBase.type,
+    defaultTitle: rightBase.defaultTitle,
     component: rightBase.component,
     position: 'right',
     index: right
@@ -90,20 +101,6 @@ const displayedModules = computed<DisplayItem[]>(() => {
   return result
 })
 
-onMounted(async () => {
-  for (const path in modules) {
-    const fileName = path.split('/').pop()?.replace('.vue', '') || ''
-    const moduleLoader = modules[path]
-    if (!moduleLoader) continue
-
-    const module = (await moduleLoader()) as any
-    moduleList.value.push({
-      name: fileName,
-      path,
-      component: module.default
-    })
-  }
-})
 const setCurrentModule = (index: number) => {
   if (!moduleList.value.length) return
   currentIndex.value = index

@@ -1,78 +1,71 @@
-<!-- src/components/GridBoard.vue -->
 <script setup lang="ts">
-// 4x4 Grid -> 16 Zellen
+import type { Component } from 'vue'
 
-function onDragStart(e: DragEvent, index: number) {
-  const cellId = index // Cell IDs sind 1-basiert
-  const cell = document.getElementById(cellId.toString())
-  if (!cell) return
-  
-  // Prüfe ob die Zelle ein Widget enthält (kein Platzhalter)
-  const hasPlaceholder = cell.querySelector('.opacity-70')
-  if (hasPlaceholder) return // Leere Zellen können nicht gezogen werden
-  
-  e.dataTransfer?.setData('text/plain', String(cellId))
-  if (e.dataTransfer) {
-    e.dataTransfer.effectAllowed = 'move'
+import type { SystemConfig, WidgetConfig } from '../../types/config'
+
+interface RenderedWidget extends WidgetConfig {
+  component: Component | null
+  widgetProps?: {
+    initialSystemConfig?: SystemConfig | null
   }
-  
-  // Ghost Image
+}
+
+defineProps<{
+  widgets: Record<number, RenderedWidget | undefined>
+}>()
+
+const emit = defineEmits<{
+  moveWidget: [payload: { sourceCellId: number; targetCellId: number }]
+}>()
+
+function onDragStart(event: DragEvent, cellId: number, hasWidget: boolean) {
+  if (!hasWidget) {
+    event.preventDefault()
+    return
+  }
+
+  const cell = event.currentTarget as HTMLElement | null
+  if (!cell) return
+
+  event.dataTransfer?.setData('text/plain', String(cellId))
+  if (event.dataTransfer) {
+    event.dataTransfer.effectAllowed = 'move'
+  }
+
   const ghost = document.createElement('div')
   ghost.style.width = '1px'
   ghost.style.height = '1px'
   ghost.style.opacity = '0'
   document.body.appendChild(ghost)
-  e.dataTransfer?.setDragImage(ghost, 0, 0)
+  event.dataTransfer?.setDragImage(ghost, 0, 0)
   setTimeout(() => ghost.remove(), 0)
-  
-  // Visuelles Feedback
+
   cell.style.opacity = '0.5'
 }
 
-function onDragOver(e: DragEvent) {
-  e.preventDefault()
-  if (e.dataTransfer) {
-    e.dataTransfer.dropEffect = 'move'
+function onDragOver(event: DragEvent) {
+  event.preventDefault()
+  if (event.dataTransfer) {
+    event.dataTransfer.dropEffect = 'move'
   }
 }
 
-function onDrop(e: DragEvent, targetIndex: number) {
-  e.preventDefault()
-  const data = e.dataTransfer?.getData('text/plain')
+function onDrop(event: DragEvent, targetCellId: number) {
+  event.preventDefault()
+  const data = event.dataTransfer?.getData('text/plain')
   if (data == null) return
-  
+
   const sourceCellId = Number(data)
-  const targetCellId = targetIndex
-  
   if (Number.isNaN(sourceCellId) || sourceCellId === targetCellId) return
 
-  const sourceCell = document.getElementById(sourceCellId.toString())
-  const targetCell = document.getElementById(targetCellId.toString())
-  
-  if (!sourceCell || !targetCell) return
-  
-  // Inhalte tauschen (HTML swap)
-  const sourceContent = sourceCell.innerHTML
-  const targetContent = targetCell.innerHTML
-  
-  sourceCell.innerHTML = targetContent
-  targetCell.innerHTML = sourceContent
-  
-  // Styling zurücksetzen
-  sourceCell.style.opacity = '1'
-  
-  // Classes auch tauschen
-  const sourceClasses = sourceCell.className
-  const targetClasses = targetCell.className
-  sourceCell.className = targetClasses
-  targetCell.className = sourceClasses
+  emit('moveWidget', { sourceCellId, targetCellId })
 }
 
-function onDragEnd(e: DragEvent, index: number) {
-  e; //damit kein Fehler in IDE angezeigt wird
-  const cellId = index + 1
-  const cell = document.getElementById(cellId.toString())
-  if (cell) cell.style.opacity = '1'
+function onDragEnd(event: DragEvent) {
+  const cell = event.currentTarget as HTMLElement | null
+  if (cell) {
+    cell.style.opacity = '1'
+  }
 }
 </script>
 
@@ -83,18 +76,24 @@ function onDragEnd(e: DragEvent, index: number) {
   >
     <!-- generiert leere Zellen mit Platzhaltern -->
     <div
-        v-for="(i) in 16"
-        :key="i"
-        :id="(i).toString()"
+        v-for="cellId in 16"
+        :key="cellId"
+        :id="cellId.toString()"
         class="rounded-xl bg-neutral-800 shadow-inner overflow-hidden"
         draggable="true"
-        @dragstart="onDragStart($event, i)"
+        @dragstart="onDragStart($event, cellId, Boolean(widgets[cellId]))"
         @dragover="onDragOver"
-        @drop="onDrop($event, i)"
-        @dragend="onDragEnd($event, i)"
+        @drop="onDrop($event, cellId)"
+        @dragend="onDragEnd($event)"
     >
-      <div class="w-full h-full grid place-items-center text-2xl font-semibold opacity-70">
-        {{ String(i).padStart(2, '0') }}
+      <component
+        v-if="widgets[cellId]?.component"
+        :is="widgets[cellId]?.component"
+        v-bind="widgets[cellId]?.widgetProps ?? {}"
+        class="h-full w-full"
+      />
+      <div v-else class="w-full h-full grid place-items-center text-2xl font-semibold opacity-70">
+        {{ String(cellId).padStart(2, '0') }}
       </div>
     </div>
   </div>

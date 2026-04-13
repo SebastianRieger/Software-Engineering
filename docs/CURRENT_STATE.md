@@ -10,18 +10,17 @@ Sie zeigt die Richtung des Projekts, aber noch nicht die geplante Systemreife.
 ### Vorhanden
 
 - Vue 3 Grundsetup
-- Grid-Board mit 16 Zellen
-- Widget-Shop mit dynamischem Laden von Widget-Komponenten
-- einfache Beispiel-Widgets fuer Uhr und Wetter
+- Grid-Board mit 16 Zellen und zustandsgetriebener Widget-Belegung
+- Widget-Shop ueber gemeinsames Widget-Registry-Konzept
+- Wetter-Widget mit echter Backend-Anbindung
+- Layout-Laden und -Speichern gegen die Backend-Konfigurations-API
+- kleiner typisierter Frontend-API-Client fuer Wetter und Konfiguration
 
 ### Hauptprobleme
 
-- Widget-Verwaltung erfolgt imperativ ueber `document`, `innerHTML` und `createApp()`
-- kein zentraler, reaktiver Layout-State
-- keine echte Backend-Integration
-- keine Persistenz der Konfiguration
 - keine Frontend-Tests
-- Build/Tooling aktuell inkonsistent
+- keine zentrale State- oder Store-Loesung fuer spaetere groeessere Frontend-Features
+- Wetter- und Konfigurationsintegration decken bisher nur den ersten Verticalschnitt ab
 
 ## Backend
 
@@ -32,7 +31,7 @@ Sie zeigt die Richtung des Projekts, aber noch nicht die geplante Systemreife.
 - SQLite-basierte Persistenz fuer Layout-Konfiguration und Wetter-Cache
 - Repository-Schicht fuer Konfiguration und Wetterdaten
 - Wetter-Endpunkte mit Cache, Timeout-Konfiguration und Fallback auf gecachte Daten
-- Konfigurations-Endpunkte zum Laden und Speichern des Layouts
+- Konfigurations-Endpunkte fuer Layout und generische Systemkonfiguration
 - System-Status-Endpunkt mit echten Backend-Metadaten
 - optionale Gesten-Domaene mit Hand-basiertem Adapter, Start/Stop-Session und Dev-Videoverarbeitung
 - gemeinsamer WebSocket-Kanal fuer Realtime-Events wie `GestureDetected`
@@ -45,16 +44,22 @@ Sie zeigt die Richtung des Projekts, aber noch nicht die geplante Systemreife.
 - Gestenerkennung ist noch nicht an das Frontend angebunden
 - echte Kamera- und Raspberry-Pi-Verifikation fehlt in der automatisierten Testkette
 - es gibt noch keine Authentifizierung, keine Rollen und keine produktionsreife Secret-Verwaltung
-- Frontend nutzt die neuen Backend-Funktionen noch nicht
+- Frontend deckt bisher nur Wetter und Konfiguration ab, nicht die restlichen Backend-Domaenen
 
 ## Integration
 
 Der groesste Bruch liegt zwischen Frontend und Backend:
 
-- das Frontend nutzt keine echten API-Calls
-- das Wetter-Widget zeigt statische Daten
 - der gemeinsame WebSocket wird im Frontend noch nicht genutzt
-- die Konfigurationspersistenz existiert nur im Backend und ist im Frontend noch nicht angebunden
+- weitere Domaenen wie Kalender, Smart Home und Gesten sind im Frontend noch nicht angebunden
+
+## Aktueller Integrationsstand B1/B2
+
+- B1 ist als erster produktiver Schnitt umgesetzt: `GET/PUT /api/v1/config/layout` und `GET/PUT /api/v1/config/system`
+- B1 nutzt weiter die bestehende `app_config`-Tabelle in SQLite und trennt Layout- und Systemdaten nur ueber Konfigurationskeys
+- B2 ist im Frontend als kleiner fetch-basierter API-Client umgesetzt
+- Das Grid rendert Widgets jetzt ueber Vue-State statt ueber HTML-Swaps
+- Das Wetter-Widget laedt Wetterdaten ueber Backend plus Systemkonfiguration und zeigt Loading- oder Fehlerzustand statt statischer Platzhalterdaten
 
 ## Dokumentation
 

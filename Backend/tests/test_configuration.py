@@ -1,8 +1,11 @@
 import pytest
 
 
+pytestmark = pytest.mark.usefixtures("override_config_dependency")
+
+
 @pytest.mark.asyncio
-async def test_get_default_layout(client, override_config_dependency):
+async def test_get_default_layout(client):
     response = await client.get("/api/v1/config/layout")
     assert response.status_code == 200
     data = response.json()
@@ -11,7 +14,7 @@ async def test_get_default_layout(client, override_config_dependency):
 
 
 @pytest.mark.asyncio
-async def test_save_and_reload_layout(client, override_config_dependency):
+async def test_save_and_reload_layout(client):
     payload = {
         "version": 1,
         "widgets": [
@@ -35,3 +38,62 @@ async def test_save_and_reload_layout(client, override_config_dependency):
     assert load_response.status_code == 200
     loaded = load_response.json()
     assert loaded["config"]["widgets"][0]["widget_type"] == "weather"
+
+
+@pytest.mark.asyncio
+async def test_layout_profiles_are_isolated(client):
+    payload = {
+        "version": 1,
+        "widgets": [
+            {
+                "widget_id": "clock-main",
+                "widget_type": "clock",
+                "cell_id": 2,
+                "title": "Uhr",
+                "settings": {},
+            }
+        ],
+    }
+
+    save_response = await client.put("/api/v1/config/layout?profile=focus", json=payload)
+    assert save_response.status_code == 200
+
+    default_response = await client.get("/api/v1/config/layout")
+    focus_response = await client.get("/api/v1/config/layout?profile=focus")
+
+    assert default_response.json()["config"]["widgets"] == []
+    assert focus_response.json()["config"]["widgets"][0]["widget_id"] == "clock-main"
+
+
+@pytest.mark.asyncio
+async def test_get_default_system_config(client):
+    response = await client.get("/api/v1/config/system")
+    assert response.status_code == 200
+    data = response.json()
+    assert data["config"]["units"] == "metric"
+    assert data["config"]["latitude"] is not None
+    assert data["config"]["longitude"] is not None
+
+
+@pytest.mark.asyncio
+async def test_save_and_reload_system_config(client):
+    payload = {
+        "location_name": "Karlsruhe",
+        "latitude": 49.0069,
+        "longitude": 8.4037,
+        "units": "metric",
+        "theme": "dark",
+        "weather_refresh_seconds": 300,
+    }
+
+    save_response = await client.put("/api/v1/config/system", json=payload)
+    assert save_response.status_code == 200
+    saved = save_response.json()
+    assert saved["config"]["location_name"] == "Karlsruhe"
+    assert saved["config"]["updated_at"] is not None
+
+    load_response = await client.get("/api/v1/config/system")
+    assert load_response.status_code == 200
+    loaded = load_response.json()
+    assert loaded["config"]["latitude"] == payload["latitude"]
+    assert loaded["config"]["weather_refresh_seconds"] == 300

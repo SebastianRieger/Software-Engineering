@@ -1,7 +1,9 @@
 from datetime import datetime
-from typing import Any
+from typing import Any, Literal
 
 from pydantic import BaseModel, Field
+
+from core.config import settings
 
 
 class WidgetConfig(BaseModel):
@@ -21,3 +23,17 @@ class LayoutConfig(BaseModel):
 class LayoutConfigEnvelope(BaseModel):
     profile: str = "default"
     config: LayoutConfig
+
+
+class SystemConfig(BaseModel):
+    location_name: str | None = None
+    latitude: float = Field(default=settings.DEFAULT_LAT, ge=-90, le=90)
+    longitude: float = Field(default=settings.DEFAULT_LON, ge=-180, le=180)
+    units: Literal["metric", "imperial"] = "metric"
+    theme: Literal["dark", "light", "system"] = "dark"
+    weather_refresh_seconds: int = Field(default=900, ge=60, le=86400)
+    updated_at: datetime | None = None
+
+
+class SystemConfigEnvelope(BaseModel):
+    config: SystemConfig
