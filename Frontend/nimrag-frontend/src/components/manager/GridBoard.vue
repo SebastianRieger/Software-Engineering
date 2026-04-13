@@ -65,25 +65,30 @@ function onDrop(e: DragEvent, targetIndex: number) {
 
   const sourceMount = document.getElementById(`cell-content-${sourceCellId}`)
   const targetMount = document.getElementById(`cell-content-${targetCellId}`)
-
   if (!sourceMount || !targetMount) return
 
-  const sourceContent = sourceMount.innerHTML
-  const targetContent = targetMount.innerHTML
+  // DOM-Nodes wirklich verschieben (nicht innerHTML kopieren!)
+  // → Vue-App-Instanzen bleiben an ihrem Container-Div hängen
+  const sourceChild = sourceMount.firstElementChild
+  const targetChild = targetMount.firstElementChild
 
-  sourceMount.innerHTML = targetContent
-  targetMount.innerHTML = sourceContent
+  if (sourceChild && targetChild) {
+    const anchor = document.createComment('swap')
+    targetMount.replaceChild(anchor, targetChild)   // targetChild kurz rausnehmen
+    sourceMount.replaceChild(targetChild, sourceChild)  // sourceChild → targetChild
+    targetMount.replaceChild(sourceChild, anchor)   // anchor → sourceChild
+  } else if (sourceChild) {
+    targetMount.appendChild(sourceChild)  // leere Zelle: einfach rüberbewegen
+  } else if (targetChild) {
+    sourceMount.appendChild(targetChild)
+  }
 
   const sourceCell = sourceMount.parentElement as HTMLElement | null
   if (sourceCell) sourceCell.style.opacity = '1'
 
-  // ⚡ Vue zwingen, Buttons neu zu berechnen
   widgetVersion.value++
 
-  emit('widgetsMoved', {
-    sourceCellId,
-    targetCellId
-  })
+  emit('widgetsMoved', { sourceCellId, targetCellId })
 }
 
 function onDragEnd(e: DragEvent, index: number) {
