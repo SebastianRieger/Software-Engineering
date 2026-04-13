@@ -12,6 +12,8 @@ from typing import Protocol
 
 from core.config import settings
 from core.realtime import RealtimeHub, realtime_hub
+from repositories.config import ConfigRepository
+from schemas.gestures import GestureConfig
 
 
 logger = logging.getLogger(__name__)
@@ -29,13 +31,40 @@ except Exception:
 
 
 GestureName = str
+GesturePoint = tuple[float, float]
+GestureLandmarks = dict[str, GesturePoint]
+
+
+HAND_LANDMARK_NAMES = {
+    "wrist": 0,
+    "thumb_tip": 4,
+    "index_mcp": 5,
+    "index_tip": 8,
+    "middle_mcp": 9,
+    "middle_tip": 12,
+    "ring_mcp": 13,
+    "ring_tip": 16,
+    "pinky_mcp": 17,
+    "pinky_tip": 20,
+}
+
+PALM_CENTER_LANDMARKS = (
+    "wrist",
+    "index_mcp",
+    "middle_mcp",
+    "ring_mcp",
+    "pinky_mcp",
+)
 
 
 @dataclass(slots=True)
 class GestureObservation:
-    point: tuple[float, float] | None
+    point: GesturePoint | None
     hand: str | None = None
     preview_bytes: bytes | None = None
+    landmarks: GestureLandmarks | None = None
+    hand_size: float | None = None
+    tracking_source: str | None = None
 
 
 class GestureAdapterError(Exception):
@@ -65,8 +94,44 @@ class GestureAdapter(Protocol):
         self,
         video_path: str,
         classifier: Callable[[list[tuple[float, float]]], GestureName | None],
+        smoothing_alpha: float,
     ) -> dict[str, int | list[GestureName]]:
         ...
+
+
+def build_hand_landmark_map(hand_landmarks) -> GestureLandmarks:
+    return {
+        name: (
+            float(hand_landmarks.landmark[index].x),
+            float(hand_landmarks.landmark[index].y),
+        )
+        for name, index in HAND_LANDMARK_NAMES.items()
+    }
+
+
+def compute_hand_tracking_point(landmarks: GestureLandmarks) -> GesturePoint | None:
+    points = [landmarks[name] for name in PALM_CENTER_LANDMARKS if name in landmarks]
+    if not points:
+        return None
+
+    return (
+        sum(point[0] for point in points) / len(points),
+        sum(point[1] for point in points) / len(points),
+    )
+
+
+def estimate_hand_size(landmarks: GestureLandmarks) -> float | None:
+    if "index_mcp" in landmarks and "pinky_mcp" in landmarks:
+        index_mcp = landmarks["index_mcp"]
+        pinky_mcp = landmarks["pinky_mcp"]
+        return math.hypot(index_mcp[0] - pinky_mcp[0], index_mcp[1] - pinky_mcp[1])
+
+    tracking_point = compute_hand_tracking_point(landmarks)
+    wrist = landmarks.get("wrist")
+    if wrist is None or tracking_point is None:
+        return None
+
+    return math.hypot(wrist[0] - tracking_point[0], wrist[1] - tracking_point[1])
 
 
 def smooth_point(
@@ -89,8 +154,11 @@ def detect_gesture_from_trajectory(
     down_threshold: float,
     circle_sweep_min: float,
     circle_cv_max: float,
+    min_detection_points: int = settings.GESTURE_MIN_DETECTION_POINTS,
+    swipe_min_span: float = settings.GESTURE_SWIPE_MIN_SPAN,
+    circle_min_radius: float = settings.GESTURE_CIRCLE_MIN_RADIUS,
 ) -> GestureName | None:
-    if len(trajectory) < 6:
+    if len(trajectory) < min_detection_points:
         return None
 
     xs = [point[0] for point in trajectory]
@@ -104,14 +172,14 @@ def detect_gesture_from_trajectory(
     if (
         abs(dx_total) > swipe_threshold
         and abs(dx_total) > abs(dy_total) * 1.5
-        and span_x > 0.06
+        and span_x > swipe_min_span
     ):
         return "swipe_right" if dx_total > 0 else "swipe_left"
 
     if (
         dy_total > down_threshold
         and dy_total > abs(dx_total) * 1.2
-        and span_y > 0.06
+        and span_y > swipe_min_span
     ):
         return "swipe_down"
 
@@ -120,7 +188,7 @@ def detect_gesture_from_trajectory(
     vectors = [(x - center_x, y - center_y) for x, y in trajectory]
     radii = [math.hypot(x, y) for x, y in vectors]
 
-    if not radii or mean(radii) < 0.01:
+    if not radii or mean(radii) < circle_min_radius:
         return None
 
     angles = [math.atan2(y, x) for x, y in vectors]
@@ -180,7 +248,7 @@ class MediaPipeHandsAdapter:
         if not ret or frame is None:
             return GestureObservation(point=None)
 
-        point, hand = self._extract_observation(frame)
+        observation = self._extract_observation(frame)
         preview_bytes = None
         try:
             ok, jpeg = cv2.imencode(".jpg", frame)
@@ -189,7 +257,8 @@ class MediaPipeHandsAdapter:
         except Exception:
             preview_bytes = None
 
-        return GestureObservation(point=point, hand=hand, preview_bytes=preview_bytes)
+        observation.preview_bytes = preview_bytes
+        return observation
 
     def close(self) -> None:
         if self.hands is not None:
@@ -206,6 +275,7 @@ class MediaPipeHandsAdapter:
         self,
         video_path: str,
         classifier: Callable[[list[tuple[float, float]]], GestureName | None],
+        smoothing_alpha: float,
     ) -> dict[str, int | list[GestureName]]:
         if not self.is_available():
             raise GestureAdapterError(
@@ -233,14 +303,14 @@ class MediaPipeHandsAdapter:
                     break
 
                 frame_count += 1
-                point, _ = self._extract_observation(frame, hands_instance=hands)
-                if point is None:
+                observation = self._extract_observation(frame, hands_instance=hands)
+                if observation.point is None:
                     continue
 
                 smoothed_point = smooth_point(
                     previous_point=smoothed_point,
-                    point=point,
-                    alpha=settings.GESTURE_SMOOTHING_ALPHA,
+                    point=observation.point,
+                    alpha=smoothing_alpha,
                 )
                 trajectory.append(smoothed_point)
 
@@ -259,23 +329,30 @@ class MediaPipeHandsAdapter:
         self,
         frame,
         hands_instance=None,
-    ) -> tuple[tuple[float, float] | None, str | None]:
+    ) -> GestureObservation:
         hands_instance = hands_instance or self.hands
         if hands_instance is None:
-            return None, None
+            return GestureObservation(point=None)
 
         rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
         results = hands_instance.process(rgb)
         if not results.multi_hand_landmarks:
-            return None, None
+            return GestureObservation(point=None)
 
         hand_landmarks = results.multi_hand_landmarks[0]
-        wrist = hand_landmarks.landmark[0]
+        landmarks = build_hand_landmark_map(hand_landmarks)
+        tracking_point = compute_hand_tracking_point(landmarks)
         handedness = None
         if results.multi_handedness:
             handedness = results.multi_handedness[0].classification[0].label.lower()
 
-        return (float(wrist.x), float(wrist.y)), handedness
+        return GestureObservation(
+            point=tracking_point,
+            hand=handedness,
+            landmarks=landmarks,
+            hand_size=estimate_hand_size(landmarks),
+            tracking_source="palm_center",
+        )
 
 
 class GestureService:
@@ -283,13 +360,16 @@ class GestureService:
         self,
         adapter_factory: Callable[[], GestureAdapter] | None = None,
         realtime: RealtimeHub | None = None,
+        config_repository_factory: Callable[[], ConfigRepository] | None = None,
     ) -> None:
         self.adapter_factory = adapter_factory or MediaPipeHandsAdapter
         self.realtime = realtime or realtime_hub
-        self._lock = threading.Lock()
+        self.config_repository_factory = config_repository_factory or ConfigRepository
+        self._lock = threading.RLock()
         self._stop_event = threading.Event()
         self._thread: threading.Thread | None = None
         self._adapter: GestureAdapter | None = None
+        self._active_config = GestureConfig()
         self.running = False
         self.camera_index: int | None = None
         self.latest_frame_data_url: str | None = None
@@ -299,6 +379,7 @@ class GestureService:
         self.last_gesture_at: datetime | None = None
         self.last_gesture_time_by_name: dict[str, float] = {}
         self.last_hand: str | None = None
+        self.last_error: str | None = None
 
     def is_available(self) -> bool:
         try:
@@ -307,12 +388,24 @@ class GestureService:
         except Exception:
             return False
 
+    def reload_config(self) -> GestureConfig:
+        try:
+            config = self.config_repository_factory().get_gesture_config()
+        except Exception as exc:
+            logger.warning("Could not reload gesture config, using defaults: %s", exc)
+            config = GestureConfig()
+
+        with self._lock:
+            self._active_config = config
+        return config
+
     def start(self, camera_index: int = 0) -> dict[str, object]:
         with self._lock:
             if self.running:
                 return self.get_status()
 
             if not self.is_available():
+                self.last_error = "Gestenerkennung ist in dieser Umgebung nicht verfuegbar."
                 raise GestureServiceError(
                     "Gestenerkennung ist in dieser Umgebung nicht verfuegbar.",
                     status_code=503,
@@ -322,8 +415,10 @@ class GestureService:
             try:
                 adapter.open(camera_index)
             except GestureAdapterError as exc:
+                self.last_error = str(exc)
                 raise GestureServiceError(str(exc), status_code=503) from exc
 
+            self.reload_config()
             self._reset_runtime_state()
             self._adapter = adapter
             self.camera_index = camera_index
@@ -349,7 +444,12 @@ class GestureService:
             thread.join(timeout=2.0)
 
         if adapter is not None:
-            adapter.close()
+            try:
+                adapter.close()
+            except Exception as exc:
+                logger.warning("Gesture adapter close failed: %s", exc)
+                with self._lock:
+                    self.last_error = str(exc)
 
         with self._lock:
             self.camera_index = None
@@ -360,20 +460,25 @@ class GestureService:
         self.stop()
 
     def get_status(self) -> dict[str, object]:
-        return {
-            "available": self.is_available(),
-            "running": self.running,
-            "camera_index": self.camera_index,
-            "last_gesture": self.last_gesture,
-            "last_gesture_at": self.last_gesture_at,
-            "debug_frame_available": self.latest_frame_data_url is not None,
-        }
+        with self._lock:
+            return {
+                "available": self.is_available(),
+                "running": self.running,
+                "camera_index": self.camera_index,
+                "last_gesture": self.last_gesture,
+                "last_gesture_at": self.last_gesture_at,
+                "debug_frame_available": self.latest_frame_data_url is not None,
+                "last_error": self.last_error,
+            }
 
     def get_frame(self) -> str | None:
-        return self.latest_frame_data_url
+        with self._lock:
+            return self.latest_frame_data_url
 
     def process_video(self, video_path: str) -> dict[str, int | list[GestureName]]:
         if not self.is_available():
+            with self._lock:
+                self.last_error = "Gestenerkennung ist in dieser Umgebung nicht verfuegbar."
             raise GestureServiceError(
                 "Gestenerkennung ist in dieser Umgebung nicht verfuegbar.",
                 status_code=503,
@@ -385,56 +490,81 @@ class GestureService:
                 status_code=404,
             )
 
+        active_config = self.reload_config()
         adapter = self.adapter_factory()
         try:
-            return adapter.process_video(video_path, classifier=self._detect_gesture)
+            with self._lock:
+                self.last_error = None
+            return adapter.process_video(
+                video_path,
+                classifier=self._detect_gesture,
+                smoothing_alpha=active_config.smoothing_alpha,
+            )
         except GestureAdapterError as exc:
+            with self._lock:
+                self.last_error = str(exc)
             raise GestureServiceError(str(exc), status_code=503) from exc
 
     def _run_loop(self) -> None:
-        while not self._stop_event.is_set():
-            adapter = self._adapter
-            if adapter is None:
-                break
+        try:
+            while not self._stop_event.is_set():
+                with self._lock:
+                    adapter = self._adapter
+                    active_config = self._active_config
 
-            try:
-                observation = adapter.read()
-            except GestureAdapterError as exc:
-                logger.warning("Gesture adapter read failed: %s", exc)
-                break
+                if adapter is None:
+                    break
 
-            if observation is None:
-                time.sleep(settings.GESTURE_IDLE_SLEEP_SECONDS)
-                continue
+                try:
+                    observation = adapter.read()
+                except GestureAdapterError as exc:
+                    logger.warning("Gesture adapter read failed: %s", exc)
+                    with self._lock:
+                        self.last_error = str(exc)
+                    break
 
-            self._update_preview(observation.preview_bytes)
+                if observation is None:
+                    time.sleep(settings.GESTURE_IDLE_SLEEP_SECONDS)
+                    continue
 
-            if observation.point is None:
-                self.smoothed_point = None
-                self.trajectory.clear()
-                time.sleep(settings.GESTURE_IDLE_SLEEP_SECONDS)
-                continue
+                self._update_preview(observation.preview_bytes)
 
-            self.last_hand = observation.hand
-            self.smoothed_point = smooth_point(
-                previous_point=self.smoothed_point,
-                point=observation.point,
-                alpha=settings.GESTURE_SMOOTHING_ALPHA,
-            )
-            self.trajectory.append(self.smoothed_point)
-            if len(self.trajectory) > settings.GESTURE_MAX_TRAJECTORY_POINTS:
-                self.trajectory.pop(0)
+                if observation.point is None:
+                    with self._lock:
+                        self.smoothed_point = None
+                        self.trajectory.clear()
+                    time.sleep(settings.GESTURE_IDLE_SLEEP_SECONDS)
+                    continue
 
-            gesture = self._detect_gesture(self.trajectory)
-            if gesture is not None and self._cooldown_elapsed(gesture):
-                self.last_gesture = gesture
-                self.last_gesture_at = datetime.now(timezone.utc)
-                self._publish_gesture_event(gesture=gesture, hand=observation.hand)
+                with self._lock:
+                    self.last_error = None
+                    self.last_hand = observation.hand
+                    self.smoothed_point = smooth_point(
+                        previous_point=self.smoothed_point,
+                        point=observation.point,
+                        alpha=active_config.smoothing_alpha,
+                    )
+                    self.trajectory.append(self.smoothed_point)
+                    if len(self.trajectory) > active_config.max_trajectory_points:
+                        self.trajectory.pop(0)
+                    trajectory_snapshot = list(self.trajectory)
 
-        self.running = False
+                gesture = self._detect_gesture(trajectory_snapshot)
+                if gesture is not None and self._cooldown_elapsed(gesture):
+                    detected_at = datetime.now(timezone.utc)
+                    with self._lock:
+                        self.last_gesture = gesture
+                        self.last_gesture_at = detected_at
+                    self._publish_gesture_event(gesture=gesture, hand=observation.hand)
+        finally:
+            with self._lock:
+                self.running = False
 
     def _publish_gesture_event(self, gesture: GestureName, hand: str | None) -> None:
-        if self.last_gesture_at is None:
+        with self._lock:
+            last_gesture_at = self.last_gesture_at
+
+        if last_gesture_at is None:
             return
 
         self.realtime.publish_from_thread(
@@ -442,7 +572,7 @@ class GestureService:
                 "eventType": "GestureDetected",
                 "payload": {
                     "gesture": gesture,
-                    "timestamp": self.last_gesture_at.isoformat(),
+                    "timestamp": last_gesture_at.isoformat(),
                     "source": "camera",
                     "hand": hand,
                 },
@@ -451,23 +581,31 @@ class GestureService:
 
     def _cooldown_elapsed(self, gesture: GestureName) -> bool:
         now = time.time()
-        last_seen = self.last_gesture_time_by_name.get(gesture, 0.0)
-        if now - last_seen <= settings.GESTURE_COOLDOWN_SECONDS:
-            return False
+        with self._lock:
+            cooldown_seconds = self._active_config.cooldown_seconds
+            last_seen = self.last_gesture_time_by_name.get(gesture, 0.0)
+            if now - last_seen <= cooldown_seconds:
+                return False
 
-        self.last_gesture_time_by_name[gesture] = now
-        return True
+            self.last_gesture_time_by_name[gesture] = now
+            return True
 
     def _detect_gesture(
         self,
         trajectory: list[tuple[float, float]],
     ) -> GestureName | None:
+        with self._lock:
+            active_config = self._active_config
+
         return detect_gesture_from_trajectory(
             trajectory=trajectory,
-            swipe_threshold=settings.GESTURE_SWIPE_THRESHOLD,
-            down_threshold=settings.GESTURE_DOWN_THRESHOLD,
-            circle_sweep_min=settings.GESTURE_CIRCLE_SWEEP_MIN,
-            circle_cv_max=settings.GESTURE_CIRCLE_RADIUS_CV_MAX,
+            swipe_threshold=active_config.swipe_threshold,
+            down_threshold=active_config.down_threshold,
+            circle_sweep_min=active_config.circle_sweep_min,
+            circle_cv_max=active_config.circle_radius_cv_max,
+            min_detection_points=active_config.min_detection_points,
+            swipe_min_span=active_config.swipe_min_span,
+            circle_min_radius=active_config.circle_min_radius,
         )
 
     def _update_preview(self, preview_bytes: bytes | None) -> None:
@@ -475,7 +613,8 @@ class GestureService:
             return
 
         encoded = base64.b64encode(preview_bytes).decode("ascii")
-        self.latest_frame_data_url = f"data:image/jpeg;base64,{encoded}"
+        with self._lock:
+            self.latest_frame_data_url = f"data:image/jpeg;base64,{encoded}"
 
     def _reset_runtime_state(self) -> None:
         self.latest_frame_data_url = None
@@ -484,6 +623,7 @@ class GestureService:
         self.last_gesture = None
         self.last_gesture_at = None
         self.last_hand = None
+        self.last_error = None
         self.last_gesture_time_by_name = {}
 
 

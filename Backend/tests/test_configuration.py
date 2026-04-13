@@ -97,3 +97,40 @@ async def test_save_and_reload_system_config(client):
     loaded = load_response.json()
     assert loaded["config"]["latitude"] == payload["latitude"]
     assert loaded["config"]["weather_refresh_seconds"] == 300
+
+
+@pytest.mark.asyncio
+async def test_get_default_gesture_config(client):
+    response = await client.get("/api/v1/config/gestures")
+    assert response.status_code == 200
+    data = response.json()
+    assert data["config"]["smoothing_alpha"] == 0.6
+    assert data["config"]["min_detection_points"] == 6
+
+
+@pytest.mark.asyncio
+async def test_save_and_reload_gesture_config(client):
+    payload = {
+        "smoothing_alpha": 0.75,
+        "max_trajectory_points": 96,
+        "cooldown_seconds": 1.5,
+        "swipe_threshold": 0.18,
+        "down_threshold": 0.16,
+        "swipe_min_span": 0.08,
+        "circle_sweep_min": 4.8,
+        "circle_radius_cv_max": 0.45,
+        "circle_min_radius": 0.02,
+        "min_detection_points": 8,
+    }
+
+    save_response = await client.put("/api/v1/config/gestures", json=payload)
+    assert save_response.status_code == 200
+    saved = save_response.json()
+    assert saved["config"]["smoothing_alpha"] == payload["smoothing_alpha"]
+    assert saved["config"]["updated_at"] is not None
+
+    load_response = await client.get("/api/v1/config/gestures")
+    assert load_response.status_code == 200
+    loaded = load_response.json()
+    assert loaded["config"]["cooldown_seconds"] == payload["cooldown_seconds"]
+    assert loaded["config"]["circle_min_radius"] == payload["circle_min_radius"]

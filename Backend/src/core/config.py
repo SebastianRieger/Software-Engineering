@@ -47,8 +47,11 @@ class Settings(BaseSettings):
     GESTURE_COOLDOWN_SECONDS: float = 1.0
     GESTURE_SWIPE_THRESHOLD: float = 0.12
     GESTURE_DOWN_THRESHOLD: float = 0.12
+    GESTURE_SWIPE_MIN_SPAN: float = 0.06
     GESTURE_CIRCLE_SWEEP_MIN: float = 4.5
     GESTURE_CIRCLE_RADIUS_CV_MAX: float = 0.5
+    GESTURE_CIRCLE_MIN_RADIUS: float = 0.01
+    GESTURE_MIN_DETECTION_POINTS: int = 6
     GESTURE_IDLE_SLEEP_SECONDS: float = 0.02
 
     # MQTT settings

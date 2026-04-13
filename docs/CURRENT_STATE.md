@@ -33,7 +33,7 @@ Sie zeigt die Richtung des Projekts, aber noch nicht die geplante Systemreife.
 - Wetter-Endpunkte mit Cache, Timeout-Konfiguration und Fallback auf gecachte Daten
 - Konfigurations-Endpunkte fuer Layout und generische Systemkonfiguration
 - System-Status-Endpunkt mit echten Backend-Metadaten
-- optionale Gesten-Domaene mit Hand-basiertem Adapter, Start/Stop-Session und Dev-Videoverarbeitung
+- Gesten-Backend mit MediaPipe-Hands-Adapter, handzentrierter Tracking-Basis, Start/Stop-Session und Dev-Videoverarbeitung
 - gemeinsamer WebSocket-Kanal fuer Realtime-Events wie `GestureDetected`
 - gruene Backend-Testbasis fuer Wetter, LED, Konfiguration und Gesten
 
@@ -41,10 +41,17 @@ Sie zeigt die Richtung des Projekts, aber noch nicht die geplante Systemreife.
 
 - Kalender- und Smart-Home-Endpunkte sind weiter Platzhalter
 - LED ist aktuell nur als in-memory Mock umgesetzt, nicht als echter Hardware-Adapter
-- Gestenerkennung ist noch nicht an das Frontend angebunden
+- Gestenerkennung ist backendseitig vorhanden, aber noch nicht an Frontend-Consumer oder fachliche UI-Kommandos angebunden
 - echte Kamera- und Raspberry-Pi-Verifikation fehlt in der automatisierten Testkette
 - es gibt noch keine Authentifizierung, keine Rollen und keine produktionsreife Secret-Verwaltung
 - Frontend deckt bisher nur Wetter und Konfiguration ab, nicht die restlichen Backend-Domaenen
+
+## Aktueller Gestenstand
+
+- Die Erkennung ist nicht mehr nur auf einen einzelnen Wrist-Punkt gedacht, sondern wird auf eine handzentrierte Tracking-Basis aus Wrist und palmnahen Handpunkten gehoben
+- Tuningparameter fuer Gesten koennen ueber die bestehende Konfigurationspersistenz backendseitig gehalten werden
+- Der Gestenservice liefert jetzt einen expliziteren Fehlerzustand fuer Laufzeitprobleme
+- Offene Kernluecken bleiben echte Hardwarevalidierung, weitere Gestentypen und spaetere Frontend-Nutzung der Events
 
 ## Integration
 

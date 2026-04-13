@@ -1,3 +1,5 @@
+from pathlib import Path
+
 from fastapi import APIRouter, Depends, HTTPException, Query
 
 from core.config import settings
@@ -60,7 +62,14 @@ async def process_video(
     if not settings.GESTURES_DEV_ENDPOINT_ENABLED:
         raise HTTPException(status_code=404, detail="Endpoint ist deaktiviert.")
 
+    resolved_path = Path(video_path).expanduser()
+    if not resolved_path.is_absolute():
+        raise HTTPException(
+            status_code=400,
+            detail="video_path muss ein absoluter Dateipfad sein.",
+        )
+
     try:
-        return service.process_video(video_path=video_path)
+        return service.process_video(video_path=str(resolved_path))
     except GestureServiceError as exc:
         raise HTTPException(status_code=exc.status_code, detail=str(exc)) from exc

@@ -7,6 +7,8 @@ from schemas.configuration import (
     SystemConfig,
     SystemConfigEnvelope,
 )
+from schemas.gestures import GestureConfig, GestureConfigEnvelope
+from services.gestures import gesture_service
 
 
 router = APIRouter()
@@ -50,3 +52,21 @@ async def save_system_config(
 ):
     saved_config = repository.save_system_config(config=config)
     return SystemConfigEnvelope(config=saved_config)
+
+
+@router.get("/gestures", response_model=GestureConfigEnvelope)
+async def get_gesture_config(
+    repository: ConfigRepository = Depends(get_config_repository),
+):
+    config = repository.get_gesture_config()
+    return GestureConfigEnvelope(config=config)
+
+
+@router.put("/gestures", response_model=GestureConfigEnvelope)
+async def save_gesture_config(
+    config: GestureConfig,
+    repository: ConfigRepository = Depends(get_config_repository),
+):
+    saved_config = repository.save_gesture_config(config=config)
+    gesture_service.reload_config()
+    return GestureConfigEnvelope(config=saved_config)

@@ -142,6 +142,26 @@ Der gemeinsame WebSocket-Kanal existiert jetzt als kleiner Realtime-Hub und wird
 - Frontend an den gemeinsamen WebSocket anbinden
 - LED und MQTT auf echte Adapter heben
 
+### Neues Arbeitspaket: Gestensteuerung haerten und erweitern
+
+### Ziel
+
+Die vorhandene Gestensteuerung backendseitig robuster, konfigurierbarer und fachlich praeziser machen, ohne dafuer auf teure Vollkoerpererkennung als Standardpfad umzusteigen.
+
+### Aufgaben
+
+- handzentrierte Tracking-Basis aus Wrist und palmnahen Landmarken statt reiner Wrist-Trajektorie etablieren
+- Runtime-Zustand und Fehlerverhalten im GestureService haerten
+- Gestentuning ueber persistierbare Backend-Konfiguration statt nur ueber ENV-Defaults steuern
+- Gestenstatus, Dev-Verarbeitung und Testfaelle erweitern
+
+### Done-Kriterien
+
+- bestehende Gestenerkennung bleibt regressionsfrei
+- Status- und Fehlerverhalten des GestureService sind nachvollziehbar
+- Gestenkonfiguration ist speicher- und ladbar
+- aktive Dokumentation beschreibt den echten Reifegrad der Gestenarchitektur
+
 ## Phase 5: High-Risk-Features isoliert angehen
 
 ### Ziel

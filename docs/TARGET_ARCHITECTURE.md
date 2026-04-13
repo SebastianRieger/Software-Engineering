@@ -19,6 +19,7 @@ Fuer ein kleines Team und den aktuellen Stand ist ein **modularer Monolith** die
 - Fallback und Cache fuer wetter- und kalendernahe Daten
 - Hardware und IoT nur ueber austauschbare Schnittstellen
 - einfache Architektur vor theoretischer Vollstaendigkeit
+- handzentrierte Gestenerkennung vor vollstaendiger Koerpererkennung
 
 ## Zielbild im Ueberblick
 
@@ -88,6 +89,13 @@ flowchart LR
 - optionale Features wie Gesten haengen sich als Adapter und fachliche Events an den gemeinsamen Backend-Kanal
 - FastAPI-Lifespan initialisiert optionale Hintergrundjobs sauber
 
+### Gestenarchitektur
+
+- der primäre Erkennungspfad basiert auf MediaPipe Hands und einer handzentrierten Repräsentation statt auf allgemeiner Body- oder Pose-Erkennung
+- Tracking und Klassifikation trennen Rohlandmarks, abgeleitete Bewegungsmerkmale und fachliche Gestenentscheidungen
+- Hand, Handgelenk und palmnahe Punkte bilden den Standardpfad; Ellenbogen- oder Armkontext bleibt optional fuer spaetere Erweiterungen
+- Gestenparameter sollen als persistierbare Backend-Konfiguration gepflegt werden und nicht nur als starre ENV-Werte existieren
+
 ### Konfigurationsdomänen
 
 - `layout` bleibt profilspezifisch und beschreibt Widget-Typ, Position und widgetbezogene Settings
@@ -125,7 +133,7 @@ Hardware wird als austauschbare Adapter modelliert:
 - `LedAdapter`
 - `MqttAdapter`
 - spaeter `VoiceAdapter`
-- `GestureAdapter` als optionaler Computer-Vision-Randadapter
+- `GestureAdapter` als optionaler Computer-Vision-Randadapter mit handzentrierter Landmark-Erkennung
 
 Solange keine stabile Hardwareintegration existiert, muessen Mock- oder Null-Adapter verfuegbar sein.
 

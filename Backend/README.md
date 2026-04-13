@@ -13,9 +13,9 @@ Die Kernpfade fuer Wetter, Konfiguration, Systemstatus und einen optionalen Gest
 - Wetter-Service mit OpenWeatherMap-Anbindung
 - SQLite fuer Wetter-Cache und Layout-Konfiguration
 - Repository- und Schema-Schicht fuer zentrale Backend-Daten
-- Konfigurations-Endpunkte unter `/api/v1/config/layout`
+- Konfigurations-Endpunkte unter `/api/v1/config/layout`, `/api/v1/config/system` und `/api/v1/config/gestures`
 - System-Status-Endpunkt mit Datenbank- und Cache-Metadaten
-- Gesten-Endpunkte unter `/api/v1/gestures` mit Start, Stop, Status und Debug-Frame
+- Gesten-Endpunkte unter `/api/v1/gestures` mit Start, Stop, Status, Debug-Frame und handzentrierter Tracking-Basis
 - gemeinsamer WebSocket-Endpunkt `/ws` fuer Realtime-Events wie `GestureDetected`
 - Testbasis fuer Wetter, LED, Konfiguration und Gesten
 
