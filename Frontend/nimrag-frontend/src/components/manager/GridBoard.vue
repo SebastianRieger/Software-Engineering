@@ -1,13 +1,11 @@
 <script setup lang="ts">
 import type { Component } from 'vue'
 
-import type { SystemConfig, WidgetConfig } from '../../types/config'
+import type { WidgetConfig } from '../../types/config'
 
 interface RenderedWidget extends WidgetConfig {
   component: Component | null
-  widgetProps?: {
-    initialSystemConfig?: SystemConfig | null
-  }
+  widgetProps?: Record<string, unknown>
 }
 
 defineProps<{

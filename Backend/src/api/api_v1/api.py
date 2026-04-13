@@ -1,6 +1,6 @@
 from fastapi import APIRouter
 
-from .endpoints import calendar, configuration, gestures, led, smart_home, system, weather
+from .endpoints import calendar, configuration, gestures, led, smart_home, system, voice, weather
 
 api_router = APIRouter()
 
@@ -12,3 +12,4 @@ api_router.include_router(calendar.router, prefix="/calendar", tags=["calendar"]
 api_router.include_router(led.router, prefix="/led", tags=["led"])
 api_router.include_router(smart_home.router, prefix="/smart-home", tags=["smart-home"])
 api_router.include_router(system.router, prefix="/system", tags=["system"])
+api_router.include_router(voice.router, prefix="/voice", tags=["voice"])

@@ -1,5 +1,19 @@
 export type WidgetSettings = Record<string, unknown>
 
+export type ClockTimeFormat = '12h' | '24h'
+export type ClockTimezoneMode = 'browser' | 'utc'
+
+export interface ClockWidgetSettings extends WidgetSettings {
+  format?: ClockTimeFormat
+  showSeconds?: boolean
+  timezoneMode?: ClockTimezoneMode
+}
+
+export interface HardwareStatusWidgetSettings extends WidgetSettings {
+  showPreview?: boolean
+  autoRefresh?: boolean
+}
+
 export interface WidgetConfig {
   widget_id: string
   widget_type: string

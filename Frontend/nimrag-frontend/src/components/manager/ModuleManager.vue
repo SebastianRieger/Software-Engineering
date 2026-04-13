@@ -3,8 +3,8 @@ import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
 import type { Component, ComponentPublicInstance } from 'vue'
 
 import { apiClient, ApiError } from '../../services/api'
-import type { LayoutConfig, SystemConfig, WidgetConfig } from '../../types/config'
-import { getWidgetDefinition } from '../../widgets/registry'
+import type { LayoutConfig, SystemConfig, WidgetConfig, WidgetSettings } from '../../types/config'
+import { getWidgetDefaultSettings, getWidgetDefinition } from '../../widgets/registry'
 import GridBoard from './GridBoard.vue'
 import ModuleShop from './ModuleShop.vue'
 
@@ -67,6 +67,27 @@ function buildLayoutPayload(): LayoutConfig {
   }
 }
 
+function updateWidgetSettings(widgetId: string, nextSettingsPatch: WidgetSettings): void {
+  const widgetEntry = Object.entries(activeWidgets.value).find(([, widget]) => widget.widget_id === widgetId)
+  if (!widgetEntry) {
+    return
+  }
+
+  const [cellId, widget] = widgetEntry
+  activeWidgets.value = {
+    ...activeWidgets.value,
+    [Number(cellId)]: {
+      ...widget,
+      settings: {
+        ...widget.settings,
+        ...nextSettingsPatch,
+      },
+    },
+  }
+
+  void persistLayout()
+}
+
 async function loadInitialState(): Promise<void> {
   isConfigLoading.value = true
   configError.value = null
@@ -114,20 +135,36 @@ const renderedWidgets = computed(() => {
   return Object.fromEntries(
     Object.values(activeWidgets.value).map((widget) => {
       const widgetDefinition = getWidgetDefinition(widget.widget_type)
+      let widgetProps: Record<string, unknown> | undefined
+
+      if (widget.widget_type === 'weather') {
+        widgetProps = { initialSystemConfig: systemConfig.value }
+      } else if (widget.widget_type === 'clock') {
+        widgetProps = {
+          widgetId: widget.widget_id,
+          settings: widget.settings,
+          updateSettings: (nextSettingsPatch: WidgetSettings) => updateWidgetSettings(widget.widget_id, nextSettingsPatch),
+        }
+      } else if (widget.widget_type === 'template') {
+        widgetProps = {
+          widgetId: widget.widget_id,
+          settings: widget.settings,
+          updateSettings: (nextSettingsPatch: WidgetSettings) => updateWidgetSettings(widget.widget_id, nextSettingsPatch),
+        }
+      }
+
       return [
         widget.cell_id,
         {
           ...widget,
           component: widgetDefinition?.component ?? null,
-          widgetProps: widget.widget_type === 'weather'
-            ? { initialSystemConfig: systemConfig.value }
-            : undefined,
+          widgetProps,
         },
       ]
     }),
   ) as Record<number, {
     component: Component | null
-    widgetProps?: { initialSystemConfig?: SystemConfig | null }
+    widgetProps?: Record<string, unknown>
   } & WidgetConfig>
 })
 
@@ -146,7 +183,9 @@ const handleAddWidget = ({ cellId, widgetType }: { cellId: number; widgetType: s
       widget_type: widgetType,
       cell_id: cellId,
       title: widgetDefinition.defaultTitle,
-      settings: existingWidget?.settings ?? {},
+      settings: existingWidget?.widget_type === widgetType
+        ? existingWidget.settings
+        : getWidgetDefaultSettings(widgetType),
     },
   }
 

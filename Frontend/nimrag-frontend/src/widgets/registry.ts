@@ -1,5 +1,6 @@
 import type { Component } from 'vue'
 
+import type { WidgetSettings } from '../types/config'
 import ClockWidget from '../components/widgets/ClockWidget.vue'
 import TemplateWidget from '../components/widgets/TemplateWidget.vue'
 import WeatherWidget from '../components/widgets/WeatherWidget.vue'
@@ -11,6 +12,7 @@ export interface WidgetDefinition {
   name: string
   defaultTitle: string
   component: Component
+  defaultSettings: WidgetSettings
 }
 
 const widgetDefinitions: WidgetDefinition[] = [
@@ -19,18 +21,28 @@ const widgetDefinitions: WidgetDefinition[] = [
     name: 'Clock',
     defaultTitle: 'Uhr',
     component: ClockWidget,
+    defaultSettings: {
+      format: '24h',
+      showSeconds: true,
+      timezoneMode: 'browser',
+    },
   },
   {
     type: 'weather',
     name: 'Weather',
     defaultTitle: 'Wetter',
     component: WeatherWidget,
+    defaultSettings: {},
   },
   {
     type: 'template',
-    name: 'Template',
-    defaultTitle: 'Template',
+    name: 'Hardware',
+    defaultTitle: 'Hardware',
     component: TemplateWidget,
+    defaultSettings: {
+      showPreview: false,
+      autoRefresh: true,
+    },
   },
 ]
 
@@ -44,4 +56,8 @@ export function listWidgetDefinitions(): WidgetDefinition[] {
 
 export function getWidgetDefinition(widgetType: string): WidgetDefinition | undefined {
   return widgetDefinitionMap.get(widgetType as WidgetType)
+}
+
+export function getWidgetDefaultSettings(widgetType: string): WidgetSettings {
+  return { ...(getWidgetDefinition(widgetType)?.defaultSettings ?? {}) }
 }

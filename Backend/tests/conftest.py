@@ -11,12 +11,15 @@ if src_path not in sys.path:
 
 from api.api_v1.endpoints.configuration import get_config_repository
 from api.api_v1.endpoints.gestures import get_gesture_service
+from api.api_v1.endpoints.led import get_led_service
+from api.api_v1.endpoints.voice import get_voice_service
 from api.api_v1.endpoints.weather import get_weather_service
 from core.config import settings
 from core.database import init_db
 from main import app
 from repositories.config import ConfigRepository
 from services.gestures import GestureServiceError
+from services.voice import VoiceServiceError
 
 
 @pytest_asyncio.fixture
@@ -79,24 +82,79 @@ def mock_led_service():
     class MockLEDService:
         def __init__(self):
             self.state = {
-                "red": 0,
-                "green": 0,
-                "blue": 0,
-                "brightness": 1.0
+                "red": 0.0,
+                "green": 0.0,
+                "blue": 0.0,
+                "brightness": 1.0,
+                "available": True,
+                "mode": "mock",
+                "last_error": None,
             }
-        
+
+        def get_status(self):
+            return {
+                "message": "LED status",
+                **self.state,
+            }
+
         def set_color(self, rgb):
             r, g, b = rgb
             self.state["red"] = r
             self.state["green"] = g
             self.state["blue"] = b
-            return True
-        
+            return {
+                "message": "LED color set",
+                **self.state,
+            }
+
         def set_brightness(self, value):
             self.state["brightness"] = value
-            return True
+            return {
+                "message": "LED brightness set",
+                **self.state,
+            }
+
+        def shutdown(self):
+            return None
 
     return MockLEDService()
+
+
+@pytest.fixture
+def mock_voice_service():
+    class MockVoiceService:
+        def __init__(self):
+            self.state = {
+                "message": "Voice status",
+                "available": False,
+                "running": False,
+                "mode": "skeleton",
+                "provider": "vosk",
+                "device_index": None,
+                "last_command": None,
+                "last_command_at": None,
+                "last_error": "Mikrofonpfad ist vorbereitet, aber noch nicht implementiert.",
+            }
+
+        def get_status(self):
+            return dict(self.state)
+
+        def start(self, device_index: int = 0):
+            self.state["device_index"] = device_index
+            raise VoiceServiceError("Mikrofonpfad ist vorbereitet, aber noch nicht implementiert.", status_code=503)
+
+        def stop(self):
+            self.state["running"] = False
+            self.state["device_index"] = None
+            return {
+                **self.state,
+                "message": "Voice stopped",
+            }
+
+        def shutdown(self):
+            return None
+
+    return MockVoiceService()
 
 
 @pytest.fixture
@@ -215,6 +273,26 @@ def override_gesture_dependency(mock_gesture_service):
     app.dependency_overrides[get_gesture_service] = _override_gesture_service
     yield mock_gesture_service
     app.dependency_overrides.pop(get_gesture_service, None)
+
+
+@pytest.fixture
+def override_led_dependency(mock_led_service):
+    async def _override_led_service():
+        return mock_led_service
+
+    app.dependency_overrides[get_led_service] = _override_led_service
+    yield mock_led_service
+    app.dependency_overrides.pop(get_led_service, None)
+
+
+@pytest.fixture
+def override_voice_dependency(mock_voice_service):
+    async def _override_voice_service():
+        return mock_voice_service
+
+    app.dependency_overrides[get_voice_service] = _override_voice_service
+    yield mock_voice_service
+    app.dependency_overrides.pop(get_voice_service, None)
 
 
 @pytest.fixture

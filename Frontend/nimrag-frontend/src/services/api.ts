@@ -1,5 +1,12 @@
 import { buildApiUrl } from './apiConfig'
 import type { LayoutConfig, LayoutConfigEnvelope, SystemConfig, SystemConfigEnvelope } from '../types/config'
+import type {
+  GestureFrameResponse,
+  GestureStatusResponse,
+  LEDStateResponse,
+  SystemStatusResponse,
+  VoiceStatusResponse,
+} from '../types/hardware'
 import type { WeatherCurrentResponse } from '../types/weather'
 
 type QueryValue = string | number | boolean | null | undefined
@@ -76,5 +83,52 @@ export const apiClient = {
 
   getCurrentWeather(params?: { lat?: number; lon?: number }): Promise<WeatherCurrentResponse> {
     return requestJson<WeatherCurrentResponse>(`/weather/current${buildQuery(params ?? {})}`)
+  },
+
+  getSystemStatus(): Promise<SystemStatusResponse> {
+    return requestJson<SystemStatusResponse>('/system/status')
+  },
+
+  getGestureStatus(): Promise<GestureStatusResponse> {
+    return requestJson<GestureStatusResponse>('/gestures/status')
+  },
+
+  startGestures(cameraIndex = 0): Promise<GestureStatusResponse> {
+    return requestJson<GestureStatusResponse>('/gestures/start', {
+      method: 'POST',
+      body: JSON.stringify({ camera_index: cameraIndex }),
+    })
+  },
+
+  stopGestures(): Promise<GestureStatusResponse> {
+    return requestJson<GestureStatusResponse>('/gestures/stop', {
+      method: 'POST',
+    })
+  },
+
+  getGestureFrame(): Promise<GestureFrameResponse> {
+    return requestJson<GestureFrameResponse>('/gestures/frame')
+  },
+
+  getLedStatus(): Promise<LEDStateResponse> {
+    return requestJson<LEDStateResponse>('/led/status')
+  },
+
+  setLedColor(payload: { red: number; green: number; blue: number }): Promise<LEDStateResponse> {
+    return requestJson<LEDStateResponse>('/led/color', {
+      method: 'POST',
+      body: JSON.stringify(payload),
+    })
+  },
+
+  setLedBrightness(brightness: number): Promise<LEDStateResponse> {
+    return requestJson<LEDStateResponse>('/led/brightness', {
+      method: 'POST',
+      body: JSON.stringify({ brightness }),
+    })
+  },
+
+  getVoiceStatus(): Promise<VoiceStatusResponse> {
+    return requestJson<VoiceStatusResponse>('/voice/status')
   },
 }

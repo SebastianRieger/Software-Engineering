@@ -13,6 +13,8 @@ from core.database import init_db
 from core.logging import configure_logging
 from core.realtime import realtime_hub
 from services.gestures import gesture_service
+from services.led import led_service
+from services.voice import voice_service
 
 
 logger = logging.getLogger(__name__)
@@ -24,9 +26,13 @@ async def lifespan(app: FastAPI):
     init_db()
     app.state.started_at = datetime.now(timezone.utc)
     realtime_hub.bind_loop(asyncio.get_running_loop())
+    led_service.startup()
+    voice_service.startup()
     logger.info("Nimrag backend started")
     yield
     gesture_service.shutdown()
+    led_service.shutdown()
+    voice_service.shutdown()
     logger.info("Nimrag backend stopped")
 
 
