@@ -19,6 +19,8 @@ class GestureStatusResponse(BaseModel):
     camera_index: int | None = None
     last_gesture: GestureType | None = None
     last_gesture_at: datetime | None = None
+    last_confidence: float | None = Field(default=None, ge=0, le=1)
+    last_tracking_source: str | None = None
     debug_frame_available: bool = False
     last_error: str | None = None
 
@@ -32,6 +34,8 @@ class GestureEventPayload(BaseModel):
     timestamp: datetime
     source: Literal["camera"] = "camera"
     hand: str | None = None
+    confidence: float | None = Field(default=None, ge=0, le=1)
+    tracking_source: str | None = None
 
 
 class GestureEventEnvelope(BaseModel):
@@ -43,6 +47,8 @@ class GestureVideoProcessingResponse(BaseModel):
     gestures: list[GestureType] = Field(default_factory=list)
     frames_processed: int = Field(ge=0)
     trajectory_points: int = Field(ge=0)
+    confidence: float | None = Field(default=None, ge=0, le=1)
+    tracking_source: str | None = None
 
 
 class GestureConfig(BaseModel):
@@ -56,6 +62,7 @@ class GestureConfig(BaseModel):
     circle_radius_cv_max: float = Field(default=settings.GESTURE_CIRCLE_RADIUS_CV_MAX, gt=0)
     circle_min_radius: float = Field(default=settings.GESTURE_CIRCLE_MIN_RADIUS, gt=0, le=1)
     min_detection_points: int = Field(default=settings.GESTURE_MIN_DETECTION_POINTS, ge=4, le=128)
+    min_confidence: float = Field(default=settings.GESTURE_MIN_CONFIDENCE, ge=0, le=1)
     updated_at: datetime | None = None
 
 

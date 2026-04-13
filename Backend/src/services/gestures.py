@@ -35,6 +35,30 @@ GesturePoint = tuple[float, float]
 GestureLandmarks = dict[str, GesturePoint]
 
 
+@dataclass(slots=True)
+class GestureFeatures:
+    dx_total: float
+    dy_total: float
+    span_x: float
+    span_y: float
+    radius_mean: float | None
+    radius_cv: float | None
+    total_sweep: float | None
+
+
+@dataclass(slots=True)
+class GestureDetectionCandidate:
+    gesture: GestureName
+    confidence: float
+
+
+@dataclass(slots=True)
+class GestureDetectionResult:
+    gesture: GestureName
+    confidence: float
+    tracking_source: str | None = None
+
+
 HAND_LANDMARK_NAMES = {
     "wrist": 0,
     "thumb_tip": 4,
@@ -93,9 +117,10 @@ class GestureAdapter(Protocol):
     def process_video(
         self,
         video_path: str,
-        classifier: Callable[[list[tuple[float, float]]], GestureName | None],
+        classifier: Callable[[list[tuple[float, float]]], GestureDetectionResult | None],
         smoothing_alpha: float,
-    ) -> dict[str, int | list[GestureName]]:
+        tracking_source: str,
+    ) -> dict[str, int | list[GestureName] | float | str | None]:
         ...
 
 
@@ -158,6 +183,25 @@ def detect_gesture_from_trajectory(
     swipe_min_span: float = settings.GESTURE_SWIPE_MIN_SPAN,
     circle_min_radius: float = settings.GESTURE_CIRCLE_MIN_RADIUS,
 ) -> GestureName | None:
+    result = detect_gesture_with_confidence(
+        trajectory=trajectory,
+        swipe_threshold=swipe_threshold,
+        down_threshold=down_threshold,
+        circle_sweep_min=circle_sweep_min,
+        circle_cv_max=circle_cv_max,
+        min_detection_points=min_detection_points,
+        swipe_min_span=swipe_min_span,
+        circle_min_radius=circle_min_radius,
+        min_confidence=0.0,
+    )
+    return result.gesture if result is not None else None
+
+
+def extract_gesture_features(
+    trajectory: list[tuple[float, float]],
+    min_detection_points: int,
+    circle_min_radius: float,
+) -> GestureFeatures | None:
     if len(trajectory) < min_detection_points:
         return None
 
@@ -169,47 +213,137 @@ def detect_gesture_from_trajectory(
     span_x = max(xs) - min(xs)
     span_y = max(ys) - min(ys)
 
-    if (
-        abs(dx_total) > swipe_threshold
-        and abs(dx_total) > abs(dy_total) * 1.5
-        and span_x > swipe_min_span
-    ):
-        return "swipe_right" if dx_total > 0 else "swipe_left"
-
-    if (
-        dy_total > down_threshold
-        and dy_total > abs(dx_total) * 1.2
-        and span_y > swipe_min_span
-    ):
-        return "swipe_down"
-
     center_x = mean(xs)
     center_y = mean(ys)
     vectors = [(x - center_x, y - center_y) for x, y in trajectory]
     radii = [math.hypot(x, y) for x, y in vectors]
 
     if not radii or mean(radii) < circle_min_radius:
+        radius_mean = None
+        radius_cv = None
+        total_sweep = None
+    else:
+        angles = [math.atan2(y, x) for x, y in vectors]
+        total_sweep = 0.0
+        previous_angle = angles[0]
+        for angle in angles[1:]:
+            delta = angle - previous_angle
+            while delta > math.pi:
+                delta -= 2 * math.pi
+            while delta < -math.pi:
+                delta += 2 * math.pi
+            total_sweep += delta
+            previous_angle = angle
+
+        radius_mean = mean(radii)
+        radius_cv = pstdev(radii) / (radius_mean + 1e-6)
+
+    return GestureFeatures(
+        dx_total=dx_total,
+        dy_total=dy_total,
+        span_x=span_x,
+        span_y=span_y,
+        radius_mean=radius_mean,
+        radius_cv=radius_cv,
+        total_sweep=total_sweep,
+    )
+
+
+def detect_gesture_candidates(
+    features: GestureFeatures,
+    swipe_threshold: float,
+    down_threshold: float,
+    circle_sweep_min: float,
+    circle_cv_max: float,
+    swipe_min_span: float,
+) -> list[GestureDetectionCandidate]:
+    candidates: list[GestureDetectionCandidate] = []
+
+    horizontal_margin = abs(features.dx_total) - swipe_threshold
+    if (
+        horizontal_margin > 0
+        and abs(features.dx_total) > abs(features.dy_total) * 1.5
+        and features.span_x > swipe_min_span
+    ):
+        gesture = "swipe_right" if features.dx_total > 0 else "swipe_left"
+        confidence = min(1.0, horizontal_margin / max(swipe_threshold, 1e-6))
+        candidates.append(GestureDetectionCandidate(gesture=gesture, confidence=confidence))
+
+    vertical_margin = features.dy_total - down_threshold
+    if (
+        vertical_margin > 0
+        and features.dy_total > abs(features.dx_total) * 1.2
+        and features.span_y > swipe_min_span
+    ):
+        confidence = min(1.0, vertical_margin / max(down_threshold, 1e-6))
+        candidates.append(GestureDetectionCandidate(gesture="swipe_down", confidence=confidence))
+
+    if (
+        features.radius_mean is not None
+        and features.radius_cv is not None
+        and features.total_sweep is not None
+        and abs(features.total_sweep) > circle_sweep_min
+        and features.radius_cv < circle_cv_max
+    ):
+        sweep_score = min(1.0, abs(features.total_sweep) / max(circle_sweep_min, 1e-6))
+        radius_score = min(1.0, circle_cv_max / max(features.radius_cv, 1e-6))
+        confidence = min(1.0, (sweep_score + radius_score) / 2)
+        candidates.append(GestureDetectionCandidate(gesture="circle", confidence=confidence))
+
+    return candidates
+
+
+def select_best_gesture_candidate(
+    candidates: list[GestureDetectionCandidate],
+    min_confidence: float,
+) -> GestureDetectionCandidate | None:
+    if not candidates:
         return None
 
-    angles = [math.atan2(y, x) for x, y in vectors]
-    total_sweep = 0.0
-    previous_angle = angles[0]
-    for angle in angles[1:]:
-        delta = angle - previous_angle
-        while delta > math.pi:
-            delta -= 2 * math.pi
-        while delta < -math.pi:
-            delta += 2 * math.pi
-        total_sweep += delta
-        previous_angle = angle
+    best_candidate = max(candidates, key=lambda candidate: candidate.confidence)
+    if best_candidate.confidence < min_confidence:
+        return None
 
-    radius_mean = mean(radii)
-    radius_cv = pstdev(radii) / (radius_mean + 1e-6)
+    return best_candidate
 
-    if abs(total_sweep) > circle_sweep_min and radius_cv < circle_cv_max:
-        return "circle"
 
-    return None
+def detect_gesture_with_confidence(
+    trajectory: list[tuple[float, float]],
+    swipe_threshold: float,
+    down_threshold: float,
+    circle_sweep_min: float,
+    circle_cv_max: float,
+    min_detection_points: int = settings.GESTURE_MIN_DETECTION_POINTS,
+    swipe_min_span: float = settings.GESTURE_SWIPE_MIN_SPAN,
+    circle_min_radius: float = settings.GESTURE_CIRCLE_MIN_RADIUS,
+    min_confidence: float = settings.GESTURE_MIN_CONFIDENCE,
+    tracking_source: str | None = None,
+) -> GestureDetectionResult | None:
+    features = extract_gesture_features(
+        trajectory=trajectory,
+        min_detection_points=min_detection_points,
+        circle_min_radius=circle_min_radius,
+    )
+    if features is None:
+        return None
+
+    candidates = detect_gesture_candidates(
+        features=features,
+        swipe_threshold=swipe_threshold,
+        down_threshold=down_threshold,
+        circle_sweep_min=circle_sweep_min,
+        circle_cv_max=circle_cv_max,
+        swipe_min_span=swipe_min_span,
+    )
+    best_candidate = select_best_gesture_candidate(candidates, min_confidence)
+    if best_candidate is None:
+        return None
+
+    return GestureDetectionResult(
+        gesture=best_candidate.gesture,
+        confidence=best_candidate.confidence,
+        tracking_source=tracking_source,
+    )
 
 
 class MediaPipeHandsAdapter:
@@ -274,9 +408,10 @@ class MediaPipeHandsAdapter:
     def process_video(
         self,
         video_path: str,
-        classifier: Callable[[list[tuple[float, float]]], GestureName | None],
+        classifier: Callable[[list[tuple[float, float]]], GestureDetectionResult | None],
         smoothing_alpha: float,
-    ) -> dict[str, int | list[GestureName]]:
+        tracking_source: str,
+    ) -> dict[str, int | list[GestureName] | float | str | None]:
         if not self.is_available():
             raise GestureAdapterError(
                 "MediaPipe Hands oder OpenCV ist in dieser Umgebung nicht verfuegbar."
@@ -314,12 +449,14 @@ class MediaPipeHandsAdapter:
                 )
                 trajectory.append(smoothed_point)
 
-            gesture = classifier(trajectory)
-            gestures = [gesture] if gesture is not None else []
+            detection = classifier(trajectory)
+            gestures = [detection.gesture] if detection is not None else []
             return {
                 "gestures": gestures,
                 "frames_processed": frame_count,
                 "trajectory_points": len(trajectory),
+                "confidence": detection.confidence if detection is not None else None,
+                "tracking_source": detection.tracking_source if detection is not None else tracking_source,
             }
         finally:
             hands.close()
@@ -377,8 +514,10 @@ class GestureService:
         self.trajectory: list[tuple[float, float]] = []
         self.last_gesture: GestureName | None = None
         self.last_gesture_at: datetime | None = None
+        self.last_confidence: float | None = None
         self.last_gesture_time_by_name: dict[str, float] = {}
         self.last_hand: str | None = None
+        self.last_tracking_source: str | None = None
         self.last_error: str | None = None
 
     def is_available(self) -> bool:
@@ -467,6 +606,8 @@ class GestureService:
                 "camera_index": self.camera_index,
                 "last_gesture": self.last_gesture,
                 "last_gesture_at": self.last_gesture_at,
+                "last_confidence": self.last_confidence,
+                "last_tracking_source": self.last_tracking_source,
                 "debug_frame_available": self.latest_frame_data_url is not None,
                 "last_error": self.last_error,
             }
@@ -497,8 +638,12 @@ class GestureService:
                 self.last_error = None
             return adapter.process_video(
                 video_path,
-                classifier=self._detect_gesture,
+                classifier=lambda trajectory: self._detect_gesture(
+                    trajectory,
+                    tracking_source="palm_center",
+                ),
                 smoothing_alpha=active_config.smoothing_alpha,
+                tracking_source="palm_center",
             )
         except GestureAdapterError as exc:
             with self._lock:
@@ -549,18 +694,30 @@ class GestureService:
                         self.trajectory.pop(0)
                     trajectory_snapshot = list(self.trajectory)
 
-                gesture = self._detect_gesture(trajectory_snapshot)
-                if gesture is not None and self._cooldown_elapsed(gesture):
+                detection = self._detect_gesture(
+                    trajectory_snapshot,
+                    tracking_source=observation.tracking_source,
+                )
+                if detection is not None and self._cooldown_elapsed(detection.gesture):
                     detected_at = datetime.now(timezone.utc)
                     with self._lock:
-                        self.last_gesture = gesture
+                        self.last_gesture = detection.gesture
                         self.last_gesture_at = detected_at
-                    self._publish_gesture_event(gesture=gesture, hand=observation.hand)
+                        self.last_confidence = detection.confidence
+                        self.last_tracking_source = detection.tracking_source
+                    self._publish_gesture_event(
+                        detection=detection,
+                        hand=observation.hand,
+                    )
         finally:
             with self._lock:
                 self.running = False
 
-    def _publish_gesture_event(self, gesture: GestureName, hand: str | None) -> None:
+    def _publish_gesture_event(
+        self,
+        detection: GestureDetectionResult,
+        hand: str | None,
+    ) -> None:
         with self._lock:
             last_gesture_at = self.last_gesture_at
 
@@ -571,10 +728,12 @@ class GestureService:
             {
                 "eventType": "GestureDetected",
                 "payload": {
-                    "gesture": gesture,
+                    "gesture": detection.gesture,
                     "timestamp": last_gesture_at.isoformat(),
                     "source": "camera",
                     "hand": hand,
+                    "confidence": detection.confidence,
+                    "tracking_source": detection.tracking_source,
                 },
             }
         )
@@ -593,11 +752,12 @@ class GestureService:
     def _detect_gesture(
         self,
         trajectory: list[tuple[float, float]],
-    ) -> GestureName | None:
+        tracking_source: str | None = None,
+    ) -> GestureDetectionResult | None:
         with self._lock:
             active_config = self._active_config
 
-        return detect_gesture_from_trajectory(
+        return detect_gesture_with_confidence(
             trajectory=trajectory,
             swipe_threshold=active_config.swipe_threshold,
             down_threshold=active_config.down_threshold,
@@ -606,6 +766,8 @@ class GestureService:
             min_detection_points=active_config.min_detection_points,
             swipe_min_span=active_config.swipe_min_span,
             circle_min_radius=active_config.circle_min_radius,
+            min_confidence=active_config.min_confidence,
+            tracking_source=tracking_source,
         )
 
     def _update_preview(self, preview_bytes: bytes | None) -> None:
@@ -622,7 +784,9 @@ class GestureService:
         self.trajectory = []
         self.last_gesture = None
         self.last_gesture_at = None
+        self.last_confidence = None
         self.last_hand = None
+        self.last_tracking_source = None
         self.last_error = None
         self.last_gesture_time_by_name = {}
 

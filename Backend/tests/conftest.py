@@ -144,10 +144,13 @@ def mock_gesture_service():
             return self.frame
 
         def process_video(self, video_path: str):
+            _ = video_path
             return {
                 "gestures": ["circle"],
                 "frames_processed": 42,
                 "trajectory_points": 21,
+                "confidence": 0.91,
+                "tracking_source": "palm_center",
             }
 
     return MockGestureService()

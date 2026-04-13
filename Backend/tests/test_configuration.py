@@ -121,6 +121,7 @@ async def test_save_and_reload_gesture_config(client):
         "circle_radius_cv_max": 0.45,
         "circle_min_radius": 0.02,
         "min_detection_points": 8,
+        "min_confidence": 0.7,
     }
 
     save_response = await client.put("/api/v1/config/gestures", json=payload)
@@ -134,3 +135,4 @@ async def test_save_and_reload_gesture_config(client):
     loaded = load_response.json()
     assert loaded["config"]["cooldown_seconds"] == payload["cooldown_seconds"]
     assert loaded["config"]["circle_min_radius"] == payload["circle_min_radius"]
+    assert loaded["config"]["min_confidence"] == payload["min_confidence"]

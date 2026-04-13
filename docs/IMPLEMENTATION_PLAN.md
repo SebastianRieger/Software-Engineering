@@ -154,12 +154,14 @@ Die vorhandene Gestensteuerung backendseitig robuster, konfigurierbarer und fach
 - Runtime-Zustand und Fehlerverhalten im GestureService haerten
 - Gestentuning ueber persistierbare Backend-Konfiguration statt nur ueber ENV-Defaults steuern
 - Gestenstatus, Dev-Verarbeitung und Testfaelle erweitern
+- Klassifikation in Features, Kandidaten und Metadaten zerlegen, damit weitere Gestentypen spaeter nicht wieder in monolithischer Heuristik enden
 
 ### Done-Kriterien
 
 - bestehende Gestenerkennung bleibt regressionsfrei
 - Status- und Fehlerverhalten des GestureService sind nachvollziehbar
 - Gestenkonfiguration ist speicher- und ladbar
+- Ereignisse und Status tragen fachlich brauchbare Metadaten wie Confidence und Tracking-Quelle
 - aktive Dokumentation beschreibt den echten Reifegrad der Gestenarchitektur
 
 ## Phase 5: High-Risk-Features isoliert angehen

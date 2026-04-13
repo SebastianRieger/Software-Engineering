@@ -13,12 +13,17 @@ from main import websocket_endpoint
 from services.gestures import (
     GestureObservation,
     GestureAdapterError,
+    GestureConfig,
     GestureService,
     GestureServiceError,
     build_hand_landmark_map,
     compute_hand_tracking_point,
+    detect_gesture_candidates,
+    detect_gesture_with_confidence,
     detect_gesture_from_trajectory,
     estimate_hand_size,
+    extract_gesture_features,
+    select_best_gesture_candidate,
 )
 
 
@@ -31,6 +36,14 @@ class CapturingRealtimeHub:
         future = Future()
         future.set_result(None)
         return future
+
+
+class StaticGestureConfigRepository:
+    def __init__(self, config: GestureConfig | None = None):
+        self.config = config or GestureConfig()
+
+    def get_gesture_config(self):
+        return self.config
 
 
 class SequenceAdapter:
@@ -61,7 +74,7 @@ class SequenceAdapter:
     def close(self):
         self.closed = True
 
-    def process_video(self, _video_path, classifier, _smoothing_alpha):
+    def process_video(self, _video_path, classifier, _smoothing_alpha, tracking_source):
         trajectory = [
             (0.5, 0.2),
             (0.5, 0.3),
@@ -70,11 +83,13 @@ class SequenceAdapter:
             (0.5, 0.6),
             (0.5, 0.8),
         ]
-        gesture = classifier(trajectory)
+        detection = classifier(trajectory)
         return {
-            "gestures": [gesture] if gesture else [],
+            "gestures": [detection.gesture] if detection else [],
             "frames_processed": 6,
             "trajectory_points": len(trajectory),
+            "confidence": detection.confidence if detection else None,
+            "tracking_source": detection.tracking_source if detection else tracking_source,
         }
 
 
@@ -219,6 +234,83 @@ def test_detect_short_trajectory_returns_none():
     assert gesture is None
 
 
+def test_extract_gesture_features_returns_expected_metrics():
+    features = extract_gesture_features(
+        trajectory=[
+            (0.2, 0.5),
+            (0.3, 0.5),
+            (0.4, 0.5),
+            (0.5, 0.5),
+            (0.6, 0.5),
+            (0.8, 0.5),
+        ],
+        min_detection_points=6,
+        circle_min_radius=0.01,
+    )
+
+    assert features is not None
+    assert features.dx_total == pytest.approx(0.6)
+    assert features.dy_total == pytest.approx(0.0)
+    assert features.span_x == pytest.approx(0.6)
+
+
+def test_detect_gesture_candidates_prefers_strong_horizontal_swipe():
+    features = extract_gesture_features(
+        trajectory=[
+            (0.2, 0.5),
+            (0.3, 0.5),
+            (0.4, 0.5),
+            (0.5, 0.5),
+            (0.6, 0.5),
+            (0.8, 0.5),
+        ],
+        min_detection_points=6,
+        circle_min_radius=0.01,
+    )
+    assert features is not None
+
+    candidates = detect_gesture_candidates(
+        features=features,
+        swipe_threshold=settings.GESTURE_SWIPE_THRESHOLD,
+        down_threshold=settings.GESTURE_DOWN_THRESHOLD,
+        circle_sweep_min=settings.GESTURE_CIRCLE_SWEEP_MIN,
+        circle_cv_max=settings.GESTURE_CIRCLE_RADIUS_CV_MAX,
+        swipe_min_span=settings.GESTURE_SWIPE_MIN_SPAN,
+    )
+    best = select_best_gesture_candidate(candidates, min_confidence=0.0)
+
+    assert best is not None
+    assert best.gesture == "swipe_right"
+    assert best.confidence > 0.9
+
+
+def test_detect_gesture_with_confidence_returns_metadata():
+    detection = detect_gesture_with_confidence(
+        trajectory=[
+            (0.2, 0.5),
+            (0.3, 0.5),
+            (0.4, 0.5),
+            (0.5, 0.5),
+            (0.6, 0.5),
+            (0.8, 0.5),
+        ],
+        swipe_threshold=settings.GESTURE_SWIPE_THRESHOLD,
+        down_threshold=settings.GESTURE_DOWN_THRESHOLD,
+        circle_sweep_min=settings.GESTURE_CIRCLE_SWEEP_MIN,
+        circle_cv_max=settings.GESTURE_CIRCLE_RADIUS_CV_MAX,
+        min_detection_points=settings.GESTURE_MIN_DETECTION_POINTS,
+        swipe_min_span=settings.GESTURE_SWIPE_MIN_SPAN,
+        circle_min_radius=settings.GESTURE_CIRCLE_MIN_RADIUS,
+        min_confidence=0.1,
+        tracking_source="palm_center",
+    )
+
+    assert detection is not None
+    assert detection.gesture == "swipe_right"
+    assert detection.confidence > 0.9
+    assert detection.tracking_source == "palm_center"
+
+
 def test_build_hand_landmark_map_and_tracking_point():
     landmarks = build_hand_landmark_map(FakeHandLandmarks())
     tracking_point = compute_hand_tracking_point(landmarks)
@@ -257,7 +349,11 @@ def test_detect_noise_returns_none():
 def test_start_and_stop_session():
     hub = CapturingRealtimeHub()
     adapter = SequenceAdapter(observations=[GestureObservation(point=None)])
-    service = GestureService(adapter_factory=lambda: adapter, realtime=hub)
+    service = GestureService(
+        adapter_factory=lambda: adapter,
+        realtime=hub,
+        config_repository_factory=lambda: StaticGestureConfigRepository(),
+    )
 
     started = service.start(camera_index=2)
     assert started["running"] is True
@@ -273,6 +369,7 @@ def test_unavailable_adapter_raises_service_error():
     service = GestureService(
         adapter_factory=lambda: SequenceAdapter(available=False),
         realtime=CapturingRealtimeHub(),
+        config_repository_factory=lambda: StaticGestureConfigRepository(),
     )
 
     with pytest.raises(GestureServiceError) as exc_info:
@@ -285,6 +382,7 @@ def test_service_reports_last_error_after_adapter_failure():
     service = GestureService(
         adapter_factory=lambda: FailingAdapter(observations=[]),
         realtime=CapturingRealtimeHub(),
+        config_repository_factory=lambda: StaticGestureConfigRepository(),
     )
 
     started = service.start(camera_index=0)
@@ -294,25 +392,53 @@ def test_service_reports_last_error_after_adapter_failure():
     assert service.get_status()["last_error"] == "camera read failed"
 
 
-def test_cooldown_prevents_spam_and_emits_event():
+def test_service_detects_and_exposes_confidence_metadata():
     hub = CapturingRealtimeHub()
     observations = [
-        GestureObservation(point=(0.2, 0.5), hand="right", preview_bytes=b"frame"),
-        GestureObservation(point=(0.3, 0.5), hand="right", preview_bytes=b"frame"),
-        GestureObservation(point=(0.4, 0.5), hand="right", preview_bytes=b"frame"),
-        GestureObservation(point=(0.5, 0.5), hand="right", preview_bytes=b"frame"),
-        GestureObservation(point=(0.6, 0.5), hand="right", preview_bytes=b"frame"),
-        GestureObservation(point=(0.8, 0.5), hand="right", preview_bytes=b"frame"),
-        GestureObservation(point=(0.2, 0.5), hand="right", preview_bytes=b"frame"),
-        GestureObservation(point=(0.3, 0.5), hand="right", preview_bytes=b"frame"),
-        GestureObservation(point=(0.4, 0.5), hand="right", preview_bytes=b"frame"),
-        GestureObservation(point=(0.5, 0.5), hand="right", preview_bytes=b"frame"),
-        GestureObservation(point=(0.6, 0.5), hand="right", preview_bytes=b"frame"),
-        GestureObservation(point=(0.8, 0.5), hand="right", preview_bytes=b"frame"),
+        GestureObservation(point=(0.2, 0.5), hand="right", tracking_source="palm_center"),
+        GestureObservation(point=(0.3, 0.5), hand="right", tracking_source="palm_center"),
+        GestureObservation(point=(0.4, 0.5), hand="right", tracking_source="palm_center"),
+        GestureObservation(point=(0.5, 0.5), hand="right", tracking_source="palm_center"),
+        GestureObservation(point=(0.6, 0.5), hand="right", tracking_source="palm_center"),
+        GestureObservation(point=(0.8, 0.5), hand="right", tracking_source="palm_center"),
     ]
     service = GestureService(
         adapter_factory=lambda: SequenceAdapter(observations=observations),
         realtime=hub,
+        config_repository_factory=lambda: StaticGestureConfigRepository(),
+    )
+
+    service.start()
+    assert wait_until(lambda: len(hub.messages) >= 1)
+    status = service.get_status()
+    service.stop()
+
+    assert status["last_gesture"] == "swipe_right"
+    assert status["last_confidence"] is not None
+    assert status["last_confidence"] > 0.9
+    assert status["last_tracking_source"] == "palm_center"
+
+
+def test_cooldown_prevents_spam_and_emits_event():
+    hub = CapturingRealtimeHub()
+    observations = [
+        GestureObservation(point=(0.2, 0.5), hand="right", preview_bytes=b"frame", tracking_source="palm_center"),
+        GestureObservation(point=(0.3, 0.5), hand="right", preview_bytes=b"frame", tracking_source="palm_center"),
+        GestureObservation(point=(0.4, 0.5), hand="right", preview_bytes=b"frame", tracking_source="palm_center"),
+        GestureObservation(point=(0.5, 0.5), hand="right", preview_bytes=b"frame", tracking_source="palm_center"),
+        GestureObservation(point=(0.6, 0.5), hand="right", preview_bytes=b"frame", tracking_source="palm_center"),
+        GestureObservation(point=(0.8, 0.5), hand="right", preview_bytes=b"frame", tracking_source="palm_center"),
+        GestureObservation(point=(0.2, 0.5), hand="right", preview_bytes=b"frame", tracking_source="palm_center"),
+        GestureObservation(point=(0.3, 0.5), hand="right", preview_bytes=b"frame", tracking_source="palm_center"),
+        GestureObservation(point=(0.4, 0.5), hand="right", preview_bytes=b"frame", tracking_source="palm_center"),
+        GestureObservation(point=(0.5, 0.5), hand="right", preview_bytes=b"frame", tracking_source="palm_center"),
+        GestureObservation(point=(0.6, 0.5), hand="right", preview_bytes=b"frame", tracking_source="palm_center"),
+        GestureObservation(point=(0.8, 0.5), hand="right", preview_bytes=b"frame", tracking_source="palm_center"),
+    ]
+    service = GestureService(
+        adapter_factory=lambda: SequenceAdapter(observations=observations),
+        realtime=hub,
+        config_repository_factory=lambda: StaticGestureConfigRepository(),
     )
 
     service.start()
@@ -321,6 +447,8 @@ def test_cooldown_prevents_spam_and_emits_event():
 
     assert len(hub.messages) == 1
     assert hub.messages[0]["eventType"] == "GestureDetected"
+    assert hub.messages[0]["payload"]["confidence"] is not None
+    assert hub.messages[0]["payload"]["tracking_source"] == "palm_center"
     assert service.get_frame() is not None
 
 
@@ -332,6 +460,7 @@ async def test_get_gesture_status(client, override_gesture_dependency):
     data = response.json()
     assert data["available"] is True
     assert data["running"] is False
+    assert data["last_confidence"] is None
 
 
 @pytest.mark.asyncio
@@ -407,6 +536,8 @@ async def test_dev_process_video_endpoint_enabled(client, override_gesture_depen
     assert response.status_code == 200
     data = response.json()
     assert data["gestures"] == ["circle"]
+    assert data["confidence"] is not None
+    assert data["tracking_source"] == "palm_center"
 
 
 @pytest.mark.asyncio
@@ -418,6 +549,8 @@ async def test_shared_websocket_receives_gesture_event():
             "timestamp": datetime.now(timezone.utc).isoformat(),
             "source": "camera",
             "hand": "right",
+            "confidence": 0.87,
+            "tracking_source": "palm_center",
         },
     }
 
@@ -436,3 +569,4 @@ async def test_shared_websocket_receives_gesture_event():
     assert websocket.messages[0]["eventType"] == "Pong"
     assert websocket.messages[1]["eventType"] == "GestureDetected"
     assert websocket.messages[1]["payload"]["gesture"] == "swipe_right"
+    assert websocket.messages[1]["payload"]["confidence"] == 0.87

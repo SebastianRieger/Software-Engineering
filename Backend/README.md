@@ -15,7 +15,7 @@ Die Kernpfade fuer Wetter, Konfiguration, Systemstatus und einen optionalen Gest
 - Repository- und Schema-Schicht fuer zentrale Backend-Daten
 - Konfigurations-Endpunkte unter `/api/v1/config/layout`, `/api/v1/config/system` und `/api/v1/config/gestures`
 - System-Status-Endpunkt mit Datenbank- und Cache-Metadaten
-- Gesten-Endpunkte unter `/api/v1/gestures` mit Start, Stop, Status, Debug-Frame und handzentrierter Tracking-Basis
+- Gesten-Endpunkte unter `/api/v1/gestures` mit Start, Stop, Status, Debug-Frame, handzentrierter Tracking-Basis und Confidence-/Tracking-Metadaten
 - gemeinsamer WebSocket-Endpunkt `/ws` fuer Realtime-Events wie `GestureDetected`
 - Testbasis fuer Wetter, LED, Konfiguration und Gesten
 

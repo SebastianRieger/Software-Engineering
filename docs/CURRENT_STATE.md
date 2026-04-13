@@ -51,6 +51,7 @@ Sie zeigt die Richtung des Projekts, aber noch nicht die geplante Systemreife.
 - Die Erkennung ist nicht mehr nur auf einen einzelnen Wrist-Punkt gedacht, sondern wird auf eine handzentrierte Tracking-Basis aus Wrist und palmnahen Handpunkten gehoben
 - Tuningparameter fuer Gesten koennen ueber die bestehende Konfigurationspersistenz backendseitig gehalten werden
 - Der Gestenservice liefert jetzt einen expliziteren Fehlerzustand fuer Laufzeitprobleme
+- Die Klassifikation ist in Richtung Feature- und Kandidatenlogik modularisiert und liefert Confidence- sowie Tracking-Metadaten
 - Offene Kernluecken bleiben echte Hardwarevalidierung, weitere Gestentypen und spaetere Frontend-Nutzung der Events
 
 ## Integration

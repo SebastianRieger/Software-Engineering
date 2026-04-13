@@ -92,9 +92,10 @@ flowchart LR
 ### Gestenarchitektur
 
 - der primäre Erkennungspfad basiert auf MediaPipe Hands und einer handzentrierten Repräsentation statt auf allgemeiner Body- oder Pose-Erkennung
-- Tracking und Klassifikation trennen Rohlandmarks, abgeleitete Bewegungsmerkmale und fachliche Gestenentscheidungen
+- Tracking und Klassifikation trennen Rohlandmarks, abgeleitete Bewegungsmerkmale, Kandidatenerzeugung und fachliche Gestenentscheidungen
 - Hand, Handgelenk und palmnahe Punkte bilden den Standardpfad; Ellenbogen- oder Armkontext bleibt optional fuer spaetere Erweiterungen
 - Gestenparameter sollen als persistierbare Backend-Konfiguration gepflegt werden und nicht nur als starre ENV-Werte existieren
+- Gestenereignisse und Statusantworten sollen neben dem Gestentyp auch Confidence und Tracking-Herkunft transportieren koennen
 
 ### Konfigurationsdomänen
 

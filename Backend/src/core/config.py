@@ -52,6 +52,7 @@ class Settings(BaseSettings):
     GESTURE_CIRCLE_RADIUS_CV_MAX: float = 0.5
     GESTURE_CIRCLE_MIN_RADIUS: float = 0.01
     GESTURE_MIN_DETECTION_POINTS: int = 6
+    GESTURE_MIN_CONFIDENCE: float = 0.55
     GESTURE_IDLE_SLEEP_SECONDS: float = 0.02
 
     # MQTT settings
