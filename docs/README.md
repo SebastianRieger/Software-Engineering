@@ -8,6 +8,9 @@ Alles andere liegt im Archiv und dient nur noch als Verlauf oder Referenz.
 - [PRODUCT_SCOPE.md](PRODUCT_SCOPE.md)
   Produktziel, Kernumfang, Abgrenzung und technische Leitplanken.
 
+- [RMMM_TABLE.md](RMMM_TABLE.md)
+  Versionierte Risikoanalyse mit Mitigation-, Monitoring- und Management-Massnahmen fuer die aktuelle Wochenaufgabe.
+
 - [CURRENT_STATE.md](CURRENT_STATE.md)
   Ehrliche Zusammenfassung des aktuellen Code- und Projektzustands.
 
@@ -19,7 +22,7 @@ Alles andere liegt im Archiv und dient nur noch als Verlauf oder Referenz.
 
 ## Dokumentationsregeln
 
-- Diese vier Dateien sind die aktuelle Quelle der Wahrheit.
+- Diese fuenf Dateien sind die aktuelle Quelle der Wahrheit.
 - Historische SRS-, SAD-, UCRS-, Diagramm- und Experiment-Dokumente sind archiviert.
 - Neue Architektur- oder Scope-Entscheidungen sollen zuerst hier eingearbeitet werden.
 
