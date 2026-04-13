@@ -49,10 +49,12 @@ Sie zeigt die Richtung des Projekts, aber noch nicht die geplante Systemreife.
 ## Aktueller Gestenstand
 
 - Die Erkennung ist nicht mehr nur auf einen einzelnen Wrist-Punkt gedacht, sondern wird auf eine handzentrierte Tracking-Basis aus Wrist und palmnahen Handpunkten gehoben
+- Swipe- und Circle-Schwellwerte werden jetzt zusaetzlich gegen eine geschaetzte Handgroesse beziehungsweise Palmspanne skaliert, damit Kameraabstand und Perspektive die Basisgesten weniger stark verzerren
 - Tuningparameter fuer Gesten koennen ueber die bestehende Konfigurationspersistenz backendseitig gehalten werden
 - Der Gestenservice liefert jetzt einen expliziteren Fehlerzustand fuer Laufzeitprobleme
+- Start/Stop, Join-Timeout und transiente Adapter-Lesefehler sind im Backend robuster abgesichert und besser testbar gemacht
 - Die Klassifikation ist in Richtung Feature- und Kandidatenlogik modularisiert und liefert Confidence- sowie Tracking-Metadaten
-- Offene Kernluecken bleiben echte Hardwarevalidierung, weitere Gestentypen und spaetere Frontend-Nutzung der Events
+- Offene Kernluecken bleiben echte Hardwarevalidierung, weitere Gestentypen, optionale Arm-/Pose-Erweiterung und spaetere Frontend-Nutzung der Events
 
 ## Integration
 

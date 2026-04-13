@@ -18,6 +18,7 @@ from services.gestures import (
     GestureServiceError,
     build_hand_landmark_map,
     compute_hand_tracking_point,
+    compute_hand_size_scale,
     detect_gesture_candidates,
     detect_gesture_with_confidence,
     detect_gesture_from_trajectory,
@@ -44,6 +45,11 @@ class StaticGestureConfigRepository:
 
     def get_gesture_config(self):
         return self.config
+
+
+class MutableGestureConfigRepository(StaticGestureConfigRepository):
+    def set_config(self, config: GestureConfig):
+        self.config = config
 
 
 class SequenceAdapter:
@@ -83,7 +89,7 @@ class SequenceAdapter:
             (0.5, 0.6),
             (0.5, 0.8),
         ]
-        detection = classifier(trajectory)
+        detection = classifier(trajectory, None)
         return {
             "gestures": [detection.gesture] if detection else [],
             "frames_processed": 6,
@@ -96,6 +102,32 @@ class SequenceAdapter:
 class FailingAdapter(SequenceAdapter):
     def read(self):
         raise GestureAdapterError("camera read failed")
+
+
+class FlakyAdapter(SequenceAdapter):
+    def __init__(self, observations=None, failures_before_success=1):
+        super().__init__(observations=observations)
+        self.failures_before_success = failures_before_success
+        self.failures_seen = 0
+
+    def read(self):
+        if self.failures_seen < self.failures_before_success:
+            self.failures_seen += 1
+            raise GestureAdapterError(f"transient failure {self.failures_seen}")
+        return super().read()
+
+
+class TimedObservationAdapter(SequenceAdapter):
+    def __init__(self, observations=None, event_after=None):
+        super().__init__(observations=observations)
+        self.event_after = event_after
+        self.read_count = 0
+
+    def read(self):
+        self.read_count += 1
+        if self.event_after is not None and self.read_count == self.event_after:
+            time.sleep(0.05)
+        return super().read()
 
 
 class FakeLandmark:
@@ -245,7 +277,6 @@ def test_extract_gesture_features_returns_expected_metrics():
             (0.8, 0.5),
         ],
         min_detection_points=6,
-        circle_min_radius=0.01,
     )
 
     assert features is not None
@@ -265,7 +296,6 @@ def test_detect_gesture_candidates_prefers_strong_horizontal_swipe():
             (0.8, 0.5),
         ],
         min_detection_points=6,
-        circle_min_radius=0.01,
     )
     assert features is not None
 
@@ -276,6 +306,7 @@ def test_detect_gesture_candidates_prefers_strong_horizontal_swipe():
         circle_sweep_min=settings.GESTURE_CIRCLE_SWEEP_MIN,
         circle_cv_max=settings.GESTURE_CIRCLE_RADIUS_CV_MAX,
         swipe_min_span=settings.GESTURE_SWIPE_MIN_SPAN,
+        circle_min_radius=settings.GESTURE_CIRCLE_MIN_RADIUS,
     )
     best = select_best_gesture_candidate(candidates, min_confidence=0.0)
 
@@ -309,6 +340,63 @@ def test_detect_gesture_with_confidence_returns_metadata():
     assert detection.gesture == "swipe_right"
     assert detection.confidence > 0.9
     assert detection.tracking_source == "palm_center"
+
+
+def test_compute_hand_size_scale_clamps_to_configured_bounds():
+    assert compute_hand_size_scale(0.08, 0.16, 0.7, 1.6) == pytest.approx(0.7)
+    assert compute_hand_size_scale(0.4, 0.16, 0.7, 1.6) == pytest.approx(1.6)
+
+
+def test_hand_size_normalization_recovers_small_far_hand_swipe():
+    detection = detect_gesture_with_confidence(
+        trajectory=[
+            (0.20, 0.5),
+            (0.22, 0.5),
+            (0.24, 0.5),
+            (0.26, 0.5),
+            (0.28, 0.5),
+            (0.30, 0.5),
+        ],
+        swipe_threshold=0.12,
+        down_threshold=settings.GESTURE_DOWN_THRESHOLD,
+        circle_sweep_min=settings.GESTURE_CIRCLE_SWEEP_MIN,
+        circle_cv_max=settings.GESTURE_CIRCLE_RADIUS_CV_MAX,
+        min_detection_points=6,
+        swipe_min_span=0.06,
+        circle_min_radius=settings.GESTURE_CIRCLE_MIN_RADIUS,
+        min_confidence=0.2,
+        hand_size=0.08,
+        hand_size_reference=0.16,
+        hand_size_scale_min=0.5,
+        hand_size_scale_max=1.8,
+    )
+
+    assert detection is not None
+    assert detection.gesture == "swipe_right"
+
+
+def test_small_far_hand_swipe_without_hand_size_normalization_is_rejected():
+    detection = detect_gesture_with_confidence(
+        trajectory=[
+            (0.20, 0.5),
+            (0.22, 0.5),
+            (0.24, 0.5),
+            (0.26, 0.5),
+            (0.28, 0.5),
+            (0.30, 0.5),
+        ],
+        swipe_threshold=0.12,
+        down_threshold=settings.GESTURE_DOWN_THRESHOLD,
+        circle_sweep_min=settings.GESTURE_CIRCLE_SWEEP_MIN,
+        circle_cv_max=settings.GESTURE_CIRCLE_RADIUS_CV_MAX,
+        min_detection_points=6,
+        swipe_min_span=0.06,
+        circle_min_radius=settings.GESTURE_CIRCLE_MIN_RADIUS,
+        min_confidence=0.2,
+        hand_size=None,
+    )
+
+    assert detection is None
 
 
 def test_build_hand_landmark_map_and_tracking_point():
@@ -390,6 +478,125 @@ def test_service_reports_last_error_after_adapter_failure():
 
     assert wait_until(lambda: service.get_status()["running"] is False)
     assert service.get_status()["last_error"] == "camera read failed"
+
+
+def test_service_retries_transient_adapter_failure_and_recovers():
+    hub = CapturingRealtimeHub()
+    observations = [
+        GestureObservation(point=(0.2, 0.5), hand="right", hand_size=0.16, tracking_source="palm_center"),
+        GestureObservation(point=(0.3, 0.5), hand="right", hand_size=0.16, tracking_source="palm_center"),
+        GestureObservation(point=(0.4, 0.5), hand="right", hand_size=0.16, tracking_source="palm_center"),
+        GestureObservation(point=(0.5, 0.5), hand="right", hand_size=0.16, tracking_source="palm_center"),
+        GestureObservation(point=(0.6, 0.5), hand="right", hand_size=0.16, tracking_source="palm_center"),
+        GestureObservation(point=(0.8, 0.5), hand="right", hand_size=0.16, tracking_source="palm_center"),
+    ]
+    adapter = FlakyAdapter(observations=observations, failures_before_success=1)
+    service = GestureService(
+        adapter_factory=lambda: adapter,
+        realtime=hub,
+        config_repository_factory=lambda: StaticGestureConfigRepository(),
+    )
+
+    service.start()
+    assert wait_until(lambda: len(hub.messages) >= 1)
+    service.stop()
+
+    assert adapter.failures_seen == 1
+    assert hub.messages[0]["payload"]["gesture"] == "swipe_right"
+
+
+def test_stop_sets_error_when_thread_does_not_finish_in_time():
+    class StuckThread:
+        def __init__(self):
+            self.join_timeout = None
+
+        def join(self, timeout=None):
+            self.join_timeout = timeout
+
+        def is_alive(self):
+            return True
+
+    adapter = SequenceAdapter()
+    service = GestureService(
+        adapter_factory=lambda: adapter,
+        realtime=CapturingRealtimeHub(),
+        config_repository_factory=lambda: StaticGestureConfigRepository(),
+    )
+
+    service._thread = StuckThread()
+    service._adapter = adapter
+    service.running = True
+
+    stopped = service.stop()
+
+    assert stopped["running"] is False
+    assert stopped["last_error"] == "Gesten-Thread konnte nicht rechtzeitig beendet werden."
+
+
+def test_reload_config_safe_during_detection():
+    hub = CapturingRealtimeHub()
+    repository = MutableGestureConfigRepository(
+        GestureConfig(
+            swipe_threshold=0.3,
+            min_confidence=0.2,
+            hand_size_reference=0.16,
+            hand_size_scale_min=0.5,
+            hand_size_scale_max=1.8,
+        )
+    )
+    observations = [
+        GestureObservation(point=None),
+        GestureObservation(point=None),
+        GestureObservation(point=(0.20, 0.5), hand="right", hand_size=0.08, tracking_source="palm_center"),
+        GestureObservation(point=(0.22, 0.5), hand="right", hand_size=0.08, tracking_source="palm_center"),
+        GestureObservation(point=(0.24, 0.5), hand="right", hand_size=0.08, tracking_source="palm_center"),
+        GestureObservation(point=(0.26, 0.5), hand="right", hand_size=0.08, tracking_source="palm_center"),
+        GestureObservation(point=(0.28, 0.5), hand="right", hand_size=0.08, tracking_source="palm_center"),
+        GestureObservation(point=(0.30, 0.5), hand="right", hand_size=0.08, tracking_source="palm_center"),
+    ]
+    adapter = TimedObservationAdapter(observations=observations, event_after=2)
+    service = GestureService(
+        adapter_factory=lambda: adapter,
+        realtime=hub,
+        config_repository_factory=lambda: repository,
+    )
+
+    service.start()
+    repository.set_config(
+        GestureConfig(
+            swipe_threshold=0.12,
+            min_confidence=0.2,
+            hand_size_reference=0.16,
+            hand_size_scale_min=0.5,
+            hand_size_scale_max=1.8,
+        )
+    )
+    service.reload_config()
+
+    assert wait_until(lambda: len(hub.messages) >= 1)
+    status = service.get_status()
+    service.stop()
+
+    assert status["last_gesture"] == "swipe_right"
+
+
+def test_service_instances_keep_separate_configs():
+    left_service = GestureService(
+        adapter_factory=lambda: SequenceAdapter(),
+        realtime=CapturingRealtimeHub(),
+        config_repository_factory=lambda: StaticGestureConfigRepository(GestureConfig(swipe_threshold=0.11)),
+    )
+    right_service = GestureService(
+        adapter_factory=lambda: SequenceAdapter(),
+        realtime=CapturingRealtimeHub(),
+        config_repository_factory=lambda: StaticGestureConfigRepository(GestureConfig(swipe_threshold=0.25)),
+    )
+
+    left_service.reload_config()
+    right_service.reload_config()
+
+    assert left_service._active_config.swipe_threshold == pytest.approx(0.11)
+    assert right_service._active_config.swipe_threshold == pytest.approx(0.25)
 
 
 def test_service_detects_and_exposes_confidence_metadata():

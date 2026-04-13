@@ -15,7 +15,7 @@ Die Kernpfade fuer Wetter, Konfiguration, Systemstatus und einen optionalen Gest
 - Repository- und Schema-Schicht fuer zentrale Backend-Daten
 - Konfigurations-Endpunkte unter `/api/v1/config/layout`, `/api/v1/config/system` und `/api/v1/config/gestures`
 - System-Status-Endpunkt mit Datenbank- und Cache-Metadaten
-- Gesten-Endpunkte unter `/api/v1/gestures` mit Start, Stop, Status, Debug-Frame, handzentrierter Tracking-Basis und Confidence-/Tracking-Metadaten
+- Gesten-Endpunkte unter `/api/v1/gestures` mit Start, Stop, Status, Debug-Frame, handzentrierter Tracking-Basis, handgroessenbasierter Schwellen-Normalisierung und Confidence-/Tracking-Metadaten
 - gemeinsamer WebSocket-Endpunkt `/ws` fuer Realtime-Events wie `GestureDetected`
 - Testbasis fuer Wetter, LED, Konfiguration und Gesten
 
@@ -28,6 +28,22 @@ Die Kernpfade fuer Wetter, Konfiguration, Systemstatus und einen optionalen Gest
 - Frontend-Anbindung an Gesture- und WebSocket-Events
 - echte Kamera-Validierung auf Zielhardware
 - Authentifizierung und produktionsreife Secret-Verwaltung
+
+## Gesten-Konfiguration
+
+Die Gestenbasis bleibt ueber `/api/v1/config/gestures` konfigurierbar. Dort liegen neben Glättung, Cooldown und Schwellenwerten jetzt auch die Parameter fuer die Handgroessen-Normalisierung. ENV-Werte in `src/core/config.py` bleiben die Defaults; die eigentliche Laufzeitabstimmung erfolgt ueber die bestehende SQLite-basierte Konfigurationsstrategie.
+
+Eine manuelle Zielplattform-Pruefung ist weiterhin noetig. Die aktuelle Checkliste dafuer steht in [docs/GESTURE_VALIDATION.md](../docs/GESTURE_VALIDATION.md).
+
+## Wochenstand Gesten
+
+Der aktuelle Zwischenstand ist bewusst backendzentriert:
+
+- handzentrierte Tracking-Basis statt Wrist-only
+- modularisierte Klassifikation mit Features, Kandidaten und Confidence
+- persistierbare GestureConfig inklusive Handgroessen-Skalierung
+- robusterer Start/Stop- und Fehlerpfad fuer Sessions
+- vorbereitete, aber noch nicht implementierte Erweiterungspfade fuer Arm-/Pose-Kontext
 
 ## Starten
 

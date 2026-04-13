@@ -151,6 +151,7 @@ Die vorhandene Gestensteuerung backendseitig robuster, konfigurierbarer und fach
 ### Aufgaben
 
 - handzentrierte Tracking-Basis aus Wrist und palmnahen Landmarken statt reiner Wrist-Trajektorie etablieren
+- die Basisschwellwerte gegen Handgroesse oder Palmspanne normalisieren, damit der Wochenstand nicht mehr von starren Bildkoordinaten abhaengt
 - Runtime-Zustand und Fehlerverhalten im GestureService haerten
 - Gestentuning ueber persistierbare Backend-Konfiguration statt nur ueber ENV-Defaults steuern
 - Gestenstatus, Dev-Verarbeitung und Testfaelle erweitern
@@ -162,6 +163,8 @@ Die vorhandene Gestensteuerung backendseitig robuster, konfigurierbarer und fach
 - Status- und Fehlerverhalten des GestureService sind nachvollziehbar
 - Gestenkonfiguration ist speicher- und ladbar
 - Ereignisse und Status tragen fachlich brauchbare Metadaten wie Confidence und Tracking-Quelle
+- die aktuelle Basiserkennung bleibt auch bei unterschiedlichen Handgroessen oder Kameraabstaenden fachlich plausibel
+- es gibt eine dokumentierte manuelle Hardware-Checkliste fuer Kamera- und Raspberry-Pi-Verifikation
 - aktive Dokumentation beschreibt den echten Reifegrad der Gestenarchitektur
 
 ## Phase 5: High-Risk-Features isoliert angehen

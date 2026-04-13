@@ -106,6 +106,7 @@ async def test_get_default_gesture_config(client):
     data = response.json()
     assert data["config"]["smoothing_alpha"] == 0.6
     assert data["config"]["min_detection_points"] == 6
+    assert data["config"]["hand_size_reference"] > 0
 
 
 @pytest.mark.asyncio
@@ -122,6 +123,9 @@ async def test_save_and_reload_gesture_config(client):
         "circle_min_radius": 0.02,
         "min_detection_points": 8,
         "min_confidence": 0.7,
+        "hand_size_reference": 0.15,
+        "hand_size_scale_min": 0.7,
+        "hand_size_scale_max": 1.6,
     }
 
     save_response = await client.put("/api/v1/config/gestures", json=payload)
@@ -136,3 +140,4 @@ async def test_save_and_reload_gesture_config(client):
     assert loaded["config"]["cooldown_seconds"] == payload["cooldown_seconds"]
     assert loaded["config"]["circle_min_radius"] == payload["circle_min_radius"]
     assert loaded["config"]["min_confidence"] == payload["min_confidence"]
+    assert loaded["config"]["hand_size_reference"] == payload["hand_size_reference"]

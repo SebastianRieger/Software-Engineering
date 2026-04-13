@@ -44,6 +44,8 @@ class GestureFeatures:
     radius_mean: float | None
     radius_cv: float | None
     total_sweep: float | None
+    hand_size: float | None
+    hand_size_scale: float
 
 
 @dataclass(slots=True)
@@ -88,6 +90,7 @@ class GestureObservation:
     preview_bytes: bytes | None = None
     landmarks: GestureLandmarks | None = None
     hand_size: float | None = None
+    arm_landmarks: GestureLandmarks | None = None
     tracking_source: str | None = None
 
 
@@ -117,11 +120,24 @@ class GestureAdapter(Protocol):
     def process_video(
         self,
         video_path: str,
-        classifier: Callable[[list[tuple[float, float]]], GestureDetectionResult | None],
+        classifier: Callable[[list[tuple[float, float]], float | None], GestureDetectionResult | None],
         smoothing_alpha: float,
         tracking_source: str,
     ) -> dict[str, int | list[GestureName] | float | str | None]:
         ...
+
+
+def compute_hand_size_scale(
+    hand_size: float | None,
+    hand_size_reference: float,
+    hand_size_scale_min: float,
+    hand_size_scale_max: float,
+) -> float:
+    if hand_size is None or hand_size <= 0:
+        return 1.0
+
+    scale = hand_size / max(hand_size_reference, 1e-6)
+    return max(hand_size_scale_min, min(hand_size_scale_max, scale))
 
 
 def build_hand_landmark_map(hand_landmarks) -> GestureLandmarks:
@@ -182,6 +198,10 @@ def detect_gesture_from_trajectory(
     min_detection_points: int = settings.GESTURE_MIN_DETECTION_POINTS,
     swipe_min_span: float = settings.GESTURE_SWIPE_MIN_SPAN,
     circle_min_radius: float = settings.GESTURE_CIRCLE_MIN_RADIUS,
+    hand_size: float | None = None,
+    hand_size_reference: float = settings.GESTURE_HAND_SIZE_REFERENCE,
+    hand_size_scale_min: float = settings.GESTURE_HAND_SIZE_SCALE_MIN,
+    hand_size_scale_max: float = settings.GESTURE_HAND_SIZE_SCALE_MAX,
 ) -> GestureName | None:
     result = detect_gesture_with_confidence(
         trajectory=trajectory,
@@ -193,6 +213,10 @@ def detect_gesture_from_trajectory(
         swipe_min_span=swipe_min_span,
         circle_min_radius=circle_min_radius,
         min_confidence=0.0,
+        hand_size=hand_size,
+        hand_size_reference=hand_size_reference,
+        hand_size_scale_min=hand_size_scale_min,
+        hand_size_scale_max=hand_size_scale_max,
     )
     return result.gesture if result is not None else None
 
@@ -200,7 +224,10 @@ def detect_gesture_from_trajectory(
 def extract_gesture_features(
     trajectory: list[tuple[float, float]],
     min_detection_points: int,
-    circle_min_radius: float,
+    hand_size: float | None = None,
+    hand_size_reference: float = settings.GESTURE_HAND_SIZE_REFERENCE,
+    hand_size_scale_min: float = settings.GESTURE_HAND_SIZE_SCALE_MIN,
+    hand_size_scale_max: float = settings.GESTURE_HAND_SIZE_SCALE_MAX,
 ) -> GestureFeatures | None:
     if len(trajectory) < min_detection_points:
         return None
@@ -218,7 +245,7 @@ def extract_gesture_features(
     vectors = [(x - center_x, y - center_y) for x, y in trajectory]
     radii = [math.hypot(x, y) for x, y in vectors]
 
-    if not radii or mean(radii) < circle_min_radius:
+    if not radii:
         radius_mean = None
         radius_cv = None
         total_sweep = None
@@ -238,6 +265,13 @@ def extract_gesture_features(
         radius_mean = mean(radii)
         radius_cv = pstdev(radii) / (radius_mean + 1e-6)
 
+    hand_size_scale = compute_hand_size_scale(
+        hand_size=hand_size,
+        hand_size_reference=hand_size_reference,
+        hand_size_scale_min=hand_size_scale_min,
+        hand_size_scale_max=hand_size_scale_max,
+    )
+
     return GestureFeatures(
         dx_total=dx_total,
         dy_total=dy_total,
@@ -246,6 +280,8 @@ def extract_gesture_features(
         radius_mean=radius_mean,
         radius_cv=radius_cv,
         total_sweep=total_sweep,
+        hand_size=hand_size,
+        hand_size_scale=hand_size_scale,
     )
 
 
@@ -256,32 +292,44 @@ def detect_gesture_candidates(
     circle_sweep_min: float,
     circle_cv_max: float,
     swipe_min_span: float,
+    circle_min_radius: float,
 ) -> list[GestureDetectionCandidate]:
     candidates: list[GestureDetectionCandidate] = []
 
-    horizontal_margin = abs(features.dx_total) - swipe_threshold
+    normalized_dx_total = features.dx_total / max(features.hand_size_scale, 1e-6)
+    normalized_dy_total = features.dy_total / max(features.hand_size_scale, 1e-6)
+    normalized_span_x = features.span_x / max(features.hand_size_scale, 1e-6)
+    normalized_span_y = features.span_y / max(features.hand_size_scale, 1e-6)
+    normalized_radius_mean = (
+        features.radius_mean / max(features.hand_size_scale, 1e-6)
+        if features.radius_mean is not None
+        else None
+    )
+
+    horizontal_margin = abs(normalized_dx_total) - swipe_threshold
     if (
         horizontal_margin > 0
-        and abs(features.dx_total) > abs(features.dy_total) * 1.5
-        and features.span_x > swipe_min_span
+        and abs(normalized_dx_total) > abs(normalized_dy_total) * 1.5
+        and normalized_span_x > swipe_min_span
     ):
-        gesture = "swipe_right" if features.dx_total > 0 else "swipe_left"
+        gesture = "swipe_right" if normalized_dx_total > 0 else "swipe_left"
         confidence = min(1.0, horizontal_margin / max(swipe_threshold, 1e-6))
         candidates.append(GestureDetectionCandidate(gesture=gesture, confidence=confidence))
 
-    vertical_margin = features.dy_total - down_threshold
+    vertical_margin = normalized_dy_total - down_threshold
     if (
         vertical_margin > 0
-        and features.dy_total > abs(features.dx_total) * 1.2
-        and features.span_y > swipe_min_span
+        and normalized_dy_total > abs(normalized_dx_total) * 1.2
+        and normalized_span_y > swipe_min_span
     ):
         confidence = min(1.0, vertical_margin / max(down_threshold, 1e-6))
         candidates.append(GestureDetectionCandidate(gesture="swipe_down", confidence=confidence))
 
     if (
-        features.radius_mean is not None
+        normalized_radius_mean is not None
         and features.radius_cv is not None
         and features.total_sweep is not None
+        and normalized_radius_mean > circle_min_radius
         and abs(features.total_sweep) > circle_sweep_min
         and features.radius_cv < circle_cv_max
     ):
@@ -317,12 +365,19 @@ def detect_gesture_with_confidence(
     swipe_min_span: float = settings.GESTURE_SWIPE_MIN_SPAN,
     circle_min_radius: float = settings.GESTURE_CIRCLE_MIN_RADIUS,
     min_confidence: float = settings.GESTURE_MIN_CONFIDENCE,
+    hand_size: float | None = None,
+    hand_size_reference: float = settings.GESTURE_HAND_SIZE_REFERENCE,
+    hand_size_scale_min: float = settings.GESTURE_HAND_SIZE_SCALE_MIN,
+    hand_size_scale_max: float = settings.GESTURE_HAND_SIZE_SCALE_MAX,
     tracking_source: str | None = None,
 ) -> GestureDetectionResult | None:
     features = extract_gesture_features(
         trajectory=trajectory,
         min_detection_points=min_detection_points,
-        circle_min_radius=circle_min_radius,
+        hand_size=hand_size,
+        hand_size_reference=hand_size_reference,
+        hand_size_scale_min=hand_size_scale_min,
+        hand_size_scale_max=hand_size_scale_max,
     )
     if features is None:
         return None
@@ -334,6 +389,7 @@ def detect_gesture_with_confidence(
         circle_sweep_min=circle_sweep_min,
         circle_cv_max=circle_cv_max,
         swipe_min_span=swipe_min_span,
+        circle_min_radius=circle_min_radius,
     )
     best_candidate = select_best_gesture_candidate(candidates, min_confidence)
     if best_candidate is None:
@@ -408,7 +464,7 @@ class MediaPipeHandsAdapter:
     def process_video(
         self,
         video_path: str,
-        classifier: Callable[[list[tuple[float, float]]], GestureDetectionResult | None],
+        classifier: Callable[[list[tuple[float, float]], float | None], GestureDetectionResult | None],
         smoothing_alpha: float,
         tracking_source: str,
     ) -> dict[str, int | list[GestureName] | float | str | None]:
@@ -428,6 +484,7 @@ class MediaPipeHandsAdapter:
             min_tracking_confidence=0.5,
         )
         trajectory: list[tuple[float, float]] = []
+        hand_sizes: list[float] = []
         smoothed_point: tuple[float, float] | None = None
         frame_count = 0
 
@@ -448,8 +505,11 @@ class MediaPipeHandsAdapter:
                     alpha=smoothing_alpha,
                 )
                 trajectory.append(smoothed_point)
+                if observation.hand_size is not None:
+                    hand_sizes.append(observation.hand_size)
 
-            detection = classifier(trajectory)
+            average_hand_size = mean(hand_sizes) if hand_sizes else None
+            detection = classifier(trajectory, average_hand_size)
             gestures = [detection.gesture] if detection is not None else []
             return {
                 "gestures": gestures,
@@ -512,6 +572,7 @@ class GestureService:
         self.latest_frame_data_url: str | None = None
         self.smoothed_point: tuple[float, float] | None = None
         self.trajectory: list[tuple[float, float]] = []
+        self.hand_size_samples: list[float | None] = []
         self.last_gesture: GestureName | None = None
         self.last_gesture_at: datetime | None = None
         self.last_confidence: float | None = None
@@ -580,7 +641,11 @@ class GestureService:
             self._adapter = None
 
         if thread is not None:
-            thread.join(timeout=2.0)
+            thread.join(timeout=settings.GESTURE_STOP_JOIN_TIMEOUT_SECONDS)
+            if thread.is_alive():
+                logger.warning("Gesture thread did not stop within %.2f seconds.", settings.GESTURE_STOP_JOIN_TIMEOUT_SECONDS)
+                with self._lock:
+                    self.last_error = "Gesten-Thread konnte nicht rechtzeitig beendet werden."
 
         if adapter is not None:
             try:
@@ -616,7 +681,10 @@ class GestureService:
         with self._lock:
             return self.latest_frame_data_url
 
-    def process_video(self, video_path: str) -> dict[str, int | list[GestureName]]:
+    def process_video(
+        self,
+        video_path: str,
+    ) -> dict[str, int | list[GestureName] | float | str | None]:
         if not self.is_available():
             with self._lock:
                 self.last_error = "Gestenerkennung ist in dieser Umgebung nicht verfuegbar."
@@ -638,8 +706,9 @@ class GestureService:
                 self.last_error = None
             return adapter.process_video(
                 video_path,
-                classifier=lambda trajectory: self._detect_gesture(
+                classifier=lambda trajectory, hand_size: self._detect_gesture(
                     trajectory,
+                    hand_size=hand_size,
                     tracking_source="palm_center",
                 ),
                 smoothing_alpha=active_config.smoothing_alpha,
@@ -661,11 +730,8 @@ class GestureService:
                     break
 
                 try:
-                    observation = adapter.read()
-                except GestureAdapterError as exc:
-                    logger.warning("Gesture adapter read failed: %s", exc)
-                    with self._lock:
-                        self.last_error = str(exc)
+                    observation = self._read_observation_with_retry(adapter)
+                except GestureAdapterError:
                     break
 
                 if observation is None:
@@ -678,6 +744,7 @@ class GestureService:
                     with self._lock:
                         self.smoothed_point = None
                         self.trajectory.clear()
+                        self.hand_size_samples.clear()
                     time.sleep(settings.GESTURE_IDLE_SLEEP_SECONDS)
                     continue
 
@@ -690,12 +757,16 @@ class GestureService:
                         alpha=active_config.smoothing_alpha,
                     )
                     self.trajectory.append(self.smoothed_point)
+                    self.hand_size_samples.append(observation.hand_size)
                     if len(self.trajectory) > active_config.max_trajectory_points:
                         self.trajectory.pop(0)
+                        self.hand_size_samples.pop(0)
                     trajectory_snapshot = list(self.trajectory)
+                    hand_size_snapshot = self._average_hand_size(self.hand_size_samples)
 
                 detection = self._detect_gesture(
                     trajectory_snapshot,
+                    hand_size=hand_size_snapshot,
                     tracking_source=observation.tracking_source,
                 )
                 if detection is not None and self._cooldown_elapsed(detection.gesture):
@@ -752,6 +823,7 @@ class GestureService:
     def _detect_gesture(
         self,
         trajectory: list[tuple[float, float]],
+        hand_size: float | None = None,
         tracking_source: str | None = None,
     ) -> GestureDetectionResult | None:
         with self._lock:
@@ -767,8 +839,44 @@ class GestureService:
             swipe_min_span=active_config.swipe_min_span,
             circle_min_radius=active_config.circle_min_radius,
             min_confidence=active_config.min_confidence,
+            hand_size=hand_size,
+            hand_size_reference=active_config.hand_size_reference,
+            hand_size_scale_min=active_config.hand_size_scale_min,
+            hand_size_scale_max=active_config.hand_size_scale_max,
             tracking_source=tracking_source,
         )
+
+    def _read_observation_with_retry(
+        self,
+        adapter: GestureAdapter,
+    ) -> GestureObservation | None:
+        attempts = max(1, settings.GESTURE_READ_RETRY_ATTEMPTS + 1)
+        for attempt in range(1, attempts + 1):
+            try:
+                return adapter.read()
+            except GestureAdapterError as exc:
+                logger.warning(
+                    "Gesture adapter read failed (attempt %s/%s): %s",
+                    attempt,
+                    attempts,
+                    exc,
+                )
+                with self._lock:
+                    self.last_error = str(exc)
+
+                if attempt >= attempts or self._stop_event.is_set():
+                    raise
+
+                time.sleep(settings.GESTURE_READ_RETRY_DELAY_SECONDS)
+
+        return None
+
+    @staticmethod
+    def _average_hand_size(hand_sizes: list[float | None]) -> float | None:
+        available_sizes = [value for value in hand_sizes if value is not None]
+        if not available_sizes:
+            return None
+        return mean(available_sizes)
 
     def _update_preview(self, preview_bytes: bytes | None) -> None:
         if preview_bytes is None:
@@ -782,6 +890,7 @@ class GestureService:
         self.latest_frame_data_url = None
         self.smoothed_point = None
         self.trajectory = []
+        self.hand_size_samples = []
         self.last_gesture = None
         self.last_gesture_at = None
         self.last_confidence = None

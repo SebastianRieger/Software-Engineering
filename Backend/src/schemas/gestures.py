@@ -63,6 +63,9 @@ class GestureConfig(BaseModel):
     circle_min_radius: float = Field(default=settings.GESTURE_CIRCLE_MIN_RADIUS, gt=0, le=1)
     min_detection_points: int = Field(default=settings.GESTURE_MIN_DETECTION_POINTS, ge=4, le=128)
     min_confidence: float = Field(default=settings.GESTURE_MIN_CONFIDENCE, ge=0, le=1)
+    hand_size_reference: float = Field(default=settings.GESTURE_HAND_SIZE_REFERENCE, gt=0, le=1)
+    hand_size_scale_min: float = Field(default=settings.GESTURE_HAND_SIZE_SCALE_MIN, gt=0, le=4)
+    hand_size_scale_max: float = Field(default=settings.GESTURE_HAND_SIZE_SCALE_MAX, gt=0, le=4)
     updated_at: datetime | None = None
 
 
