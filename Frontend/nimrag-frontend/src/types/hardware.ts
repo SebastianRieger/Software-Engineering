@@ -22,6 +22,12 @@ export interface GestureFrameResponse {
   image: string
 }
 
+export interface LEDColor {
+  red: number
+  green: number
+  blue: number
+}
+
 export interface LEDStateResponse {
   message: string
   red: number

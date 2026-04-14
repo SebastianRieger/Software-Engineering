@@ -39,8 +39,8 @@ Das Frontend von imperativer DOM-Logik auf datengetriebenen Vue-State umstellen.
 
 ### Status
 
-In Arbeit, aber der erste tragende Teil ist umgesetzt.
-Das Grid rendert Widgets inzwischen ueber Vue-State, nutzt eine Widget-Registry und ist nicht mehr auf HTML-Swap plus `createApp()` fuer den Normalfall angewiesen.
+Weitgehend umgesetzt.
+Das Grid rendert Widgets ueber Vue-State, nutzt eine Widget-Registry, das alte Scaffold ist entfernt und die groessten Komponenten wurden ueber `src/utils` und `src/types` spuerbar entlastet.
 
 ## Phase 2: Backend als belastbare Basis aufbauen
 
@@ -51,7 +51,7 @@ Aus Platzhalter-API wird ein kleines, konsistentes Backend.
 ### Status
 
 Weitgehend umgesetzt.
-Die Basis fuer Wetter, Konfiguration, SQLite, Repository-Schicht und API-Tests steht.
+Die Basis fuer Wetter, Konfiguration, SQLite, Repository-Schicht, flache API-Struktur und API-Tests steht.
 
 ### Aufgaben
 
@@ -72,6 +72,8 @@ Die Basis fuer Wetter, Konfiguration, SQLite, Repository-Schicht und API-Tests s
 - Wetter-Endpunkte liefern typisierte Antworten und nutzen Cache plus Fallback
 - Layout-Konfiguration kann gespeichert und wieder geladen werden
 - Systemstatus spiegelt reale Backend-Metadaten
+- das API-Paket ist jetzt flach nach Verantwortung gruppiert statt technisch tief verschachtelt
+- der Gestenbereich ist intern in Tracking, Detection und Runtime-Orchestrierung getrennt
 - Backend-Tests sind gruen
 - offen bleiben vor allem Kalender, Smart-Home, echte Hardware-Adapter und Frontend-Anbindung
 
@@ -122,7 +124,7 @@ WebSocket, LED und MQTT sauber, aber klein integrieren.
 ### Status
 
 Teilweise umgesetzt.
-Der gemeinsame WebSocket-Kanal existiert jetzt als kleiner Realtime-Hub und wird bereits fuer `GestureDetected`-Events genutzt.
+Der gemeinsame WebSocket-Kanal existiert jetzt als kleiner Realtime-Hub, wird backendseitig fuer `GestureDetected`-Events genutzt und frontendseitig im Hardware-Widget konsumiert.
 
 ### Aufgaben
 
@@ -139,8 +141,27 @@ Der gemeinsame WebSocket-Kanal existiert jetzt als kleiner Realtime-Hub und wird
 ### Offene Punkte
 
 - weitere fachliche Eventtypen definieren
-- Frontend an den gemeinsamen WebSocket anbinden
+- Realtime jenseits des Hardware-Widgets in eine gemeinsame Frontend-State-Logik ueberfuehren
 - LED und MQTT auf echte Adapter heben
+
+## Phase 4.5: Gezielte Featureerweiterungen auf Kernbasis
+
+### Ziel
+
+Neue Fachfeatures nur noch als kleine, belastbare Verticals auf den stabilen Kern setzen.
+
+### Naechste Kandidaten
+
+- Kalender als read-only Slice mit Adapter, Cache und Agenda-Widget
+- Smart Home als Geraete- und Kommandoslice fuer wenige klare Geräteklassen
+- Systemkonfiguration im Frontend mit eigenem Editierfluss
+- Frontend-Testbasis fuer Registry, Layout-Helfer und Hardware-Widget-Logik
+
+### Done-Kriterien
+
+- jede neue Domäne liefert mindestens einen echten End-to-End-Pfad vom Backend bis ins Frontend
+- Platzhalter-Endpunkte werden nur ersetzt, nicht parallel zu halbfertigen Zweitpfaden fortgefuehrt
+- neue Frontend-Features vergroessern nicht wieder die Inline-Orchestrierung in Einzelkomponenten
 
 ### Neues Arbeitspaket: Gestensteuerung haerten und erweitern
 
@@ -198,11 +219,11 @@ Im Backend existiert jetzt ein optionaler Gesten-Kern mit Hand-basierter Erkennu
 ## Prioritaeten fuer das Team
 
 1. Frontend-State und Layout-Modell
-2. Frontend an Wetter- und Konfigurations-API anbinden
+2. Frontend-Testbasis fuer Registry, Layout und Hardware-Helfer
 3. Kalender als naechste echte Kernfunktion
-4. Realtime
-5. LED und MQTT
-6. Voice und Gesture
+4. Realtime ueber das Hardware-Widget hinaus sauber verallgemeinern
+5. LED und MQTT auf echte Adapterpfade heben
+6. Voice und weitergehende Gesten-Features
 
 ## Was bewusst nicht zuerst gebaut werden sollte
 

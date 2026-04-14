@@ -9,11 +9,9 @@ src_path = str(Path(__file__).parent.parent / "src")
 if src_path not in sys.path:
     sys.path.append(src_path)
 
-from api.api_v1.endpoints.configuration import get_config_repository
-from api.api_v1.endpoints.gestures import get_gesture_service
-from api.api_v1.endpoints.led import get_led_service
-from api.api_v1.endpoints.voice import get_voice_service
-from api.api_v1.endpoints.weather import get_weather_service
+from api.data_endpoints import get_weather_service
+from api.device_endpoints import get_led_service, get_voice_service
+from api.system_endpoints import get_config_repository, get_gesture_service
 from core.config import settings
 from core.database import init_db
 from main import app

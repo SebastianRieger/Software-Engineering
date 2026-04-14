@@ -9,7 +9,7 @@ Die Kernpfade fuer Wetter, Konfiguration, Systemstatus und einen optionalen Gest
 
 ## Derzeit vorhanden
 
-- API-Router unter `src/api/api_v1`
+- flacher API-Router unter `src/api/` mit `system_endpoints.py`, `device_endpoints.py` und `data_endpoints.py`
 - Wetter-Service mit OpenWeatherMap-Anbindung
 - SQLite fuer Wetter-Cache und Layout-Konfiguration
 - Repository- und Schema-Schicht fuer zentrale Backend-Daten
@@ -24,8 +24,8 @@ Die Kernpfade fuer Wetter, Konfiguration, Systemstatus und einen optionalen Gest
 - belastbare Kalenderintegration
 - echte LED-Steuerung ueber GPIO oder Hardware-Adapter
 - MQTT-Integration fuer reale Smart-Home-Faelle
-- Frontend-Anbindung an Wetter- und Konfigurations-API
-- Frontend-Anbindung an Gesture- und WebSocket-Events
+- breitere Frontend-Anbindung ueber Wetter, Konfiguration und den aktuellen Hardware-Status-Slice hinaus
+- weitergehende Frontend-Nutzung der Gesture- und WebSocket-Events
 - echte Kamera-Validierung auf Zielhardware
 - Authentifizierung und produktionsreife Secret-Verwaltung
 

@@ -7,7 +7,7 @@ from fastapi import FastAPI
 from fastapi import WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
 
-from api.api_v1.api import api_router
+from api import api_router
 from core.config import settings
 from core.database import init_db
 from core.logging import configure_logging

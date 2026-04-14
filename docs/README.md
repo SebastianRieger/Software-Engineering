@@ -23,6 +23,7 @@ Alles andere liegt im Archiv und dient nur noch als Verlauf oder Referenz.
 ## Dokumentationsregeln
 
 - Diese fuenf Dateien sind die aktuelle Quelle der Wahrheit.
+- Die source-nahen `*Arch.md`-Dateien in `Backend/src` und `Frontend/nimrag-frontend/src` beschreiben die aktuelle Code-Struktur direkt an ihrem Entstehungsort.
 - Historische SRS-, SAD-, UCRS-, Diagramm- und Experiment-Dokumente sind archiviert.
 - Neue Architektur- oder Scope-Entscheidungen sollen zuerst hier eingearbeitet werden.
 

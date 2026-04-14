@@ -50,12 +50,13 @@ flowchart LR
 
 ### Zielstruktur
 
-- `app/` fuer App-Shell, Routing und globale Initialisierung
-- `widgets/` fuer fachliche Widget-Komponenten
-- `features/layout/` fuer Board, Platzierung und Konfiguration
-- `services/api/` oder schlanke API-Module fuer REST-Zugriffe
-- `services/ws/` fuer WebSocket
-- `stores/` oder klarer lokaler State fuer Layout- und Widget-Daten
+- `components/manager/` bleibt die UI-Schale fuer Board und Widget-Platzierung
+- `components/widgets/` bleibt die Heimat fuer fachliche Widget-Komponenten
+- `widgets/registry.ts` bleibt das Manifest fuer datengetriebene Widget-Instanzen
+- `services/` bleibt die schlanke HTTP- und WebSocket-Schicht
+- `types/` bleibt die lokale Vertrags- und UI-Wiring-Schicht
+- `utils/` wird fuer pure Transformationslogik und UI-nahe Helper genutzt
+- eine gemeinsame State- oder Composable-Schicht entsteht erst dann, wenn mehrere Widgets oder Screens dieselbe Laufzeitlogik teilen muessen
 
 ### Zielverhalten
 
@@ -63,18 +64,20 @@ flowchart LR
 - Widget-Instanzen haben IDs, Typen, Positionen und Einstellungen
 - Widget-Registrierung laeuft ueber ein klares Registry-/Manifest-Konzept
 - Konfigurationsaenderungen koennen lokal angezeigt und serverseitig gespeichert werden
+- Realtime wird zuerst selektiv fuer Status- und Event-Widgets genutzt, nicht sofort als globale Event-Architektur
 
 ### Erster umgesetzter Schnitt
 
 - Layout- und Widget-Zuordnung werden im Frontend bereits ueber lokalen Vue-State und ein Widget-Registry-Modul abgebildet
 - Ein kleiner API-Client kapselt Wetter- und Konfigurationszugriffe ohne zusaetzliche Client-Bibliothek
-- Das Frontend nutzt zuerst genau zwei Backend-Domaenen: Konfiguration und Wetter
+- Das Frontend nutzt inzwischen Wetter, Konfiguration und einen ersten Hardware-Status-Slice
+- Ein kleiner Helper-Layer in `src/utils` entlastet die groessten Komponenten ohne eine radikal neue Frontend-Struktur einzufuehren
 
 ## Backend
 
 ### Zielstruktur
 
-- `api/` fuer HTTP- und WebSocket-Endpunkte
+- `api/` als flaches HTTP-Paket mit nach Verantwortung gruppierten Endpoint-Dateien
 - `schemas/` fuer Request- und Response-Modelle
 - `services/` fuer Fachlogik
 - `repositories/` fuer Cache, Persistenz und externe Datenquellen
@@ -88,6 +91,7 @@ flowchart LR
 - Wetter und Kalender laufen ueber Repositories mit Timeout, Retry und Cache
 - optionale Features wie Gesten haengen sich als Adapter und fachliche Events an den gemeinsamen Backend-Kanal
 - FastAPI-Lifespan initialisiert optionale Hintergrundjobs sauber
+- die Dateistruktur soll nicht kuenstlich tief verschachtelt sein; klare Verantwortungsgruppen sind wichtiger als technische Unterordner-Hierarchien
 
 ### Gestenarchitektur
 
@@ -104,6 +108,48 @@ flowchart LR
 - `layout` bleibt profilspezifisch und beschreibt Widget-Typ, Position und widgetbezogene Settings
 - `system` beschreibt allgemeine Systemeinstellungen wie Ort, Koordinaten, Einheiten, Theme und Refresh-Intervall
 - beide Domaenen nutzen denselben Router unter `/api/v1/config`, aber getrennte Schemas und getrennte Persistenzkeys
+
+## Geplante Featureerweiterungen
+
+### Kalender-Slice
+
+- Backend: eigener Adapter- und Repository-Pfad mit Cache/Fallback
+- API: lesende Kalender-Endpunkte mit klaren Envelope-Vertraegen
+- Frontend: zuerst ein read-only Agenda-Widget statt sofort vollwertiger Bearbeitung
+
+### Smart-Home-Slice
+
+- Backend: Geraeteliste, Status-Snapshots und ein kleiner Kommandopfad statt sofortiger Vollintegration
+- MQTT bleibt Transportmittel nur fuer reale Geraete, nicht Selbstzweck
+- Frontend: zunaechst Status- und Toggle-Widgets fuer wenige konkrete Geraetetypen
+
+### Hardware-Control-Slice
+
+- das heutige Hardware-Widget wird zum kleinen Kontrollzentrum fuer Gesture-, LED-, Voice- und Systemstatus
+- Realtime-Events sollen dort gezielt aggregiert werden, statt unkoordiniert auf viele Widgets verteilt zu werden
+- echte GPIO- oder Device-Adapter koennen spaeter denselben sichtbaren UI-Vertrag weiter bedienen
+
+### Qualitaets- und Betriebs-Slice
+
+- Frontend-Testbasis fuer Registry, Layout und Hardware-Helfer
+- leichte Auth- und Rollenstrategie fuer spaetere Demo- oder Deployment-Szenarien
+- bessere Betriebsmetadaten wie Health-, Cache- und Adapterstatus im Backend
+
+## Erweiterungsroadmap
+
+```mermaid
+flowchart LR
+    Core[Heutiger Kern\nWetter, Config, Hardwarestatus]
+    Calendar[Kalender-Slice]
+    SmartHome[Smart-Home-Slice]
+    Hardware[Hardware-Control-Ausbau]
+    Quality[Tests, Auth, Betriebsstatus]
+
+    Core --> Calendar
+    Core --> SmartHome
+    Core --> Hardware
+    Core --> Quality
+```
 
 ## Persistenz
 
