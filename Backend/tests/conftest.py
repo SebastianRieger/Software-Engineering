@@ -16,6 +16,7 @@ from core.config import settings
 from core.database import init_db
 from main import app
 from repositories.config import ConfigRepository
+from repositories.weather import WeatherRepositoryError
 from services.gestures import GestureServiceError
 from services.voice import VoiceServiceError
 
@@ -37,21 +38,70 @@ async def client(tmp_path):
 @pytest.fixture
 def mock_weather_service():
     class MockWeatherService:
-        async def get_current_weather(self, lat: float, lon: float):
+        @staticmethod
+        def _resolve_location(lat: float | None, lon: float | None, city: str | None):
+            if city:
+                if lat is not None or lon is not None:
+                    raise WeatherRepositoryError(
+                        "Use either city or lat/lon, not both in the same request.",
+                        status_code=422,
+                    )
+                if city.lower() == "stuttgart":
+                    return 48.7758, 9.1829, "Stuttgart"
+                return 52.52, 13.405, city.title()
+
+            if lat is None and lon is None:
+                return settings.DEFAULT_LAT, settings.DEFAULT_LON, None
+
+            if lat is None or lon is None:
+                raise WeatherRepositoryError(
+                    "Both lat and lon must be provided together.",
+                    status_code=422,
+                )
+
+            return lat, lon, "Berlin"
+
+        async def geocode_city(self, city: str):
+            lat, lon, name = self._resolve_location(None, None, city)
+            return {
+                "query": city,
+                "result": {
+                    "name": name,
+                    "country": "Deutschland",
+                    "admin1": "Baden-Wuerttemberg" if name == "Stuttgart" else "Berlin",
+                    "timezone": "Europe/Berlin",
+                    "coordinates": {"lat": lat, "lon": lon},
+                },
+            }
+
+        async def get_current_weather(
+            self,
+            lat: float | None = None,
+            lon: float | None = None,
+            city: str | None = None,
+        ):
+            lat, lon, location_name = self._resolve_location(lat, lon, city)
             return {
                 "temperature": 20.0,
                 "humidity": 65,
                 "condition": "Clear",
                 "wind_speed": 3.5,
                 "timestamp": "2026-04-07T10:00:00+00:00",
-                "location_name": "Berlin",
+                "location_name": location_name or "Berlin",
                 "coordinates": {"lat": lat, "lon": lon},
                 "source": "live",
             }
 
-        async def get_forecast(self, days: int, lat: float, lon: float):
+        async def get_forecast(
+            self,
+            days: int,
+            lat: float | None = None,
+            lon: float | None = None,
+            city: str | None = None,
+        ):
+            lat, lon, location_name = self._resolve_location(lat, lon, city)
             return {
-                "location_name": "Berlin",
+                "location_name": location_name or "Berlin",
                 "coordinates": {"lat": lat, "lon": lon},
                 "days": days,
                 "generated_at": "2026-04-07T10:00:00+00:00",
@@ -125,13 +175,25 @@ def mock_voice_service():
             self.state = {
                 "message": "Voice status",
                 "available": False,
+                "enabled": True,
                 "running": False,
-                "mode": "skeleton",
+                "mode": "unavailable",
                 "provider": "vosk",
                 "device_index": None,
+                "device_name": None,
+                "sample_rate": 16000,
+                "block_size": 2048,
+                "queue_max_chunks": 12,
+                "commands": ["licht an", "licht aus"],
+                "partial_results_enabled": True,
+                "command_cooldown_seconds": 1.5,
+                "chunks_processed": 0,
+                "chunks_dropped": 0,
+                "last_audio_level": 0.0,
+                "last_transcript": None,
                 "last_command": None,
                 "last_command_at": None,
-                "last_error": "Mikrofonpfad ist vorbereitet, aber noch nicht implementiert.",
+                "last_error": "VOICE_MODEL_PATH ist nicht konfiguriert.",
             }
 
         def get_status(self):
@@ -139,7 +201,7 @@ def mock_voice_service():
 
         def start(self, device_index: int = 0):
             self.state["device_index"] = device_index
-            raise VoiceServiceError("Mikrofonpfad ist vorbereitet, aber noch nicht implementiert.", status_code=503)
+            raise VoiceServiceError("VOICE_MODEL_PATH ist nicht konfiguriert.", status_code=503)
 
         def stop(self):
             self.state["running"] = False
@@ -148,6 +210,9 @@ def mock_voice_service():
                 **self.state,
                 "message": "Voice stopped",
             }
+
+        def reload_config(self):
+            return None
 
         def shutdown(self):
             return None

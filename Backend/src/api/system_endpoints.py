@@ -20,7 +20,9 @@ from schemas.gestures import (
     GestureVideoProcessingResponse,
 )
 from schemas.system import SystemStatusResponse
+from schemas.voice import VoiceConfig, VoiceConfigEnvelope
 from services.gestures import GestureService, GestureServiceError, gesture_service
+from services.voice import voice_service
 
 
 config_router = APIRouter()
@@ -88,6 +90,24 @@ async def save_gesture_config(
     saved_config = repository.save_gesture_config(config=config)
     gesture_service.reload_config()
     return GestureConfigEnvelope(config=saved_config)
+
+
+@config_router.get("/voice", response_model=VoiceConfigEnvelope)
+async def get_voice_config(
+    repository: ConfigRepository = Depends(get_config_repository),
+):
+    config = repository.get_voice_config()
+    return VoiceConfigEnvelope(config=config)
+
+
+@config_router.put("/voice", response_model=VoiceConfigEnvelope)
+async def save_voice_config(
+    config: VoiceConfig,
+    repository: ConfigRepository = Depends(get_config_repository),
+):
+    saved_config = repository.save_voice_config(config=config)
+    voice_service.reload_config()
+    return VoiceConfigEnvelope(config=saved_config)
 
 
 @system_router.get("/status", response_model=SystemStatusResponse)

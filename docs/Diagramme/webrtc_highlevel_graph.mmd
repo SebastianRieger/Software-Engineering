@@ -1,0 +1,37 @@
+```mermaid
+flowchart LR
+    %% High-level architecture graph: components and interactions
+    Browser[Browser\n(getUserMedia, WebRTC)]
+    FastAPI[FastAPI\n(Signaling + WebSocket)]
+    SFU[SFU / aiortc Receiver]
+    MediaProcessor[Media Processor\n(ASR, CV, VAD)]
+    EventBus[EventBus / WebSocket Events]
+    Frontend[Frontend Widgets]
+    Recorder[Storage / Recorder]
+    ExternalASR[External ASR\n(optional cloud)]
+    Admin[Admin / Control]
+
+    Browser -->|Signaling (SDP/ICE)| FastAPI
+    Browser -->|Media (RTP SRTP)| SFU
+    FastAPI -->|control| SFU
+    SFU -->|raw frames| MediaProcessor
+    MediaProcessor -->|events| EventBus
+    EventBus --> Frontend
+    MediaProcessor --> Recorder
+    SFU --> ExternalASR
+    FastAPI --> Admin
+
+    subgraph On-Premise
+      SFU
+      MediaProcessor
+      Recorder
+    end
+
+    subgraph Cloud
+      ExternalASR
+    end
+
+    classDef comp fill:#f8f9fa,stroke:#333,stroke-width:1px;
+    class Browser,FastAPI,SFU,MediaProcessor,EventBus,Frontend,Recorder,ExternalASR comp
+
+```

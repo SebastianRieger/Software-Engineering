@@ -1,0 +1,21 @@
+```mermaid
+classDiagram
+    %% Low-detail client-side classes for WebRTC
+    class Browser {
+      +getUserMedia()
+      +createPeerConnection()
+      +addTrack()
+      +sendSignaling(msg)
+    }
+
+    class RTCPeerConnection
+    class MediaStream
+    class MediaTrack
+
+    Browser --> RTCPeerConnection : creates
+    RTCPeerConnection o-- MediaStream : holds
+    MediaStream o-- MediaTrack : contains
+
+    note for Browser "Client-side: handles capture, local encoding
+and signaling via WebSocket"
+```

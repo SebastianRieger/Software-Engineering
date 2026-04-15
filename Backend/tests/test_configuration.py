@@ -141,3 +141,40 @@ async def test_save_and_reload_gesture_config(client):
     assert loaded["config"]["circle_min_radius"] == payload["circle_min_radius"]
     assert loaded["config"]["min_confidence"] == payload["min_confidence"]
     assert loaded["config"]["hand_size_reference"] == payload["hand_size_reference"]
+
+
+@pytest.mark.asyncio
+async def test_get_default_voice_config(client):
+    response = await client.get("/api/v1/config/voice")
+    assert response.status_code == 200
+    data = response.json()
+    assert data["config"]["sample_rate"] == 16000
+    assert data["config"]["commands"]
+
+
+@pytest.mark.asyncio
+async def test_save_and_reload_voice_config(client):
+    payload = {
+        "enabled": True,
+        "device_index": -1,
+        "sample_rate": 16000,
+        "block_size": 1024,
+        "queue_max_chunks": 8,
+        "energy_threshold": 150.0,
+        "command_cooldown_seconds": 0.8,
+        "partial_results_enabled": False,
+        "commands": ["licht an", "licht aus", "spiegel an"],
+    }
+
+    save_response = await client.put("/api/v1/config/voice", json=payload)
+    assert save_response.status_code == 200
+    saved = save_response.json()
+    assert saved["config"]["block_size"] == payload["block_size"]
+    assert saved["config"]["updated_at"] is not None
+
+    load_response = await client.get("/api/v1/config/voice")
+    assert load_response.status_code == 200
+    loaded = load_response.json()
+    assert loaded["config"]["queue_max_chunks"] == payload["queue_max_chunks"]
+    assert loaded["config"]["partial_results_enabled"] is False
+    assert loaded["config"]["commands"] == payload["commands"]

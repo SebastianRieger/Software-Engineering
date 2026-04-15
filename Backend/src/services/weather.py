@@ -8,15 +8,20 @@ class WeatherService:
 
     async def get_current_weather(
         self,
-        lat: float = settings.DEFAULT_LAT,
-        lon: float = settings.DEFAULT_LON,
+        lat: float | None = None,
+        lon: float | None = None,
+        city: str | None = None,
     ):
-        return await self.repository.get_current_weather(lat=lat, lon=lon)
+        return await self.repository.get_current_weather(lat=lat, lon=lon, city=city)
 
     async def get_forecast(
         self,
         days: int = 5,
-        lat: float = settings.DEFAULT_LAT,
-        lon: float = settings.DEFAULT_LON,
+        lat: float | None = None,
+        lon: float | None = None,
+        city: str | None = None,
     ):
-        return await self.repository.get_forecast(lat=lat, lon=lon, days=days)
+        return await self.repository.get_forecast(lat=lat, lon=lon, days=days, city=city)
+
+    async def geocode_city(self, city: str):
+        return await self.repository.geocode_city(city=city)

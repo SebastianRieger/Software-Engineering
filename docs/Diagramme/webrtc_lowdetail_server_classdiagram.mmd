@@ -1,0 +1,31 @@
+```mermaid
+classDiagram
+    %% Low-detail server-side classes for WebRTC processing
+    class FastAPI_Signaling {
+      +handle_offer(clientId, sdp)
+      +handle_ice(clientId, candidate)
+    }
+
+    class aiortc_Peer {
+      +setRemoteDescription(sdp)
+      +createAnswer()
+      +onTrack(track)
+    }
+
+    class MediaProcessor {
+      +processAudio(frame)
+      +processVideo(frame)
+    }
+
+    class EventBus {
+      +publish(event)
+      +subscribe(listener)
+    }
+
+    FastAPI_Signaling --> aiortc_Peer : negotiates
+    aiortc_Peer --> MediaProcessor : delivers frames
+    MediaProcessor --> EventBus : emits events
+
+    note for MediaProcessor "ASR, VAD, CV pipelines (resampling,
+feature extraction, detection)" 
+```

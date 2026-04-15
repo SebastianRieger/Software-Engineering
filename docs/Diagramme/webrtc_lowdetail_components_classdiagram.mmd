@@ -1,0 +1,25 @@
+```mermaid
+classDiagram
+    %% Low-detail component-level classes (abstracted)
+    class Browser
+    class FastAPI
+    class SFU
+    class aiortcReceiver
+    class MediaProcessor
+    class Recorder
+    class ExternalASR
+    class EventBus
+
+    Browser --> FastAPI : signaling
+    Browser --> SFU : media (RTP/SRTP)
+    FastAPI --> aiortcReceiver : control
+    SFU --> MediaProcessor : stream subscription
+    aiortcReceiver --> MediaProcessor : direct receive
+    MediaProcessor --> Recorder : store clips
+    MediaProcessor --> ExternalASR : optional offload
+    MediaProcessor --> EventBus : publish events
+    EventBus --> Browser : deliver events
+
+    note for SFU "mediasoup / Janus / Jitsi — scales multi-client scenarios"
+    note for aiortcReceiver "Lightweight Python receiver used for POC or single-instance setups"
+```

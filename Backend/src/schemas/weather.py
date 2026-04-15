@@ -9,6 +9,19 @@ class Coordinates(BaseModel):
     lon: float
 
 
+class WeatherLocationResponse(BaseModel):
+    name: str
+    country: str | None = None
+    admin1: str | None = None
+    timezone: str | None = None
+    coordinates: Coordinates
+
+
+class WeatherGeocodingResponse(BaseModel):
+    query: str
+    result: WeatherLocationResponse
+
+
 class WeatherCurrentResponse(BaseModel):
     location_name: str | None = None
     coordinates: Coordinates

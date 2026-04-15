@@ -60,6 +60,22 @@ class Settings(BaseSettings):
     GESTURE_READ_RETRY_DELAY_SECONDS: float = 0.03
     GESTURE_STOP_JOIN_TIMEOUT_SECONDS: float = 2.0
     GESTURE_IDLE_SLEEP_SECONDS: float = 0.02
+    VOICE_ENABLED: bool = True
+    VOICE_DEVICE_INDEX: int = -1
+    VOICE_MODEL_PATH: str = ""
+    VOICE_SAMPLE_RATE: int = 16000
+    VOICE_BLOCK_SIZE: int = 2048
+    VOICE_QUEUE_MAX_CHUNKS: int = 12
+    VOICE_ENERGY_THRESHOLD: float = 200.0
+    VOICE_COMMAND_COOLDOWN_SECONDS: float = 1.5
+    VOICE_PARTIAL_RESULTS_ENABLED: bool = True
+    VOICE_STOP_JOIN_TIMEOUT_SECONDS: float = 2.0
+    VOICE_COMMANDS: List[str] = [
+        "licht an",
+        "licht aus",
+        "naechstes widget",
+        "vorheriges widget",
+    ]
 
     # MQTT settings
     MQTT_BROKER: str = "localhost"
