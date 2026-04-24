@@ -1,126 +1,64 @@
 <script setup lang="ts">
-import { createApp, ref, onMounted, onBeforeUnmount} from 'vue';
+import { ref } from 'vue';
 import type { ComponentPublicInstance } from 'vue';
 import GridBoard from './GridBoard.vue';
 import ModuleShop from './ModuleShop.vue';
+import { useWidgetManager } from '../../composables/useWidgetManager';
+import { useEditMode } from '../../composables/useEditMode';
+import { useModuleShop } from '../../composables/useModuleShop';
 
-// Define an interface for the exposed methods
+// Interface für die Methoden des ModuleShop
 interface ModuleShopExposed {
   nextModule: () => void;
   prevModule: () => void;
 }
 
-// Store for active widgets
-const activeWidgets: { [key: number]: any } = {}
+// Composables initialisieren
+const { insertWidgetIntoCell, clearCell, moveWidgets } = useWidgetManager();
+const { isEditMode, setupKeyboardListener } = useEditMode();
+const { isShopOpen, toggleShop } = useModuleShop();
 
-const isShopOpen = ref(false);
-const isEditMode = ref(false);
 const moduleShopRef = ref<ComponentPublicInstance<{}, ModuleShopExposed> | null>(null);
 
-// Function to insert a Vue component into a cell
-const insertVueWidgetIntoCell = (cellId: number, widgetComponent: any) => {
-  const mount = document.getElementById(`cell-content-${cellId}`)
-  if (!mount) {
-    console.error(`Mount for cell ${cellId} not found`)
-    return
-  }
-
-  // Clean up old component if exists
-  if (activeWidgets[cellId]) {
-    activeWidgets[cellId].unmount()
-  }
-
-  // Clear mount content
-  mount.innerHTML = ''
-
-  // Create container for Vue component
-  const widgetContainer = document.createElement('div')
-  widgetContainer.className = 'w-full h-full'
-  mount.appendChild(widgetContainer)
-
-  // Create and mount Vue app for this component
-  const app = createApp(widgetComponent)
-  app.mount(widgetContainer)
-
-  // Store app for later cleanup
-  activeWidgets[cellId] = app
-}
-
-// Handle adding widget from shop
+/**
+ * Verarbeitet das Hinzufügen eines Widgets aus dem Shop
+ */
 const handleAddWidget = ({ cellId, component }: { cellId: number; component: any }) => {
-  insertVueWidgetIntoCell(cellId, component);
-  console.log('Widget added to cell:', cellId);
-  console.log('Active widgets:', Object.keys(activeWidgets[cellId]));
+  insertWidgetIntoCell(cellId, component);
+  console.log('Widget zu Zelle hinzugefügt:', cellId);
 };
 
-// Clear a cell
-const clearCell = (cellId: number) => {
-  const mount = document.getElementById(`cell-content-${cellId}`)
-  if (!mount) return
-
-  // Clean up Vue app if exists
-  if (activeWidgets[cellId]) {
-    activeWidgets[cellId].unmount()
-    delete activeWidgets[cellId]
-  }
-
-  // Platzhalter wiederherstellen
-  mount.innerHTML = `
-    <div class="w-full h-full grid place-items-center text-2xl font-semibold opacity-70">
-      ${String(cellId).padStart(2, '0')}
-    </div>
-  `
-}
-
-// Toggle edit mode
-const toggleEditMode = () => {
-  isEditMode.value = !isEditMode.value;
-}
-
-// Handle widgets moved event from GridBoard
+/**
+ * Verarbeitet das Verschieben von Widgets
+ */
 const handleWidgetsMoved = ({ sourceCellId, targetCellId }: { sourceCellId: number; targetCellId: number }) => {
-  const sourceApp = activeWidgets[sourceCellId]
-  const targetApp = activeWidgets[targetCellId]
+  moveWidgets({ sourceCellId, targetCellId });
+};
 
-  if (sourceApp && targetApp) {
-    activeWidgets[targetCellId] = sourceApp
-    activeWidgets[sourceCellId] = targetApp
-  } else if (sourceApp && !targetApp) {
-    activeWidgets[targetCellId] = sourceApp
-    delete activeWidgets[sourceCellId]
-  } else if (!sourceApp && targetApp) {
-    activeWidgets[sourceCellId] = targetApp
-    delete activeWidgets[targetCellId]
-  }
-}
+/**
+ * Verarbeitet das Löschen eines Widgets
+ */
+const handleDeleteWidget = (cellId: number) => {
+  clearCell(cellId);
+};
 
-// Handle keydown events
-const handleKeydown = (event: KeyboardEvent) => {
-  console.log('Key pressed:', event.key); // Debug log
-  if (event.key === 'e') {
-    isShopOpen.value = !isShopOpen.value;
-  } else if (event.key === 'f' || event.key === 'F') {
-    toggleEditMode();
-  } else if (event.key === 'Escape') {
-    isShopOpen.value = false;
-  } else if (isShopOpen.value && moduleShopRef.value) {
-    // Only when shop is open and ref is available
-    if (event.key === 'ArrowRight') {
+/**
+ * Keyboard-Event Handler mit Shop-Navigation
+ */
+const handleShopNavigation = (key: string) => {
+  if (isShopOpen.value && moduleShopRef.value) {
+    if (key === 'ArrowRight') {
       moduleShopRef.value.nextModule();
-    } else if (event.key === 'ArrowLeft') {
+    } else if (key === 'ArrowLeft') {
       moduleShopRef.value.prevModule();
     }
   }
 };
 
-onMounted(() => {
-  // Add keyboard event listener
-  window.addEventListener('keydown', handleKeydown);
-});
-
-onBeforeUnmount(() => {
-  // Remove keyboard event listener
-  window.removeEventListener('keydown', handleKeydown);
+// Keyboard-Listener Setup
+setupKeyboardListener({
+  onShopToggle: toggleShop,
+  onShopNavigate: handleShopNavigation,
 });
 
 </script>
@@ -147,7 +85,7 @@ onBeforeUnmount(() => {
     <GridBoard
         :is-edit-mode="isEditMode"
         @widgets-moved="handleWidgetsMoved"
-        @delete-widget="clearCell"
+        @delete-widget="handleDeleteWidget"
     />
   </div>
 </template>
