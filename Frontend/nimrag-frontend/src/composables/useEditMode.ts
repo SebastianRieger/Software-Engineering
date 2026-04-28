@@ -67,6 +67,7 @@ export function useEditMode() {
   return {
     isEditMode,
     toggleEditMode,
+    handleKeydown,
     setupKeyboardListener,
   };
 }

@@ -8,9 +8,14 @@
     "dev": "node setup.js --dev",
     "start": "node setup.js --start"
   },
-  "dependencies": {},
-  "devDependencies": {},
-  "keywords": ["smart-mirror", "setup", "cross-platform"],
+  "devDependencies": {
+    "vitest": "^4.1.5"
+  },
+  "keywords": [
+    "smart-mirror",
+    "setup",
+    "cross-platform"
+  ],
   "author": "Smart Mirror Team",
   "license": "MIT"
 }
