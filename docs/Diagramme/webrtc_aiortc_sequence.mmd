@@ -1,0 +1,33 @@
+```mermaid
+sequenceDiagram
+    %% Sequence diagram: from device hardware to backend processing and events
+    participant Browser as UserDevice\n(Browser)
+    participant Signaling as SignalingServer\n(FastAPI+WebSocket)
+    participant MediaServer as MediaServer\n(aiortc or SFU)
+    participant MediaProcessor as MediaProcessor\n(ASR/CV/VAD)
+    participant ASR as ASR_Service\n(Model/Whisper/Vosk)
+    participant EventBus as EventBus\n(WebSocket/Event Delivery)
+    participant Frontend as Frontend\n(Widgets)
+
+    Browser->>Browser: getUserMedia()
+    Browser->>Browser: create RTCPeerConnection, addTrack(Audio/Video)
+    Browser->>Signaling: send {type: "webrtc-offer", sdp}
+    Signaling->>MediaServer: forward offer (controller or direct)
+    MediaServer-->>Signaling: answer SDP
+    Signaling-->>Browser: send answer
+    Browser->>Browser: setRemoteDescription(answer)
+    Browser-->>Signaling: exchange ICE candidates (via WebSocket)
+    Note over Browser,MediaServer: DTLS / SRTP handshake — secure media channel
+    Browser-->>MediaServer: RTP media packets (Opus for audio, VP8/VP9 for video)
+    MediaServer-->>MediaProcessor: deliver decoded frames / PCM
+    MediaProcessor->>ASR: resample -> submit audio frames
+    ASR-->>MediaProcessor: partial/final transcript
+    MediaProcessor->>EventBus: publish TranscriptionEvent / DetectionEvent
+    EventBus->>Frontend: push event to widgets (transcript, commands)
+    Frontend->>Browser: update UI / show results
+
+    %% Optional: Video CV path
+    MediaProcessor->>MediaProcessor: run CV pipeline (MediaPipe / OpenCV)
+    MediaProcessor->>EventBus: publish GestureDetected
+
+```

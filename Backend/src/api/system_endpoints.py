@@ -1,0 +1,179 @@
+from pathlib import Path
+
+from fastapi import APIRouter, Depends, HTTPException, Query
+
+from core.config import settings
+from repositories.config import ConfigRepository
+from repositories.weather import WeatherRepository
+from schemas.configuration import (
+    LayoutConfig,
+    LayoutConfigEnvelope,
+    SystemConfig,
+    SystemConfigEnvelope,
+)
+from schemas.gestures import (
+    GestureConfig,
+    GestureConfigEnvelope,
+    GestureFrameResponse,
+    GestureStartRequest,
+    GestureStatusResponse,
+    GestureVideoProcessingResponse,
+)
+from schemas.system import SystemStatusResponse
+from schemas.voice import VoiceConfig, VoiceConfigEnvelope
+from services.gestures import GestureService, GestureServiceError, gesture_service
+from services.voice import voice_service
+
+
+config_router = APIRouter()
+system_router = APIRouter()
+gesture_router = APIRouter()
+
+
+async def get_config_repository() -> ConfigRepository:
+    return ConfigRepository()
+
+
+async def get_gesture_service() -> GestureService:
+    return gesture_service
+
+
+@config_router.get("/layout", response_model=LayoutConfigEnvelope)
+async def get_layout(
+    profile: str = Query(default="default"),
+    repository: ConfigRepository = Depends(get_config_repository),
+):
+    config = repository.get_layout(profile=profile)
+    return LayoutConfigEnvelope(profile=profile, config=config)
+
+
+@config_router.put("/layout", response_model=LayoutConfigEnvelope)
+async def save_layout(
+    layout: LayoutConfig,
+    profile: str = Query(default="default"),
+    repository: ConfigRepository = Depends(get_config_repository),
+):
+    saved_config = repository.save_layout(layout=layout, profile=profile)
+    return LayoutConfigEnvelope(profile=profile, config=saved_config)
+
+
+@config_router.get("/system", response_model=SystemConfigEnvelope)
+async def get_system_config(
+    repository: ConfigRepository = Depends(get_config_repository),
+):
+    config = repository.get_system_config()
+    return SystemConfigEnvelope(config=config)
+
+
+@config_router.put("/system", response_model=SystemConfigEnvelope)
+async def save_system_config(
+    config: SystemConfig,
+    repository: ConfigRepository = Depends(get_config_repository),
+):
+    saved_config = repository.save_system_config(config=config)
+    return SystemConfigEnvelope(config=saved_config)
+
+
+@config_router.get("/gestures", response_model=GestureConfigEnvelope)
+async def get_gesture_config(
+    repository: ConfigRepository = Depends(get_config_repository),
+):
+    config = repository.get_gesture_config()
+    return GestureConfigEnvelope(config=config)
+
+
+@config_router.put("/gestures", response_model=GestureConfigEnvelope)
+async def save_gesture_config(
+    config: GestureConfig,
+    repository: ConfigRepository = Depends(get_config_repository),
+):
+    saved_config = repository.save_gesture_config(config=config)
+    gesture_service.reload_config()
+    return GestureConfigEnvelope(config=saved_config)
+
+
+@config_router.get("/voice", response_model=VoiceConfigEnvelope)
+async def get_voice_config(
+    repository: ConfigRepository = Depends(get_config_repository),
+):
+    config = repository.get_voice_config()
+    return VoiceConfigEnvelope(config=config)
+
+
+@config_router.put("/voice", response_model=VoiceConfigEnvelope)
+async def save_voice_config(
+    config: VoiceConfig,
+    repository: ConfigRepository = Depends(get_config_repository),
+):
+    saved_config = repository.save_voice_config(config=config)
+    voice_service.reload_config()
+    return VoiceConfigEnvelope(config=saved_config)
+
+
+@system_router.get("/status", response_model=SystemStatusResponse)
+async def get_system_status():
+    config_repository = ConfigRepository()
+    weather_repository = WeatherRepository()
+    return {
+        "status": "running",
+        "version": settings.VERSION,
+        "database_path": str(settings.sqlite_path),
+        "config_entries": config_repository.count_entries(),
+        "weather_cache_entries": weather_repository.count_cache_entries(),
+    }
+
+
+@gesture_router.get("/status", response_model=GestureStatusResponse)
+async def get_status(
+    service: GestureService = Depends(get_gesture_service),
+):
+    return service.get_status()
+
+
+@gesture_router.post("/start", response_model=GestureStatusResponse)
+async def start_gesture_detection(
+    payload: GestureStartRequest,
+    service: GestureService = Depends(get_gesture_service),
+):
+    try:
+        return service.start(camera_index=payload.camera_index)
+    except GestureServiceError as exc:
+        raise HTTPException(status_code=exc.status_code, detail=str(exc)) from exc
+
+
+@gesture_router.post("/stop", response_model=GestureStatusResponse)
+async def stop_gesture_detection(
+    service: GestureService = Depends(get_gesture_service),
+):
+    return service.stop()
+
+
+@gesture_router.get("/frame", response_model=GestureFrameResponse)
+async def get_preview_frame(
+    service: GestureService = Depends(get_gesture_service),
+):
+    image = service.get_frame()
+    if image is None:
+        raise HTTPException(status_code=404, detail="Kein Vorschaubild verfuegbar.")
+    return {"image": image}
+
+
+@gesture_router.post("/dev/process-video", response_model=GestureVideoProcessingResponse)
+async def process_video(
+    video_path: str = Query(..., min_length=1),
+    service: GestureService = Depends(get_gesture_service),
+):
+    if not settings.GESTURES_DEV_ENDPOINT_ENABLED:
+        raise HTTPException(status_code=404, detail="Endpoint ist deaktiviert.")
+
+    resolved_path = Path(video_path).expanduser()
+    if not resolved_path.is_absolute():
+        raise HTTPException(
+            status_code=400,
+            detail="video_path muss ein absoluter Dateipfad sein.",
+        )
+
+    try:
+        return service.process_video(video_path=str(resolved_path))
+    except GestureServiceError as exc:
+        raise HTTPException(status_code=exc.status_code, detail=str(exc)) from exc

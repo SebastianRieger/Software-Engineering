@@ -1,0 +1,46 @@
+```mermaid
+classDiagram
+    %% Subsystem Class Diagram: Browser + WebRTC + Signaling + Media Server + Processing
+    class Browser {
+      +getUserMedia()
+      +createPeerConnection()
+      +addTrack()
+      +sendSignaling(msg)
+    }
+
+    class RTCPeerConnection
+    class MediaStream
+    class AudioTrack
+    class VideoTrack
+    class OpusEncoder
+    class VP8Encoder
+    class WebSocketSignaling
+    class FastAPI_Signaling
+    class aiortc_Peer
+    class MediaProcessor
+    class SFU
+    class SFU_Worker
+    class Recorder
+    class EventBus
+
+    Browser --> RTCPeerConnection : creates
+    RTCPeerConnection o-- MediaStream : has
+    MediaStream o-- AudioTrack : contains
+    MediaStream o-- VideoTrack : contains
+    AudioTrack --> OpusEncoder : encoded by
+    VideoTrack --> VP8Encoder : encoded by
+    RTCPeerConnection --> WebSocketSignaling : uses
+    WebSocketSignaling --> FastAPI_Signaling : forwards
+    FastAPI_Signaling --> aiortc_Peer : negotiates (SDP/ICE)
+    aiortc_Peer --> MediaProcessor : delivers frames for processing
+    aiortc_Peer <.. SFU : alternative connection
+    SFU --> SFU_Worker : distributes streams
+    SFU_Worker --> MediaProcessor : subscribes
+    MediaProcessor --> Recorder : optional persistent storage
+    MediaProcessor --> EventBus : publishes events (transcripts, detections)
+    EventBus --> Browser : push events to UI
+
+    %% Notes
+    note for OpusEncoder "Opus (RTP) — WebRTC audio codec"
+    note for aiortc_Peer "aiortc runs on Python backend — receives RTP, exposes tracks"
+```

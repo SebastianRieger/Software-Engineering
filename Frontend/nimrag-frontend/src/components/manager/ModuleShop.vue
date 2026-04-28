@@ -1,118 +1,48 @@
 <script setup lang="ts">
-import { ref, onMounted, defineEmits, defineExpose, computed } from 'vue'
+import { computed, defineEmits, defineExpose, ref } from 'vue'
 
-const emit = defineEmits(['addWidget'])
-const modules = import.meta.glob("../widgets/*.vue")
+import { buildDisplayedModules, CELL_IDS, getModuleItems, moveModuleIndex } from '../../utils/moduleShop'
 
-type ModuleItem = {
-  name: string
-  path: string
-  component: any
-}
+const emit = defineEmits<{
+  addWidget: [payload: { cellId: number; widgetType: string }]
+}>()
 
-type DisplayItem = ModuleItem & {
-  position: 'left' | 'center' | 'right'
-  index: number
-}
-
-const moduleList = ref<ModuleItem[]>([])
+const moduleList = ref(getModuleItems())
 const currentIndex = ref(0)
 
-// Widget in Zelle einfügen
 const addCurrentWidgetToCell = (cellId: number) => {
-  if (!moduleList.value.length) return
-  emit('addWidget', { cellId, component: moduleList.value[currentIndex.value]!.component })
+  if (!moduleList.value.length) {
+    return
+  }
+
+  emit('addWidget', {
+    cellId,
+    widgetType: moduleList.value[currentIndex.value]!.type,
+  })
 }
 
-// Navigation
 const nextModule = () => {
-  if (!moduleList.value.length) return
-  currentIndex.value = (currentIndex.value + 1) % moduleList.value.length
+  currentIndex.value = moveModuleIndex(currentIndex.value, 1, moduleList.value.length)
 }
 
 const prevModule = () => {
-  if (!moduleList.value.length) return
-  currentIndex.value =
-      (currentIndex.value - 1 + moduleList.value.length) % moduleList.value.length
+  currentIndex.value = moveModuleIndex(currentIndex.value, -1, moduleList.value.length)
 }
 
-// Drei sichtbare Karten: links – center – rechts
-const displayedModules = computed<DisplayItem[]>(() => {
-  const result: DisplayItem[] = []
-  const len = moduleList.value.length
-  if (!len) return result
+const displayedModules = computed(() => buildDisplayedModules(moduleList.value, currentIndex.value))
 
-  // Spezialfall: nur ein Modul -> nur Center anzeigen
-  if (len === 1) {
-    const base = moduleList.value[0]!
-    result.push({
-      name: base.name,
-      path: base.path,
-      component: base.component,
-      position: 'center',
-      index: 0
-    })
-    return result
-  }
-
-  const center = currentIndex.value
-  const left = (center - 1 + len) % len
-  const right = (center + 1) % len
-
-  const leftBase = moduleList.value[left]!
-  const centerBase = moduleList.value[center]!
-  const rightBase = moduleList.value[right]!
-
-  result.push({
-    name: leftBase.name,
-    path: leftBase.path,
-    component: leftBase.component,
-    position: 'left',
-    index: left
-  })
-
-  result.push({
-    name: centerBase.name,
-    path: centerBase.path,
-    component: centerBase.component,
-    position: 'center',
-    index: center
-  })
-
-  result.push({
-    name: rightBase.name,
-    path: rightBase.path,
-    component: rightBase.component,
-    position: 'right',
-    index: right
-  })
-
-  return result
-})
-
-onMounted(async () => {
-  for (const path in modules) {
-    const fileName = path.split('/').pop()?.replace('.vue', '') || ''
-    const moduleLoader = modules[path]
-    if (!moduleLoader) continue
-
-    const module = (await moduleLoader()) as any
-    moduleList.value.push({
-      name: fileName,
-      path,
-      component: module.default
-    })
-  }
-})
 const setCurrentModule = (index: number) => {
-  if (!moduleList.value.length) return
+  if (!moduleList.value.length) {
+    return
+  }
+
   currentIndex.value = index
 }
 
 defineExpose({
   nextModule,
   prevModule,
-  setCurrentModule
+  setCurrentModule,
 })
 </script>
 
@@ -121,26 +51,24 @@ defineExpose({
     <h3 class="title">Widget Shop</h3>
 
     <div v-if="moduleList.length > 0" class="carousel">
-      <!-- Navigation -->
       <button @click="prevModule" class="nav-btn nav-btn-left">‹</button>
 
-      <!-- Track mit 3 Karten -->
       <div class="carousel-track">
         <div
-            v-for="item in displayedModules"
-            :key="item.index"
-            class="module-card"
-            :class="[
-      `pos-${item.position}`,
-      { 'is-active': item.index === currentIndex }
-    ]"
+          v-for="item in displayedModules"
+          :key="item.index"
+          class="module-card"
+          :class="[
+            `pos-${item.position}`,
+            { 'is-active': item.index === currentIndex }
+          ]"
         >
           <h4 class="module-name">{{ item.name }}</h4>
 
           <div class="preview-container">
             <component
-                v-if="item.position === 'center'"
-                :is="item.component"
+              v-if="item.position === 'center'"
+              :is="item.component"
             />
             <div v-else class="preview-placeholder">
               Vorschau
@@ -157,17 +85,14 @@ defineExpose({
     </div>
 
     <!-- Cell-Auswahl bleibt unten drunter -->
-    <div
-        v-if="moduleList.length > 0"
-        class="cell-selection"
-    >
+    <div v-if="moduleList.length > 0" class="cell-selection">
       <p>Add to cell:</p>
       <div class="cell-buttons">
         <button
-            v-for="cellId in [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16]"
-            :key="cellId"
-            @click="addCurrentWidgetToCell(cellId)"
-            class="cell-btn"
+          v-for="cellId in CELL_IDS"
+          :key="cellId"
+          @click="addCurrentWidgetToCell(cellId)"
+          class="cell-btn"
         >
           {{ cellId }}
         </button>
@@ -227,8 +152,6 @@ defineExpose({
   perspective: 1400px;
   perspective-origin: center center;
 }
-
-/*animation*/
 @keyframes slideInFromLeft {
   0% {
     opacity: 0;
@@ -282,25 +205,6 @@ defineExpose({
     filter: none;
   }
 }
-
-/*
-@keyframes pulseGlow {
-
-  0%, 100% {
-    box-shadow:
-        0 20px 60px rgba(0, 0, 0, 0.9),
-        0 0 40px rgba(80, 160, 255, 0.3),
-        inset 0 0 20px rgba(80, 160, 255, 0.1);
-  }
-  50% {
-    box-shadow:
-        0 28px 80px rgba(0, 0, 0, 0.95),
-        0 0 70px rgba(80, 160, 255, 0.6),
-        inset 0 0 35px rgba(80, 160, 255, 0.2);
-  }
-}
-*/
-
 @keyframes shimmer {
   0% {
     background-position: -200% center;

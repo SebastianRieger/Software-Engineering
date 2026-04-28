@@ -1,135 +1,41 @@
-# Smart Mirror – Projekt „Nimrag“
+# Projektbeschreibung Nimrag
 
-## Software-Entscheidung
+## Kontext
 
-### Option 1: Eigene Software
-**Anforderungen:**
-- Eigenes HUD
-- Eigenes Modul-System
-- Eigene Hardwareanbindung
+Nimrag ist ein Software-Engineering-Projekt fuer einen Smart Mirror mit Raspberry Pi, Web-UI und optionaler Hardware-Integration.
+Das Projekt dient sowohl als Produktprototyp als auch als Architektur- und Lernprojekt.
 
-**Bemerkung:**
-- Es ist technisch möglich und bietet maximale Flexibilität.
+## Produktidee
 
-### Option 2: MagicMirror²
-**Systemanforderungen:**
-- Raspberry Pi 2, 3, 4 oder 5
-- Neueste vollständige Version von Raspberry Pi OS
-- Desktop-Umgebung zur Ausführung von Electron
-- Internetverbindung erforderlich
-- Optionale Steuerung über Smartphone denkbar
+Der Spiegel soll zentrale Alltagsinformationen sichtbar machen und spaeter mit Smart-Home- und Hardware-Funktionen erweitert werden.
 
----
+## Realistischer Projektkern
 
-## Hardware-Anforderungen
+- Uhr und Datum
+- Wetter mit Cache und Fallback
+- Kalender
+- konfigurierbares Widget-Layout
+- stabiles Frontend/Backend-Grundsystem
 
-### Grundausstattung
-- Fernseher + Wandhalterung *(bereits vorhanden)*
-- Raspberry Pi (Modell 2, 3, 4 oder 5)
-- Holzrahmen zur Verkleidung des Fernsehers
-- Zwei-Wege-Spiegel:
-  - [Supreme Tech Acryl See-Through Spiegel](https://www.amazon.de/Supreme-Tech-x18-Acryl-See-Through-Spiegel/dp/B07XTRCTQL) - **€50.48**
-  - Maße sollten zum Fernseher passen
+## Spaetere Erweiterungen
 
-### Zubehör für Raspberry Pi
-- Micro HDMI zu HDMI Kabel:
-  - [Amazon-Link](https://www.amazon.de/dp/B0BP29QTJ6) - **€9.79**
-- Stromkabel für den Pi
-- Gehäuse für den Pi
+- LED-Steuerung
+- MQTT-basierte Smart-Home-Integration
+- Sprachsteuerung
+- Gestensteuerung
+- Mobile Remote
 
----
+## Technische Leitplanken
 
-## Beispiel eines fertigen Smart Mirrors
+- Vue 3 Frontend im Kiosk-Modus
+- FastAPI Backend
+- SQLite fuer Cache und Konfiguration
+- WebSocket fuer Echtzeit-Updates
+- Raspberry Pi als Zielplattform
 
-![Smart Mirror Beispiel](pics/smart-mirror-example.png)
+## Weiterfuehrende Doku
 
-**Features des gezeigten Smart Mirrors:**
-- Kalenderansicht mit anstehenden Terminen
-- Aktuelle Uhrzeit und Datum
-- Wetterinformationen mit mehrtägiger Vorhersage
-- Mondphasen-Anzeige
-- Eleganter dunkler Rahmen
-- Klare, gut lesbare Benutzeroberfläche
-
-Dieses Beispiel zeigt die typischen Module eines MagicMirror² Systems in einem ansprechenden Layout. Der Spiegel fügt sich natürlich in den Wohnraum ein und bietet alle wichtigen Informationen auf einen Blick.
-
----
-
-## LED Setup & Elektronik
-
-![LED Schaltplan](pics/LED_Circuitboard.png)
-
-### Erforderliche Komponenten
-
-**LED-Beleuchtung:**
-- **LED Strip** (schneidbar, RGB): [TP-Link Tapo LED-Streifen](https://www.amazon.de/TP-Link-Tapo-schneidbar-kompatibel-energiesparend/dp/B098FJ6LXB) - **€14.99**
-  - Ermöglicht Hintergrundbeleuchtung des Spiegels
-  - Schneidbar für individuelle Anpassung
-  - Smart-Home-Kompatibilität
-
-**Elektronische Steuerung:**
-- **N-Channel MOSFET**: [Amazon-Link](https://www.amazon.com/gp/product/B07CTF1JVD) - **€6.02**
-  - Zur Steuerung der LED-Streifen über den Raspberry Pi
-  - Ermöglicht PWM-Kontrolle für Helligkeitsregelung
-  
-- **Sonoff Smart Switch**: [Amazon-Link](https://www.amazon.com/gp/product/B07KP8THFG) - **€11.03**
-  - Ein/Ausschalten des gesamten Spiegels
-  - Smart-Home-Integration
-  - Fernsteuerung möglich
-
-**Verkabelung & Prototyping:**
-- **Steckplatine + Kabel-Set**: [Amazon-Link](https://www.amazon.com/dp/B08Y59P6D1) - **€9.60**
-  - Für Prototyping und Verkabelung
-  - Jumperkabel verschiedener Längen
-  - Breadboard für Testschaltungen
-
-**Stromversorgung:**
-- **Mehrfachsteckdose** (3 Anschlüsse ausreichend)
-  - 1x Raspberry Pi
-  - 1x LED-Beleuchtung
-  - 1x Reserve/Zubehör
-
----
-
-## Allgemeines Layout
-
-![Layout Übersicht](pics/Layout.png)
-
----
-
-## Mögliche Module & Features
-
-Basierend auf [diesem YouTube-Tutorial](https://www.youtube.com/watch?v=q7wqm8h3PnA) sind folgende Module implementierbar:
-
-### Standard-Module
-- **Karten/Navigation** - Verkehrslage und Routenplanung
-- **Notizen** - Erinnerungen und To-Do-Listen
-- **Wetter** - Aktuelle Bedingungen und Vorhersage
-- **Kalender** - Termine und Ereignisse
-- **Uhrzeit** - Digitale Zeitanzeige
-- **Raumtemperatur/Sensordaten** - Umgebungsüberwachung -> erstmal Dummy Daten
-
-### Erweiterte Module
-- **Musik** - Wiedergabesteuerung und Informationen
-- **Smart Home Integration** - Gerätesteuerung
-- **Nachrichten** - RSS-Feeds und Updates
-
-### Mögliche Mockups
-
-**Mockup 1 - Grundlayout:**
-![Mockup 1](pics/Mockup1.jpg)
-
-**Mockup 2 - Mit Beispielen:**
-![Mockup 2](pics/Mockup2.jpg)
-
----
-
-## Überlegungen
-- Die Wahl zwischen eigener Software und MagicMirror² hängt stark von den gewünschten Funktionen und dem Grad der Individualisierung ab.
-- Hardware ist größtenteils vorhanden oder leicht beschaffbar.
-- Eine Smartphone-Steuerung wäre ein spannendes Zusatzfeature.
-
-## Zuklärende Fragen
-- Können wir für den Spiegel eine vorhandene Grundsoftware verwenden, worauf wir dann Modulbasiert selber eigene Sachen schreiben
-- Vetikale Ausrichtung oder Horizontale
-- Eventueller Surface Monitor
+- [Dokumentationsuebersicht](docs/README.md)
+- [Produktumfang](docs/PRODUCT_SCOPE.md)
+- [Zielarchitektur](docs/TARGET_ARCHITECTURE.md)
+- [Umsetzungsplan](docs/IMPLEMENTATION_PLAN.md)

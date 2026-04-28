@@ -1,106 +1,146 @@
 <script setup lang="ts">
-import { createApp, ref, onMounted, onBeforeUnmount} from 'vue';
-import type { ComponentPublicInstance } from 'vue';
-import GridBoard from './GridBoard.vue';
-import ModuleShop from './ModuleShop.vue';
+import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
 
-// Define an interface for the exposed methods
-interface ModuleShopExposed {
-  nextModule: () => void;
-  prevModule: () => void;
+import { apiClient } from '../../services/api'
+import type { SystemConfig, WidgetSettings } from '../../types/config'
+import type { ActiveWidgetMap, ModuleShopRef } from '../../types/widgets'
+import {
+  applyLoadedLayout,
+  buildLayoutPayload,
+  buildRenderedWidgets,
+  formatApiErrorMessage,
+  moveWidget,
+  upsertWidget,
+} from '../../utils/layout'
+import GridBoard from './GridBoard.vue'
+import ModuleShop from './ModuleShop.vue'
+
+const activeWidgets = ref<ActiveWidgetMap>({})
+const configError = ref<string | null>(null)
+const isConfigLoading = ref(true)
+const isSavingLayout = ref(false)
+const isShopOpen = ref(false)
+const moduleShopRef = ref<ModuleShopRef>(null)
+const systemConfig = ref<SystemConfig | null>(null)
+let latestSaveRequest = 0
+
+function updateWidgetSettings(widgetId: string, nextSettingsPatch: WidgetSettings): void {
+  const widgetEntry = Object.entries(activeWidgets.value).find(([, widget]) => widget.widget_id === widgetId)
+  if (!widgetEntry) {
+    return
+  }
+
+  const [cellId, widget] = widgetEntry
+  activeWidgets.value = {
+    ...activeWidgets.value,
+    [Number(cellId)]: {
+      ...widget,
+      settings: {
+        ...widget.settings,
+        ...nextSettingsPatch,
+      },
+    },
+  }
+
+  void persistLayout()
 }
 
-// Store for active widgets
-const activeWidgets = ref<{[key: string]: any}>({});
-const isShopOpen = ref(false);
-const moduleShopRef = ref<ComponentPublicInstance<{}, ModuleShopExposed> | null>(null);
+async function loadInitialState(): Promise<void> {
+  isConfigLoading.value = true
+  configError.value = null
 
-// Function to insert a Vue component into a cell
-const insertVueWidgetIntoCell = (cellId: number, widgetComponent: any) => {
-  const cell = document.getElementById(cellId.toString());
-  if (!cell) {
-    console.error(`Cell with ID ${cellId} not found`);
-    return;
+  const failures: string[] = []
+
+  try {
+    const layoutEnvelope = await apiClient.getLayout()
+    activeWidgets.value = applyLoadedLayout(layoutEnvelope.config)
+  } catch (error) {
+    failures.push(`Layout konnte nicht geladen werden: ${formatApiErrorMessage(error, 'Unbekannter Fehler')}`)
   }
 
-  // Clean up old component if exists
-  if (activeWidgets.value[cellId]) {
-    activeWidgets.value[cellId].unmount();
+  try {
+    const systemEnvelope = await apiClient.getSystemConfig()
+    systemConfig.value = systemEnvelope.config
+  } catch (error) {
+    failures.push(`Systemkonfiguration konnte nicht geladen werden: ${formatApiErrorMessage(error, 'Unbekannter Fehler')}`)
   }
 
-  // Clear cell content
-  cell.innerHTML = '';
+  configError.value = failures.length > 0 ? failures.join(' ') : null
+  isConfigLoading.value = false
+}
 
-  // Create container for Vue component
-  const widgetContainer = document.createElement('div');
-  widgetContainer.className = 'w-full h-full';
-  cell.appendChild(widgetContainer);
+async function persistLayout(): Promise<void> {
+  latestSaveRequest += 1
+  const saveRequestId = latestSaveRequest
+  isSavingLayout.value = true
 
-  // Create and mount Vue app for this component
-  const app = createApp(widgetComponent);
-  app.mount(widgetContainer);
-
-  // Store app for later cleanup
-  activeWidgets.value[cellId] = app;
-
-  // Update cell styling
-  cell.className = 'rounded-xl bg-neutral-800 shadow-inner overflow-hidden';
-};
-
-// Handle adding widget from shop
-const handleAddWidget = ({ cellId, component }: { cellId: number; component: any }) => {
-  insertVueWidgetIntoCell(cellId, component);
-};
-
-// // Clear a cell
-// const clearCell = (cellId: number) => {
-//   const cell = document.getElementById(cellId.toString());
-//   if (!cell) return;
-//
-//   // Clean up Vue app if exists
-//   if (activeWidgets.value[cellId]) {
-//     activeWidgets.value[cellId].unmount();
-//     delete activeWidgets.value[cellId];
-//   }
-//
-//   cell.innerHTML = `
-//     <div class="w-full h-full grid place-items-center text-2xl font-semibold opacity-70">
-//       ${String(cellId).padStart(2, '0')}
-//     </div>
-//   `;
-//   cell.className = 'rounded-xl bg-neutral-800 shadow-inner overflow-hidden';
-// };
-
-// Handle keydown events
-const handleKeydown = (event: KeyboardEvent) => {
-  if (event.key === 'e') {
-    isShopOpen.value = !isShopOpen.value;
-  } else if (event.key === 'Escape') {
-    isShopOpen.value = false;
-  } else if (isShopOpen.value && moduleShopRef.value) {
-    // Only when shop is open and ref is available
-    if (event.key === 'ArrowRight') {
-      moduleShopRef.value.nextModule();
-    } else if (event.key === 'ArrowLeft') {
-      moduleShopRef.value.prevModule();
+  try {
+    const layoutEnvelope = await apiClient.saveLayout(buildLayoutPayload(activeWidgets.value))
+    if (saveRequestId === latestSaveRequest) {
+      activeWidgets.value = applyLoadedLayout(layoutEnvelope.config)
+    }
+  } catch (error) {
+    configError.value = `Layout konnte nicht gespeichert werden: ${formatApiErrorMessage(error, 'Unbekannter Fehler')}`
+  } finally {
+    if (saveRequestId === latestSaveRequest) {
+      isSavingLayout.value = false
     }
   }
-};
+}
+
+const renderedWidgets = computed(() => {
+  return buildRenderedWidgets(activeWidgets.value, systemConfig.value, updateWidgetSettings)
+})
+
+const handleAddWidget = ({ cellId, widgetType }: { cellId: number; widgetType: string }) => {
+  try {
+    activeWidgets.value = upsertWidget(activeWidgets.value, cellId, widgetType)
+  } catch (error) {
+    configError.value = formatApiErrorMessage(error, `Unbekannter Widget-Typ: ${widgetType}`)
+    return
+  }
+
+  void persistLayout()
+}
+
+const handleMoveWidget = ({ sourceCellId, targetCellId }: { sourceCellId: number; targetCellId: number }) => {
+  activeWidgets.value = moveWidget(activeWidgets.value, sourceCellId, targetCellId)
+
+  void persistLayout()
+}
+
+const handleKeydown = (event: KeyboardEvent) => {
+  if (event.key === 'e') {
+    isShopOpen.value = !isShopOpen.value
+  } else if (event.key === 'Escape') {
+    isShopOpen.value = false
+  } else if (isShopOpen.value && moduleShopRef.value) {
+    if (event.key === 'ArrowRight') {
+      moduleShopRef.value.nextModule()
+    } else if (event.key === 'ArrowLeft') {
+      moduleShopRef.value.prevModule()
+    }
+  }
+}
 
 onMounted(() => {
-  // Add keyboard event listener
-  window.addEventListener('keydown', handleKeydown);
-});
+  window.addEventListener('keydown', handleKeydown)
+  void loadInitialState()
+})
 
 onBeforeUnmount(() => {
-  // Remove keyboard event listener
-  window.removeEventListener('keydown', handleKeydown);
-});
+  window.removeEventListener('keydown', handleKeydown)
+})
 </script>
 
 <template>
   <div>
-    <!-- Module Shop Popup -->
+    <div v-if="isConfigLoading || configError || isSavingLayout" class="status-banner">
+      <span v-if="isConfigLoading">Konfiguration wird geladen.</span>
+      <span v-else-if="isSavingLayout">Layout wird gespeichert.</span>
+      <span v-else>{{ configError }}</span>
+    </div>
+
     <div v-if="isShopOpen" class="shop-overlay" @click.self="isShopOpen = false">
       <div class="shop-modal">
         <button class="close-btn" @click="isShopOpen = false">×</button>
@@ -108,11 +148,25 @@ onBeforeUnmount(() => {
       </div>
     </div>
 
-    <GridBoard />
+    <GridBoard :widgets="renderedWidgets" @moveWidget="handleMoveWidget" />
   </div>
 </template>
 
 <style scoped>
+.status-banner {
+  position: fixed;
+  top: 16px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 1100;
+  padding: 10px 14px;
+  border-radius: 999px;
+  background: rgba(17, 24, 39, 0.92);
+  color: #f5f5f5;
+  font-size: 0.9rem;
+  box-shadow: 0 10px 25px rgba(0, 0, 0, 0.28);
+}
+
 .shop-overlay {
   position: fixed;
   top: 0;
