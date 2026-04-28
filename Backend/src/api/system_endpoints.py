@@ -19,6 +19,7 @@ from schemas.gestures import (
     GestureStatusResponse,
     GestureVideoProcessingResponse,
 )
+from schemas.interactions import InputActionConfig, InputActionConfigEnvelope
 from schemas.system import SystemStatusResponse
 from schemas.voice import VoiceConfig, VoiceConfigEnvelope
 from services.gestures import GestureService, GestureServiceError, gesture_service
@@ -108,6 +109,24 @@ async def save_voice_config(
     saved_config = repository.save_voice_config(config=config)
     voice_service.reload_config()
     return VoiceConfigEnvelope(config=saved_config)
+
+
+@config_router.get("/gesture-actions", response_model=InputActionConfigEnvelope)
+async def get_input_action_config(
+    repository: ConfigRepository = Depends(get_config_repository),
+):
+    config = repository.get_input_action_config()
+    return InputActionConfigEnvelope(config=config)
+
+
+@config_router.put("/gesture-actions", response_model=InputActionConfigEnvelope)
+async def save_input_action_config(
+    config: InputActionConfig,
+    repository: ConfigRepository = Depends(get_config_repository),
+):
+    saved_config = repository.save_input_action_config(config=config)
+    gesture_service.reload_config()
+    return InputActionConfigEnvelope(config=saved_config)
 
 
 @system_router.get("/status", response_model=SystemStatusResponse)

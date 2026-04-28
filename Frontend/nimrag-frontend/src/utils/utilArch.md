@@ -2,22 +2,22 @@
 
 ## Scope
 
-- Snapshot basis: 3 code files and 414 code lines in `src/utils`
+- Snapshot basis: 3 code files and 648 code lines in `src/utils`
 - Files: `layout.ts`, `hardwareWidget.ts`, `moduleShop.ts`
 
 ## Metric View
 
 | File | Lines | Responsibility |
 | --- | ---: | --- |
-| `hardwareWidget.ts` | 234 | Hardware-widget integration logic, realtime handling and control helpers |
-| `layout.ts` | 127 | Layout normalization, payload building and rendered-widget assembly |
-| `moduleShop.ts` | 53 | Module list, selection and carousel helper logic |
+| `layout.ts` | 363 | Placement normalization, focus movement, collision rules, payload building and rendered-widget assembly |
+| `hardwareWidget.ts` | 233 | Hardware-widget integration logic, realtime handling and control helpers |
+| `moduleShop.ts` | 52 | Module list, selection and carousel helper logic |
 
 ## Reading The Module
 
 `utils/` is now the first real frontend helper layer instead of a reserved folder. The extracted files are all tied to one concrete goal: reduce the amount of orchestration logic living inline in `ModuleManager.vue`, `TemplateWidget.vue` and `ModuleShop.vue`.
 
-This is a pragmatic intermediate step. It does not replace a future shared state or composable layer, but it gives repeated logic a stable home and makes the component layer easier to read.
+The largest evolution is `layout.ts`. It no longer only normalizes persisted layout. It now defines the placement vocabulary of the UI: widget spans, cell occupancy, focus state, move and resize rules, migration from legacy `cell_id`, and transformation back into API payloads. This is a pragmatic intermediate step. It does not replace a future shared state or composable layer, but it gives repeated logic a stable home and makes the component layer easier to read.
 
 ## Critical Assessment
 
@@ -42,12 +42,14 @@ flowchart LR
     Shop[moduleShop.ts]
     Components[components]
     Services[services]
+    Actions[focus and ArrangeMode rules]
     PlannedState[Planned shared state or composables]
 
     Utils --> Layout
     Utils --> Hardware
     Utils --> Shop
     Components --> Utils
+    Layout --> Actions
     Layout --> Services
     Hardware --> Services
     Shop --> Components

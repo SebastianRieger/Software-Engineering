@@ -14,10 +14,17 @@ export interface HardwareStatusWidgetSettings extends WidgetSettings {
   autoRefresh?: boolean
 }
 
-export interface WidgetConfig {
+export interface WidgetPlacement {
+  row: number
+  col: number
+  row_span: number
+  col_span: number
+  cell_id?: number | null
+}
+
+export interface WidgetConfig extends WidgetPlacement {
   widget_id: string
   widget_type: string
-  cell_id: number
   title: string | null
   settings: WidgetSettings
 }

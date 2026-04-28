@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import math
+import time
 from collections.abc import Callable
 from dataclasses import dataclass
 from statistics import mean
@@ -25,6 +26,7 @@ if TYPE_CHECKING:
 GestureName = str
 GesturePoint = tuple[float, float]
 GestureLandmarks = dict[str, GesturePoint]
+GestureDepthMap = dict[str, float]
 
 
 HAND_LANDMARK_NAMES = {
@@ -55,8 +57,21 @@ class GestureObservation:
     hand: str | None = None
     preview_bytes: bytes | None = None
     landmarks: GestureLandmarks | None = None
+    landmark_depths: GestureDepthMap | None = None
     hand_size: float | None = None
     arm_landmarks: GestureLandmarks | None = None
+    tracking_source: str | None = None
+    hands: list["TrackedHandObservation"] | None = None
+    captured_at: float | None = None
+
+
+@dataclass(slots=True)
+class TrackedHandObservation:
+    point: GesturePoint | None
+    hand: str | None = None
+    landmarks: GestureLandmarks | None = None
+    landmark_depths: GestureDepthMap | None = None
+    hand_size: float | None = None
     tracking_source: str | None = None
 
 
@@ -106,6 +121,13 @@ def build_hand_landmark_map(hand_landmarks) -> GestureLandmarks:
             float(hand_landmarks.landmark[index].x),
             float(hand_landmarks.landmark[index].y),
         )
+        for name, index in HAND_LANDMARK_NAMES.items()
+    }
+
+
+def build_hand_landmark_depth_map(hand_landmarks) -> GestureDepthMap:
+    return {
+        name: float(hand_landmarks.landmark[index].z)
         for name, index in HAND_LANDMARK_NAMES.items()
     }
 
@@ -172,7 +194,7 @@ class MediaPipeHandsAdapter:
 
         self.hands = mp.solutions.hands.Hands(
             static_image_mode=False,
-            max_num_hands=1,
+            max_num_hands=2,
             min_detection_confidence=0.5,
             min_tracking_confidence=0.5,
         )
@@ -195,6 +217,7 @@ class MediaPipeHandsAdapter:
             preview_bytes = None
 
         observation.preview_bytes = preview_bytes
+        observation.captured_at = time.monotonic()
         return observation
 
     def close(self) -> None:
@@ -223,7 +246,7 @@ class MediaPipeHandsAdapter:
 
         hands = mp.solutions.hands.Hands(
             static_image_mode=False,
-            max_num_hands=1,
+            max_num_hands=2,
             min_detection_confidence=0.5,
             min_tracking_confidence=0.5,
         )
@@ -280,17 +303,34 @@ class MediaPipeHandsAdapter:
         if not results.multi_hand_landmarks:
             return GestureObservation(point=None)
 
-        hand_landmarks = results.multi_hand_landmarks[0]
-        landmarks = build_hand_landmark_map(hand_landmarks)
-        tracking_point = compute_hand_tracking_point(landmarks)
-        handedness = None
-        if results.multi_handedness:
-            handedness = results.multi_handedness[0].classification[0].label.lower()
+        tracked_hands: list[TrackedHandObservation] = []
+        for index, hand_landmarks in enumerate(results.multi_hand_landmarks):
+            landmarks = build_hand_landmark_map(hand_landmarks)
+            tracking_point = compute_hand_tracking_point(landmarks)
+            landmark_depths = build_hand_landmark_depth_map(hand_landmarks)
+            handedness = None
+            if results.multi_handedness and len(results.multi_handedness) > index:
+                handedness = results.multi_handedness[index].classification[0].label.lower()
 
+            tracked_hands.append(
+                TrackedHandObservation(
+                    point=tracking_point,
+                    hand=handedness,
+                    landmarks=landmarks,
+                    landmark_depths=landmark_depths,
+                    hand_size=estimate_hand_size(landmarks),
+                    tracking_source="palm_center",
+                )
+            )
+
+        tracked_hands.sort(key=lambda candidate: candidate.hand_size or 0.0, reverse=True)
+        primary_hand = tracked_hands[0]
         return GestureObservation(
-            point=tracking_point,
-            hand=handedness,
-            landmarks=landmarks,
-            hand_size=estimate_hand_size(landmarks),
+            point=primary_hand.point,
+            hand=primary_hand.hand,
+            landmarks=primary_hand.landmarks,
+            landmark_depths=primary_hand.landmark_depths,
+            hand_size=primary_hand.hand_size,
             tracking_source="palm_center",
+            hands=tracked_hands,
         )

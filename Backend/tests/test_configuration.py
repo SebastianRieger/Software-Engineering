@@ -11,17 +11,21 @@ async def test_get_default_layout(client):
     data = response.json()
     assert data["profile"] == "default"
     assert data["config"]["widgets"] == []
+    assert data["config"]["version"] == 2
 
 
 @pytest.mark.asyncio
 async def test_save_and_reload_layout(client):
     payload = {
-        "version": 1,
+        "version": 2,
         "widgets": [
             {
                 "widget_id": "weather-main",
                 "widget_type": "weather",
-                "cell_id": 1,
+                "row": 1,
+                "col": 1,
+                "row_span": 2,
+                "col_span": 2,
                 "title": "Wetter",
                 "settings": {"units": "metric"},
             }
@@ -32,6 +36,8 @@ async def test_save_and_reload_layout(client):
     assert save_response.status_code == 200
     saved = save_response.json()
     assert saved["config"]["widgets"][0]["widget_id"] == "weather-main"
+    assert saved["config"]["widgets"][0]["cell_id"] == 1
+    assert saved["config"]["widgets"][0]["row_span"] == 2
     assert saved["config"]["updated_at"] is not None
 
     load_response = await client.get("/api/v1/config/layout")
@@ -41,14 +47,39 @@ async def test_save_and_reload_layout(client):
 
 
 @pytest.mark.asyncio
-async def test_layout_profiles_are_isolated(client):
+async def test_layout_accepts_legacy_cell_id_and_migrates_to_position(client):
     payload = {
         "version": 1,
         "widgets": [
             {
+                "widget_id": "legacy-clock",
+                "widget_type": "clock",
+                "cell_id": 6,
+                "title": "Legacy",
+                "settings": {},
+            }
+        ],
+    }
+
+    save_response = await client.put("/api/v1/config/layout", json=payload)
+    assert save_response.status_code == 200
+    saved_widget = save_response.json()["config"]["widgets"][0]
+    assert saved_widget["row"] == 2
+    assert saved_widget["col"] == 2
+    assert saved_widget["row_span"] == 1
+    assert saved_widget["col_span"] == 1
+
+
+@pytest.mark.asyncio
+async def test_layout_profiles_are_isolated(client):
+    payload = {
+        "version": 2,
+        "widgets": [
+            {
                 "widget_id": "clock-main",
                 "widget_type": "clock",
-                "cell_id": 2,
+                "row": 1,
+                "col": 2,
                 "title": "Uhr",
                 "settings": {},
             }
@@ -178,3 +209,48 @@ async def test_save_and_reload_voice_config(client):
     assert loaded["config"]["queue_max_chunks"] == payload["queue_max_chunks"]
     assert loaded["config"]["partial_results_enabled"] is False
     assert loaded["config"]["commands"] == payload["commands"]
+
+
+@pytest.mark.asyncio
+async def test_get_default_input_action_config(client):
+    response = await client.get("/api/v1/config/gesture-actions")
+    assert response.status_code == 200
+    data = response.json()
+    assert any(
+        mapping["raw_input"] == "circle" and mapping["action"] == "toggle_shop"
+        for mapping in data["config"]["mappings"]
+    )
+
+
+@pytest.mark.asyncio
+async def test_save_and_reload_input_action_config(client):
+    payload = {
+        "mappings": [
+            {
+                "input_source": "gesture",
+                "raw_input": "circle",
+                "action": "toggle_shop",
+                "enabled": True,
+                "metadata": {"demo": True},
+            },
+            {
+                "input_source": "voice",
+                "raw_input": "voice.open_shop",
+                "action": "toggle_shop",
+                "enabled": True,
+                "metadata": {"phrase": "shop auf"},
+            },
+        ]
+    }
+
+    save_response = await client.put("/api/v1/config/gesture-actions", json=payload)
+    assert save_response.status_code == 200
+    saved = save_response.json()
+    assert saved["config"]["updated_at"] is not None
+    assert saved["config"]["mappings"][1]["input_source"] == "voice"
+
+    load_response = await client.get("/api/v1/config/gesture-actions")
+    assert load_response.status_code == 200
+    loaded = load_response.json()
+    assert loaded["config"]["mappings"][0]["raw_input"] == "circle"
+    assert loaded["config"]["mappings"][1]["metadata"]["phrase"] == "shop auf"

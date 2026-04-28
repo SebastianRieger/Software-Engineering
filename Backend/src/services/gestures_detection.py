@@ -47,6 +47,7 @@ def detect_gesture_from_trajectory(
     hand_size_reference: float = settings.GESTURE_HAND_SIZE_REFERENCE,
     hand_size_scale_min: float = settings.GESTURE_HAND_SIZE_SCALE_MIN,
     hand_size_scale_max: float = settings.GESTURE_HAND_SIZE_SCALE_MAX,
+    up_threshold: float | None = None,
 ) -> GestureName | None:
     result = detect_gesture_with_confidence(
         trajectory=trajectory,
@@ -62,6 +63,7 @@ def detect_gesture_from_trajectory(
         hand_size_reference=hand_size_reference,
         hand_size_scale_min=hand_size_scale_min,
         hand_size_scale_max=hand_size_scale_max,
+        up_threshold=up_threshold,
     )
     return result.gesture if result is not None else None
 
@@ -138,8 +140,10 @@ def detect_gesture_candidates(
     circle_cv_max: float,
     swipe_min_span: float,
     circle_min_radius: float,
+    up_threshold: float | None = None,
 ) -> list[GestureDetectionCandidate]:
     candidates: list[GestureDetectionCandidate] = []
+    effective_up_threshold = up_threshold if up_threshold is not None else down_threshold
 
     normalized_dx_total = features.dx_total / max(features.hand_size_scale, 1e-6)
     normalized_dy_total = features.dy_total / max(features.hand_size_scale, 1e-6)
@@ -169,6 +173,16 @@ def detect_gesture_candidates(
     ):
         confidence = min(1.0, vertical_margin / max(down_threshold, 1e-6))
         candidates.append(GestureDetectionCandidate(gesture="swipe_down", confidence=confidence))
+
+    upward_margin = abs(normalized_dy_total) - effective_up_threshold
+    if (
+        normalized_dy_total < 0
+        and upward_margin > 0
+        and abs(normalized_dy_total) > abs(normalized_dx_total) * 1.2
+        and normalized_span_y > swipe_min_span
+    ):
+        confidence = min(1.0, upward_margin / max(effective_up_threshold, 1e-6))
+        candidates.append(GestureDetectionCandidate(gesture="swipe_up", confidence=confidence))
 
     if (
         normalized_radius_mean is not None
@@ -215,6 +229,7 @@ def detect_gesture_with_confidence(
     hand_size_scale_min: float = settings.GESTURE_HAND_SIZE_SCALE_MIN,
     hand_size_scale_max: float = settings.GESTURE_HAND_SIZE_SCALE_MAX,
     tracking_source: str | None = None,
+    up_threshold: float | None = None,
 ) -> GestureDetectionResult | None:
     features = extract_gesture_features(
         trajectory=trajectory,
@@ -235,6 +250,7 @@ def detect_gesture_with_confidence(
         circle_cv_max=circle_cv_max,
         swipe_min_span=swipe_min_span,
         circle_min_radius=circle_min_radius,
+        up_threshold=up_threshold,
     )
     best_candidate = select_best_gesture_candidate(candidates, min_confidence)
     if best_candidate is None:

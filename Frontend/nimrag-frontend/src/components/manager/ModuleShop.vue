@@ -1,25 +1,21 @@
 <script setup lang="ts">
 import { computed, defineEmits, defineExpose, ref } from 'vue'
 
-import { buildDisplayedModules, CELL_IDS, getModuleItems, moveModuleIndex } from '../../utils/moduleShop'
+import { buildDisplayedModules, getModuleItems, moveModuleIndex } from '../../utils/moduleShop'
+
+const props = defineProps<{
+  targetLabel: string
+  canAdd: boolean
+}>()
 
 const emit = defineEmits<{
-  addWidget: [payload: { cellId: number; widgetType: string }]
+  addWidget: [payload: { widgetType: string }]
 }>()
 
 const moduleList = ref(getModuleItems())
 const currentIndex = ref(0)
 
-const addCurrentWidgetToCell = (cellId: number) => {
-  if (!moduleList.value.length) {
-    return
-  }
-
-  emit('addWidget', {
-    cellId,
-    widgetType: moduleList.value[currentIndex.value]!.type,
-  })
-}
+const displayedModules = computed(() => buildDisplayedModules(moduleList.value, currentIndex.value))
 
 const nextModule = () => {
   currentIndex.value = moveModuleIndex(currentIndex.value, 1, moduleList.value.length)
@@ -29,8 +25,6 @@ const prevModule = () => {
   currentIndex.value = moveModuleIndex(currentIndex.value, -1, moduleList.value.length)
 }
 
-const displayedModules = computed(() => buildDisplayedModules(moduleList.value, currentIndex.value))
-
 const setCurrentModule = (index: number) => {
   if (!moduleList.value.length) {
     return
@@ -39,10 +33,20 @@ const setCurrentModule = (index: number) => {
   currentIndex.value = index
 }
 
+const addCurrentWidget = () => {
+  const currentModule = moduleList.value[currentIndex.value]
+  if (!currentModule) {
+    return
+  }
+
+  emit('addWidget', { widgetType: currentModule.type })
+}
+
 defineExpose({
   nextModule,
   prevModule,
   setCurrentModule,
+  getCurrentModuleType: () => moduleList.value[currentIndex.value]?.type ?? null,
 })
 </script>
 
@@ -58,21 +62,13 @@ defineExpose({
           v-for="item in displayedModules"
           :key="item.index"
           class="module-card"
-          :class="[
-            `pos-${item.position}`,
-            { 'is-active': item.index === currentIndex }
-          ]"
+          :class="[`pos-${item.position}`, { 'is-active': item.index === currentIndex }]"
         >
           <h4 class="module-name">{{ item.name }}</h4>
 
           <div class="preview-container">
-            <component
-              v-if="item.position === 'center'"
-              :is="item.component"
-            />
-            <div v-else class="preview-placeholder">
-              Vorschau
-            </div>
+            <component v-if="item.position === 'center'" :is="item.component" />
+            <div v-else class="preview-placeholder">Vorschau</div>
           </div>
         </div>
       </div>
@@ -80,38 +76,28 @@ defineExpose({
       <button @click="nextModule" class="nav-btn nav-btn-right">›</button>
     </div>
 
-    <div v-else class="loading">
-      Loading modules...
-    </div>
+    <div v-else class="loading">Loading modules...</div>
 
-    <!-- Cell-Auswahl bleibt unten drunter -->
-    <div v-if="moduleList.length > 0" class="cell-selection">
-      <p>Add to cell:</p>
-      <div class="cell-buttons">
-        <button
-          v-for="cellId in CELL_IDS"
-          :key="cellId"
-          @click="addCurrentWidgetToCell(cellId)"
-          class="cell-btn"
-        >
-          {{ cellId }}
-        </button>
-      </div>
+    <div v-if="moduleList.length > 0" class="target-selection">
+      <p class="target-copy">Ziel: {{ props.targetLabel }}</p>
+      <button class="confirm-btn" :disabled="!props.canAdd" @click="addCurrentWidget">
+        Ausgewaehltes Widget platzieren
+      </button>
     </div>
   </div>
 </template>
 
 <style scoped>
 .module-shop {
-  background: radial-gradient(circle at top, #333 0, #181818 40%, #050505 100%);
+  background: radial-gradient(circle at top, #243244 0, #111827 46%, #030712 100%);
   color: #eee;
-  padding: 15px 24px 15px;
+  padding: 15px 24px 18px;
   border-radius: 16px;
   width: min(900px, 100vw - 48px);
   max-height: 85vh;
   box-sizing: border-box;
   box-shadow: 0 18px 60px rgba(0, 0, 0, 0.65);
-  border: 1px solid rgba(255, 255, 255, 0.04);
+  border: 1px solid rgba(255, 255, 255, 0.06);
   overflow: hidden;
   display: flex;
   flex-direction: column;
@@ -123,8 +109,6 @@ defineExpose({
   font-size: 1.6rem;
   letter-spacing: 0.08em;
   text-transform: uppercase;
-  color: #f5f5f5;
-  text-shadow: 0 2px 8px rgba(0, 0, 0, 0.5);
 }
 
 .carousel {
@@ -134,11 +118,7 @@ defineExpose({
   justify-content: center;
   padding-inline: 60px;
   margin-bottom: 20px;
-  max-width: 100%;
-  box-sizing: border-box;
-  overflow: visible;
   min-height: 280px;
-  flex-shrink: 0;
 }
 
 .carousel-track {
@@ -146,135 +126,51 @@ defineExpose({
   display: flex;
   align-items: center;
   justify-content: center;
-  gap: 0;
   width: 100%;
   max-width: 320px;
   perspective: 1400px;
-  perspective-origin: center center;
-}
-@keyframes slideInFromLeft {
-  0% {
-    opacity: 0;
-    transform: translateX(-180px) translateY(60px) scale(0.5) rotateY(35deg) rotateZ(-8deg);
-    filter: blur(4px) brightness(0.6);
-  }
-  60% {
-    opacity: 0.3;
-    transform: translateX(-240px) translateY(28px) scale(0.72) rotateY(12deg) rotateZ(-2deg);
-    filter: blur(1px) brightness(0.85);
-  }
-  100% {
-    opacity: 0.25;
-    transform: translateX(-240px) translateY(25px) scale(0.75) rotateY(10deg) rotateZ(0deg);
-    filter: blur(0.75px) brightness(0.9);
-  }
 }
 
-@keyframes slideInFromRight {
-  0% {
-    opacity: 0;
-    transform: translateX(180px) translateY(60px) scale(0.5) rotateY(-35deg) rotateZ(8deg);
-    filter: blur(4px) brightness(0.6);
-  }
-  60% {
-    opacity: 0.3;
-    transform: translateX(240px) translateY(28px) scale(0.72) rotateY(-12deg) rotateZ(2deg);
-    filter: blur(1px) brightness(0.85);
-  }
-  100% {
-    opacity: 0.25;
-    transform: translateX(240px) translateY(25px) scale(0.75) rotateY(-10deg) rotateZ(0deg);
-    filter: blur(0.75px) brightness(0.9);
-  }
-}
-
-@keyframes slideToCenter {
-  0% {
-    opacity: 0.25;
-    transform: scale(0.75) translateY(25px) rotateY(0deg);
-    filter: blur(0.75px) brightness(0.9);
-  }
-  40% {
-    opacity: 0.6;
-    transform: scale(0.95) translateY(5px) rotateY(0deg);
-    filter: blur(0.3px) brightness(0.95);
-  }
-  100% {
-    opacity: 1;
-    transform: scale(1.2) translateY(-8px) rotateY(0deg);
-    filter: none;
-  }
-}
-@keyframes shimmer {
-  0% {
-    background-position: -200% center;
-  }
-  100% {
-    background-position: 200% center;
-  }
-}
 .module-card {
   position: absolute;
   width: 320px;
-  min-width: 0;
-  background: linear-gradient(145deg, #2a2a2a, #0f0f0f);
+  background: linear-gradient(145deg, #203042, #0f172a);
   border-radius: 16px;
   padding: 14px;
   overflow: hidden;
   opacity: 0.8;
   transform: scale(0.8) translateY(25px);
-  filter: blur(0.75px) brightness(0.9);
   box-shadow: 0 10px 30px rgba(0, 0, 0, 0.8);
   border: 1px solid rgba(255, 255, 255, 0.12);
-  transition:
-      transform 350ms cubic-bezier(0.34, 1.56, 0.64, 1),
-      opacity 350ms ease,
-      filter 350ms ease,
-      box-shadow 350ms ease,
-      border-color 350ms ease,
-      background 350ms ease;
+  transition: transform 350ms cubic-bezier(0.34, 1.56, 0.64, 1), opacity 350ms ease, box-shadow 350ms ease, border-color 350ms ease;
   cursor: pointer;
   z-index: 1;
   left: 50%;
-  transform-origin: center center;
   margin-left: -160px;
 }
 
-/* glow Effect for active card */
-.module-card::before {
-  content: '';
-  position: absolute;
-  top: -2px;
-  left: -2px;
-  right: -2px;
-  bottom: -2px;
-  background: linear-gradient(
-      135deg,
-      rgba(80, 160, 255, 0.4) 0%,
-      rgba(120, 80, 255, 0.2) 50%,
-      rgba(80, 160, 255, 0.4) 100%
-  );
-  border-radius: 17px;
-  opacity: 0;
-  z-index: -1;
-  transition: opacity 350ms ease;
-  filter: blur(8px);
+.module-card.is-active {
+  opacity: 1;
+  transform: scale(1.2) translateY(-8px);
+  border-color: rgba(56, 189, 248, 0.6);
+  z-index: 10;
 }
 
-/* Titel */
+.module-card.pos-left {
+  transform: translateX(-240px) translateY(25px) scale(0.75) rotateY(10deg);
+}
+
+.module-card.pos-right {
+  transform: translateX(240px) translateY(25px) scale(0.75) rotateY(-10deg);
+}
+
 .module-name {
   font-size: 1rem;
   font-weight: 600;
   margin-bottom: 8px;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
   text-align: center;
-  letter-spacing: 0.02em;
-  transition: color 350ms ease;
 }
 
-/* Preview */
 .preview-container {
   background: linear-gradient(135deg, #0a0a0a 0%, #050505 100%);
   border-radius: 12px;
@@ -285,8 +181,6 @@ defineExpose({
   display: flex;
   align-items: center;
   justify-content: center;
-  border: 1px solid rgba(255, 255, 255, 0.03);
-  transition: border-color 350ms ease;
 }
 
 .preview-placeholder {
@@ -299,54 +193,8 @@ defineExpose({
   justify-content: center;
   font-size: 0.85rem;
   opacity: 0.5;
-  transition: all 350ms ease;
-  letter-spacing: 0.05em;
 }
 
-/* active card*/
-.module-card.is-active {
-  opacity: 1;
-  transform: scale(1.2) translateY(-8px);
-  filter: none;
-  animation: pulseGlow 3s ease-in-out infinite;
-  border-color: rgba(80, 160, 255, 0.6);
-  background: linear-gradient(145deg, #2d2d2d, #121212);
-  z-index: 10;
-}
-
-.module-card.is-active::before {
-  opacity: 1;
-}
-
-.module-card.is-active .module-name {
-  color: #90c8ff;
-  text-shadow: 0 0 10px rgba(80, 160, 255, 0.5);
-}
-
-.module-card.is-active .preview-container {
-  border-color: rgba(80, 160, 255, 0.3);
-}
-
-.module-card.is-active .preview-placeholder {
-  border-color: rgba(80, 160, 255, 0.4);
-  opacity: 0.8;
-}
-
-/* left card */
-.module-card.pos-left {
-  transform: translateX(-240px) translateY(25px) scale(0.75) rotateY(10deg);
-  transform-origin: right center;
-  z-index: 1;
-}
-
-/* right card */
-.module-card.pos-right {
-  transform: translateX(240px) translateY(25px) scale(0.75) rotateY(-10deg);
-  transform-origin: left center;
-  z-index: 1;
-}
-
-/* navigation buttons */
 .nav-btn {
   position: absolute;
   top: 50%;
@@ -358,128 +206,74 @@ defineExpose({
   width: 44px;
   height: 44px;
   font-size: 30px;
-  font-weight: 300;
+  line-height: 1;
   cursor: pointer;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  backdrop-filter: blur(10px);
-  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.6);
-  transition:
-      background 250ms ease,
-      transform 250ms cubic-bezier(0.34, 1.56, 0.64, 1),
-      box-shadow 250ms ease,
-      border-color 250ms ease,
-      color 250ms ease;
-  z-index: 20;
 }
 
 .nav-btn-left {
-  left: 8px;
+  left: 4px;
 }
 
 .nav-btn-right {
-  right: 8px;
+  right: 4px;
 }
 
-.nav-btn:hover {
-  background: linear-gradient(135deg, rgba(40, 40, 40, 0.98), rgba(20, 20, 20, 1));
-  transform: translateY(-50%) scale(1.1);
-  box-shadow:
-      0 6px 30px rgba(0, 0, 0, 0.8),
-      0 0 30px rgba(80, 160, 255, 0.4);
-  border-color: rgba(80, 160, 255, 0.6);
-  color: #90c8ff;
-}
-
-.nav-btn:active {
-  transform: translateY(-50%) scale(0.95);
-  box-shadow:
-      0 2px 15px rgba(0, 0, 0, 0.9),
-      0 0 20px rgba(80, 160, 255, 0.3);
-}
-
-/* Cell Selection */
-.cell-selection {
-  margin-top: 16px;
-  text-align: center;
-  padding-top: 16px;
-  border-top: 1px solid rgba(255, 255, 255, 0.06);
-}
-
-.cell-selection p {
-  margin-bottom: 10px;
-  font-size: 0.95rem;
-  letter-spacing: 0.05em;
-  color: #b0b0b0;
-}
-
-.cell-buttons {
+.target-selection {
+  margin-top: 18px;
   display: flex;
-  flex-wrap: wrap;
-  justify-content: center;
-  gap: 10px;
-  margin-top: 8px;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
 }
 
-.cell-btn {
-  background: linear-gradient(135deg, #2a2a2a, #1a1a1a);
-  color: #d0d0d0;
-  border: 1px solid rgba(255, 255, 255, 0.08);
-  border-radius: 8px;
-  width: 36px;
-  height: 34px;
-  cursor: pointer;
-  font-size: 0.9rem;
-  font-weight: 600;
-  transition:
-      background 200ms ease,
-      transform 200ms cubic-bezier(0.34, 1.56, 0.64, 1),
-      box-shadow 200ms ease,
-      border-color 200ms ease,
-      color 200ms ease;
-}
-
-.cell-btn:hover {
-  background: linear-gradient(135deg, #3a3a3a, #2a2a2a);
-  transform: translateY(-2px);
-  box-shadow:
-      0 6px 20px rgba(0, 0, 0, 0.6),
-      0 0 15px rgba(80, 160, 255, 0.2);
-  border-color: rgba(80, 160, 255, 0.4);
-  color: #90c8ff;
-}
-
-.cell-btn:active {
-  transform: translateY(0px);
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.5);
-}
-
-.loading {
-  text-align: center;
-  color: #888;
+.target-copy {
+  margin: 0;
   font-size: 0.95rem;
-  letter-spacing: 0.05em;
+  color: rgba(226, 232, 240, 0.86);
 }
 
-/* Responsive Adjustments */
-@media (max-width: 640px) {
-  .carousel {
-    padding-inline: 40px;
+.confirm-btn {
+  border: none;
+  border-radius: 999px;
+  padding: 10px 16px;
+  background: linear-gradient(135deg, #22c55e, #06b6d4);
+  color: #04111f;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.confirm-btn:disabled {
+  cursor: not-allowed;
+  opacity: 0.45;
+}
+
+@media (max-width: 700px) {
+  .module-shop {
+    width: min(100vw - 24px, 900px);
+    padding: 16px;
   }
 
-  .carousel-track {
-    max-width: 100%;
+  .carousel {
+    min-height: 220px;
+    padding-inline: 34px;
   }
 
   .module-card {
-    flex: 0 0 35%;
+    width: min(250px, calc(100vw - 120px));
+    margin-left: calc(min(250px, calc(100vw - 120px)) / -2);
   }
 
-  .nav-btn {
-    width: 38px;
-    height: 38px;
-    font-size: 20px;
+  .module-card.pos-left {
+    transform: translateX(-130px) translateY(20px) scale(0.72);
+  }
+
+  .module-card.pos-right {
+    transform: translateX(130px) translateY(20px) scale(0.72);
+  }
+
+  .target-selection {
+    flex-direction: column;
+    align-items: stretch;
   }
 }
 </style>

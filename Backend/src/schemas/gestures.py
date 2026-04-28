@@ -6,7 +6,17 @@ from pydantic import BaseModel, Field
 from core.config import settings
 
 
-GestureType = Literal["swipe_left", "swipe_right", "swipe_down", "circle"]
+GestureType = Literal[
+    "swipe_left",
+    "swipe_right",
+    "swipe_up",
+    "swipe_down",
+    "circle",
+    "push_click_short",
+    "push_click_long",
+    "zoom_out_hands",
+    "zoom_in_hands",
+]
 
 
 class GestureStartRequest(BaseModel):
@@ -57,6 +67,7 @@ class GestureConfig(BaseModel):
     cooldown_seconds: float = Field(default=settings.GESTURE_COOLDOWN_SECONDS, ge=0, le=10)
     swipe_threshold: float = Field(default=settings.GESTURE_SWIPE_THRESHOLD, gt=0, le=1)
     down_threshold: float = Field(default=settings.GESTURE_DOWN_THRESHOLD, gt=0, le=1)
+    up_threshold: float = Field(default=settings.GESTURE_UP_THRESHOLD, gt=0, le=1)
     swipe_min_span: float = Field(default=settings.GESTURE_SWIPE_MIN_SPAN, gt=0, le=1)
     circle_sweep_min: float = Field(default=settings.GESTURE_CIRCLE_SWEEP_MIN, gt=0)
     circle_radius_cv_max: float = Field(default=settings.GESTURE_CIRCLE_RADIUS_CV_MAX, gt=0)
@@ -66,6 +77,15 @@ class GestureConfig(BaseModel):
     hand_size_reference: float = Field(default=settings.GESTURE_HAND_SIZE_REFERENCE, gt=0, le=1)
     hand_size_scale_min: float = Field(default=settings.GESTURE_HAND_SIZE_SCALE_MIN, gt=0, le=4)
     hand_size_scale_max: float = Field(default=settings.GESTURE_HAND_SIZE_SCALE_MAX, gt=0, le=4)
+    push_depth_threshold: float = Field(default=settings.GESTURE_PUSH_DEPTH_THRESHOLD, gt=0, le=1)
+    push_release_threshold: float = Field(default=settings.GESTURE_PUSH_RELEASE_THRESHOLD, ge=0, le=1)
+    push_pose_extension_ratio: float = Field(default=settings.GESTURE_PUSH_POSE_EXTENSION_RATIO, gt=1, le=3)
+    center_tolerance: float = Field(default=settings.GESTURE_CENTER_TOLERANCE, gt=0, le=0.5)
+    long_click_seconds: float = Field(default=settings.GESTURE_LONG_CLICK_SECONDS, gt=0, le=3)
+    zoom_distance_delta_threshold: float = Field(default=settings.GESTURE_ZOOM_DISTANCE_DELTA_THRESHOLD, gt=0, le=1)
+    zoom_start_near_distance: float = Field(default=settings.GESTURE_ZOOM_START_NEAR_DISTANCE, gt=0, le=1)
+    zoom_start_far_distance: float = Field(default=settings.GESTURE_ZOOM_START_FAR_DISTANCE, gt=0, le=2)
+    two_hand_min_frames: int = Field(default=settings.GESTURE_TWO_HAND_MIN_FRAMES, ge=2, le=64)
     updated_at: datetime | None = None
 
 

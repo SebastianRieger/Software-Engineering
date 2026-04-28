@@ -2,8 +2,8 @@
 
 ## Scope And Metric Basis
 
-- Snapshot date: 2026-04-14
-- Metrics cover productive frontend files in `Frontend/nimrag-frontend/src` after the helper and type extraction.
+- Snapshot date: 2026-04-28
+- Metrics cover productive frontend files in `Frontend/nimrag-frontend/src` after the placement-based interaction refactor.
 - Frontend tests are shown separately; the current snapshot still contains no actual test code.
 
 ## Frontend Metrics
@@ -12,10 +12,10 @@
 | --- | ---: | ---: | --- |
 | `App.vue` | 1 | 7 | Minimal root shell |
 | `main.ts` | 1 | 5 | Vue bootstrap |
-| `components/` | 6 | 1249 | UI and remaining orchestration hotspots |
-| `services/` | 3 | 218 | REST and WebSocket clients |
-| `types/` | 4 | 142 | Backend contract mirrors plus widget-facing types |
-| `utils/` | 3 | 414 | Extracted layout, hardware-widget and module-shop helpers |
+| `components/` | 7 | 1498 | UI, interaction overlay and orchestration hotspots |
+| `services/` | 3 | 221 | REST and WebSocket clients |
+| `types/` | 5 | 182 | Backend contract mirrors plus widget-facing and interaction types |
+| `utils/` | 3 | 648 | Extracted layout, hardware-widget and module-shop helpers |
 | `widgets/` | 1 | 63 | Widget registry and defaults |
 | `assets/` | 0 | 0 | Reserved but unused |
 | `middleware/` | 0 | 0 | Reserved but unused |
@@ -24,7 +24,7 @@
 ### Concentration Signals
 
 - `components/` still holds most frontend complexity, but no longer all of it.
-- `ModuleShop.vue`, `TemplateWidget.vue` and `ModuleManager.vue` remain the main UI hotspots, just with less inline orchestration than before.
+- `ModuleManager.vue`, `ModuleShop.vue` and `TemplateWidget.vue` remain the main UI hotspots, with `InteractionOverlay.vue` added as an explicit interaction feedback surface.
 - `utils/` is now an active layer, which reduces pressure on large components and makes the folder tree closer to the actual architecture.
 
 ## Root Structure Reading
@@ -32,9 +32,9 @@
 | Element | Current responsibility | Assessment |
 | --- | --- | --- |
 | `App.vue` and `main.ts` | App bootstrap and shell handoff | Clean and intentionally thin |
-| `components/` | Rendering, layout orchestration and widget interaction | Still the primary UI layer, but no longer forced to carry every helper inline |
-| `services/` | Typed HTTP client plus WebSocket client | Good basis, and the realtime path is now actively used by the hardware widget |
-| `types/` | Local TypeScript mirrors of backend contracts and widget wiring types | Improves safety, but still creates manual synchronization risk |
+| `components/` | Rendering, focus-driven layout orchestration and widget interaction | Still the primary UI layer, but no longer forced to carry every helper inline |
+| `services/` | Typed HTTP client plus WebSocket client | Good basis, and the realtime path is now actively used by both the hardware widget and the central manager |
+| `types/` | Local TypeScript mirrors of backend contracts and widget, focus and interaction wiring types | Improves safety, but still creates manual synchronization risk |
 | `utils/` | Extracted layout, hardware and selection helpers | First real frontend support layer and an important modularity improvement |
 | `widgets/` | Registry and widget defaults | Strong design choice that supports extensibility |
 | `assets/`, `middleware/`, `tests/` | Reserved extension points | Still mostly intent markers rather than delivered layers |
@@ -52,7 +52,7 @@ The more useful reading is now by layer rather than by folder names alone:
 - extension registry: `widgets/registry.ts`
 - planned but not yet implemented support layers: `assets/`, `middleware/`, `tests/`
 
-This layered view matches the current code more honestly than the previous all-in-components reading.
+The key difference from the previous snapshot is that `components/manager/*` now models a real interaction layer instead of only layout persistence. `ModuleManager.vue` owns focus, selected widget, arrange mode and keyboard fallback. `GridBoard.vue` renders placement-based spans and focus highlights. `InteractionOverlay.vue` visualizes the bridge from raw input to semantic UI action. `ModuleShop.vue` targets the current focus rather than an old cell-button workflow.
 
 ## Missing Intended Elements
 
@@ -68,7 +68,7 @@ The frontend has materially improved since the first architecture snapshot.
 - Widgets are still rendered from state and a registry, which remains the most important structural correction.
 - The new `utils/` layer is a real improvement because it moves layout and hardware orchestration out of the biggest components.
 - The services layer is still intentionally low-level. There is still no stable application state layer between UI and clients.
-- WebSocket consumption exists now, but only in the hardware widget. The frontend is no longer REST-only, yet it is not broadly realtime-driven either.
+- WebSocket consumption now exists in both the hardware widget and the layout manager. The frontend is no longer REST-only, yet it is still not organized around a shared realtime state model.
 
 ## Architecture Diagram
 
@@ -78,8 +78,9 @@ flowchart LR
     Components[components\nmanager and widgets]
     Utils[utils\nlayout, hardware, shop helpers]
     Services[services\nREST and WebSocket clients]
-    Types[types\ncontract mirrors and widget types]
+    Types[types\ncontract mirrors and widget and interaction types]
     Registry[widgets/registry.ts\nwidget manifest]
+    Actions[focus, shop and ArrangeMode\ninteraction layer]
     Backend[Backend API and /ws]
     PlannedState[Planned shared state or composables]
     PlannedTests[Planned test layer]
@@ -89,11 +90,13 @@ flowchart LR
     Components --> Registry
     Components --> Utils
     Components --> Services
+    Components --> Actions
     Utils --> Services
     Services --> Backend
     Types --> Components
     Types --> Utils
     Types --> Services
+    Actions --> Services
     Utils -. intended evolution .-> PlannedState
     Services -. intended growth .-> PlannedMiddleware
     Components -. intended verification .-> PlannedTests
