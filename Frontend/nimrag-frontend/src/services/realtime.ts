@@ -4,6 +4,11 @@ import type { RealtimeEvent } from '../types/hardware'
 type RealtimeListener = (event: RealtimeEvent) => void
 
 function buildWebSocketUrl(): string {
+  if (API_BASE_URL.startsWith('/')) {
+    const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:'
+    return `${protocol}//${window.location.host}/ws`
+  }
+
   const origin = API_BASE_URL.replace(/\/api\/v1$/, '')
   if (origin.startsWith('https://')) {
     return `${origin.replace('https://', 'wss://')}/ws`

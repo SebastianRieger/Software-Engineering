@@ -1,9 +1,12 @@
 from __future__ import annotations
 
 import math
+import os
 import time
+import urllib.request
 from collections.abc import Callable
 from dataclasses import dataclass
+from pathlib import Path
 from statistics import mean
 from typing import TYPE_CHECKING, Protocol
 
@@ -79,6 +82,36 @@ class GestureAdapterError(Exception):
     pass
 
 
+_HAND_LANDMARKER_MODEL_URL = (
+    "https://storage.googleapis.com/mediapipe-models/hand_landmarker/"
+    "hand_landmarker/float16/1/hand_landmarker.task"
+)
+_HAND_LANDMARKER_MODEL_PATH = Path(
+    os.environ.get(
+        "NIMRAG_HAND_LANDMARKER_MODEL",
+        str(Path(__file__).resolve().parents[2] / "models" / "hand_landmarker.task"),
+    )
+)
+
+
+def _ensure_hand_landmarker_model() -> Path:
+    if _HAND_LANDMARKER_MODEL_PATH.exists():
+        return _HAND_LANDMARKER_MODEL_PATH
+
+    _HAND_LANDMARKER_MODEL_PATH.parent.mkdir(parents=True, exist_ok=True)
+    try:
+        urllib.request.urlretrieve(_HAND_LANDMARKER_MODEL_URL, _HAND_LANDMARKER_MODEL_PATH)
+    except Exception as exc:
+        if _HAND_LANDMARKER_MODEL_PATH.exists():
+            _HAND_LANDMARKER_MODEL_PATH.unlink(missing_ok=True)
+        raise GestureAdapterError(
+            "MediaPipe Hand-Landmarker-Modell konnte nicht geladen werden. "
+            "Bitte Internetverbindung pruefen oder NIMRAG_HAND_LANDMARKER_MODEL setzen."
+        ) from exc
+
+    return _HAND_LANDMARKER_MODEL_PATH
+
+
 class GestureAdapter(Protocol):
     def is_available(self) -> bool:
         ...
@@ -118,8 +151,8 @@ def compute_hand_size_scale(
 def build_hand_landmark_map(hand_landmarks) -> GestureLandmarks:
     return {
         name: (
-            float(hand_landmarks.landmark[index].x),
-            float(hand_landmarks.landmark[index].y),
+            float(_hand_landmark_at(hand_landmarks, index).x),
+            float(_hand_landmark_at(hand_landmarks, index).y),
         )
         for name, index in HAND_LANDMARK_NAMES.items()
     }
@@ -127,9 +160,15 @@ def build_hand_landmark_map(hand_landmarks) -> GestureLandmarks:
 
 def build_hand_landmark_depth_map(hand_landmarks) -> GestureDepthMap:
     return {
-        name: float(hand_landmarks.landmark[index].z)
+        name: float(_hand_landmark_at(hand_landmarks, index).z)
         for name, index in HAND_LANDMARK_NAMES.items()
     }
+
+
+def _hand_landmark_at(hand_landmarks, index: int):
+    if hasattr(hand_landmarks, "landmark"):
+        return hand_landmarks.landmark[index]
+    return hand_landmarks[index]
 
 
 def compute_hand_tracking_point(landmarks: GestureLandmarks) -> GesturePoint | None:
@@ -179,6 +218,70 @@ class MediaPipeHandsAdapter:
     def is_available(self) -> bool:
         return cv2 is not None and mp is not None
 
+    @staticmethod
+    def list_available_cameras(max_devices: int = 8) -> list[dict[str, str | int | bool | None]]:
+        if cv2 is None:
+            return []
+
+        linux_video_indices = MediaPipeHandsAdapter._linux_video_indices()
+        candidate_indices = linux_video_indices or list(range(max_devices))
+
+        devices: list[dict[str, str | int | bool | None]] = []
+        for index in candidate_indices:
+            capture = cv2.VideoCapture(index)
+            if not capture or not capture.isOpened():
+                if capture is not None:
+                    capture.release()
+                continue
+
+            ok, _ = capture.read()
+            backend_name = None
+            try:
+                backend_name = str(int(capture.get(cv2.CAP_PROP_BACKEND)))
+            except (AttributeError, TypeError, ValueError):
+                backend_name = None
+            capture.release()
+
+            if not ok:
+                continue
+
+            devices.append(
+                {
+                    "index": index,
+                    "name": MediaPipeHandsAdapter._resolve_camera_name(index),
+                    "available": True,
+                    "backend": backend_name,
+                }
+            )
+
+        return devices
+
+    @staticmethod
+    def _resolve_camera_name(index: int) -> str:
+        sysfs_path = Path(f"/sys/class/video4linux/video{index}/name")
+        if os.path.exists(sysfs_path):
+            try:
+                return sysfs_path.read_text(encoding="utf-8").strip() or f"Camera {index}"
+            except OSError:
+                return f"Camera {index}"
+        return f"Camera {index}"
+
+    @staticmethod
+    def _linux_video_indices() -> list[int]:
+        video_root = Path("/sys/class/video4linux")
+        if not video_root.exists():
+            return []
+
+        indices: list[int] = []
+        for child in sorted(video_root.iterdir()):
+            if not child.name.startswith("video"):
+                continue
+            try:
+                indices.append(int(child.name.replace("video", "")))
+            except ValueError:
+                continue
+        return indices
+
     def open(self, camera_index: int) -> None:
         if not self.is_available():
             raise GestureAdapterError(
@@ -192,12 +295,13 @@ class MediaPipeHandsAdapter:
             self.cap = None
             raise GestureAdapterError("Kamera konnte nicht geoeffnet werden.")
 
-        self.hands = mp.solutions.hands.Hands(
-            static_image_mode=False,
-            max_num_hands=2,
-            min_detection_confidence=0.5,
-            min_tracking_confidence=0.5,
-        )
+        try:
+            self.hands = self._create_hands_tracker()
+        except GestureAdapterError:
+            if self.cap is not None:
+                self.cap.release()
+            self.cap = None
+            raise
 
     def read(self) -> GestureObservation | None:
         if self.cap is None or self.hands is None:
@@ -244,12 +348,7 @@ class MediaPipeHandsAdapter:
         if not cap.isOpened():
             raise GestureAdapterError(f"Video konnte nicht geoeffnet werden: {video_path}")
 
-        hands = mp.solutions.hands.Hands(
-            static_image_mode=False,
-            max_num_hands=2,
-            min_detection_confidence=0.5,
-            min_tracking_confidence=0.5,
-        )
+        hands = self._create_hands_tracker()
         trajectory: list[GesturePoint] = []
         hand_sizes: list[float] = []
         smoothed_point: GesturePoint | None = None
@@ -289,6 +388,37 @@ class MediaPipeHandsAdapter:
             hands.close()
             cap.release()
 
+    @staticmethod
+    def _create_hands_tracker():
+        if hasattr(mp, "solutions") and hasattr(mp.solutions, "hands"):
+            return mp.solutions.hands.Hands(
+                static_image_mode=False,
+                max_num_hands=2,
+                min_detection_confidence=0.5,
+                min_tracking_confidence=0.5,
+            )
+
+        try:
+            from mediapipe.tasks import python as mp_tasks_python
+            from mediapipe.tasks.python import vision as mp_tasks_vision
+
+            base_options = mp_tasks_python.BaseOptions(
+                model_asset_path=str(_ensure_hand_landmarker_model())
+            )
+            options = mp_tasks_vision.HandLandmarkerOptions(
+                base_options=base_options,
+                running_mode=mp_tasks_vision.RunningMode.IMAGE,
+                num_hands=2,
+                min_hand_detection_confidence=0.5,
+                min_hand_presence_confidence=0.5,
+                min_tracking_confidence=0.5,
+            )
+            return mp_tasks_vision.HandLandmarker.create_from_options(options)
+        except GestureAdapterError:
+            raise
+        except Exception as exc:
+            raise GestureAdapterError(f"MediaPipe Hands konnte nicht initialisiert werden: {exc}") from exc
+
     def _extract_observation(
         self,
         frame,
@@ -299,18 +429,31 @@ class MediaPipeHandsAdapter:
             return GestureObservation(point=None)
 
         rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
-        results = hands_instance.process(rgb)
-        if not results.multi_hand_landmarks:
+        if hasattr(hands_instance, "process"):
+            results = hands_instance.process(rgb)
+            hand_landmarks_list = results.multi_hand_landmarks or []
+            handedness_list = results.multi_handedness or []
+        else:
+            image = mp.Image(image_format=mp.ImageFormat.SRGB, data=rgb)
+            results = hands_instance.detect(image)
+            hand_landmarks_list = results.hand_landmarks or []
+            handedness_list = results.handedness or []
+
+        if not hand_landmarks_list:
             return GestureObservation(point=None)
 
         tracked_hands: list[TrackedHandObservation] = []
-        for index, hand_landmarks in enumerate(results.multi_hand_landmarks):
+        for index, hand_landmarks in enumerate(hand_landmarks_list):
             landmarks = build_hand_landmark_map(hand_landmarks)
             tracking_point = compute_hand_tracking_point(landmarks)
             landmark_depths = build_hand_landmark_depth_map(hand_landmarks)
             handedness = None
-            if results.multi_handedness and len(results.multi_handedness) > index:
-                handedness = results.multi_handedness[index].classification[0].label.lower()
+            if handedness_list and len(handedness_list) > index:
+                handedness_entry = handedness_list[index]
+                if hasattr(handedness_entry, "classification"):
+                    handedness = handedness_entry.classification[0].label.lower()
+                elif handedness_entry:
+                    handedness = str(handedness_entry[0].category_name).lower()
 
             tracked_hands.append(
                 TrackedHandObservation(

@@ -11,12 +11,13 @@ if src_path not in sys.path:
 
 from api.data_endpoints import get_weather_service
 from api.device_endpoints import get_led_service, get_voice_service
-from api.system_endpoints import get_config_repository, get_gesture_service
+from api.system_endpoints import get_calibration_service, get_config_repository, get_gesture_service
 from core.config import settings
 from core.database import init_db
 from main import app
 from repositories.config import ConfigRepository
 from repositories.weather import WeatherRepositoryError
+from services.calibration import CalibrationService
 from services.gestures import GestureServiceError
 from services.voice import VoiceServiceError
 
@@ -199,6 +200,24 @@ def mock_voice_service():
         def get_status(self):
             return dict(self.state)
 
+        def list_input_devices(self):
+            return [
+                {
+                    "index": 0,
+                    "name": "Mock Mic 0",
+                    "max_input_channels": 2,
+                    "default_samplerate": 16000.0,
+                    "is_default": True,
+                },
+                {
+                    "index": 2,
+                    "name": "Mock USB Mic",
+                    "max_input_channels": 1,
+                    "default_samplerate": 48000.0,
+                    "is_default": False,
+                },
+            ]
+
         def start(self, device_index: int = 0):
             self.state["device_index"] = device_index
             raise VoiceServiceError("VOICE_MODEL_PATH ist nicht konfiguriert.", status_code=503)
@@ -241,10 +260,17 @@ def mock_gesture_service():
                 "available": self.available,
                 "running": self.running,
                 "camera_index": self.camera_index,
+                "camera_name": f"Mock Camera {self.camera_index}" if self.camera_index is not None else None,
                 "last_gesture": self.last_gesture,
                 "last_gesture_at": self.last_gesture_at,
                 "debug_frame_available": self.frame is not None,
             }
+
+        def list_camera_devices(self):
+            return [
+                {"index": 0, "name": "Mock Camera 0", "available": True, "backend": "200"},
+                {"index": 1, "name": "Mock USB Camera", "available": True, "backend": "200"},
+            ]
 
         def start(self, camera_index: int = 0):
             if not self.available:
@@ -260,6 +286,9 @@ def mock_gesture_service():
             self.running = False
             self.camera_index = None
             return self.get_status()
+
+        def reload_config(self):
+            return None
 
         def get_frame(self):
             return self.frame
@@ -285,10 +314,14 @@ def unavailable_gesture_service():
                 "available": False,
                 "running": False,
                 "camera_index": None,
+                "camera_name": None,
                 "last_gesture": None,
                 "last_gesture_at": None,
                 "debug_frame_available": False,
             }
+
+        def list_camera_devices(self):
+            return []
 
         def start(self, camera_index: int = 0):
             raise GestureServiceError(
@@ -298,6 +331,9 @@ def unavailable_gesture_service():
 
         def stop(self):
             return self.get_status()
+
+        def reload_config(self):
+            return None
 
         def get_frame(self):
             return None
@@ -336,6 +372,21 @@ def override_gesture_dependency(mock_gesture_service):
     app.dependency_overrides[get_gesture_service] = _override_gesture_service
     yield mock_gesture_service
     app.dependency_overrides.pop(get_gesture_service, None)
+
+
+@pytest.fixture
+def override_calibration_dependency(tmp_path):
+    settings.DATABASE_URL = f"sqlite:///{tmp_path / 'calibration-api.db'}"
+    init_db()
+    service = CalibrationService(config_repository_factory=ConfigRepository)
+    service.startup()
+
+    async def _override_calibration_service():
+        return service
+
+    app.dependency_overrides[get_calibration_service] = _override_calibration_service
+    yield service
+    app.dependency_overrides.pop(get_calibration_service, None)
 
 
 @pytest.fixture

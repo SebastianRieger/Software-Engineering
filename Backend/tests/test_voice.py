@@ -13,6 +13,16 @@ async def test_get_voice_status(client, override_voice_dependency):
 
 
 @pytest.mark.asyncio
+async def test_get_voice_devices(client, override_voice_dependency):
+    _ = override_voice_dependency
+    response = await client.get("/api/v1/voice/devices")
+    assert response.status_code == 200
+    data = response.json()
+    assert len(data["devices"]) == 2
+    assert data["devices"][0]["is_default"] is True
+
+
+@pytest.mark.asyncio
 async def test_start_voice_returns_clear_status_error(client, override_voice_dependency):
     _ = override_voice_dependency
     response = await client.post("/api/v1/voice/start", json={"device_index": 0})

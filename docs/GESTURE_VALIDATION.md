@@ -1,24 +1,24 @@
 # Manuelle Gesten-Validierung
 
-Diese Checkliste beschreibt den manuellen Mindesttest fuer den aktuellen Demo-Stand der Gestensteuerung. Sie deckt nicht nur rohe Gestenerkennung ab, sondern auch die neue semantische UI-Aktionsschicht mit Fokus, Widget-Shop und ArrangeMode.
+Diese Checkliste deckt jetzt sowohl die normale Gestensteuerung als auch den neuen In-App-Kalibrierungsmodus ab.
 
 ## Ziel
 
-Pruefen, dass die Anwendung auf echter Kamera- oder Raspberry-Pi-Hardware stabil startet, nachvollziehbare `GestureDetected`-Events liefert und daraus die erwarteten `UIActionRequested`-Events fuer die Frontend-Steuerung entstehen.
+Pruefen, dass die Anwendung auf echter Kamera- oder Raspberry-Pi-Hardware stabil startet, rohe Gestenerkennung sauber liefert, UI-Aktionen korrekt ausloest und eine Gestenkalibrierung mit Apply und Rollback reproduzierbar funktioniert.
 
 ## Vorbereitung
 
-- Backend in der Zielumgebung starten.
-- Frontend starten oder ein aktuelles Build ausliefern.
+- Backend starten.
+- Frontend starten oder aktuelles Build ausliefern.
 - Kamera anschliessen und vom Betriebssystem verifizieren.
-- Einen WebSocket-Client oder die Browser-Konsole fuer den `/ws`-Kanal oeffnen.
-- Sicherstellen, dass sowohl rohe Events als auch semantische UI-Aktionen sichtbar sind.
-- Bekannte Testgesten vorbereiten: `swipe_left`, `swipe_right`, `swipe_up`, `swipe_down`, `circle`, `push_click_short`, `push_click_long`, `zoom_out_hands`, `zoom_in_hands`.
+- Einen Browser mit geoeffneter Anwendung bereithalten.
+- Optional einen WebSocket-Monitor fuer `/ws` oeffnen.
+- Testgesten bereitlegen: `swipe_left`, `swipe_right`, `swipe_up`, `swipe_down`, `circle`, `push_click_short`, `push_click_long`, `zoom_out_hands`, `zoom_in_hands`.
 
-## Pflichtchecks
+## Pflichtchecks Normale Gestensteuerung
 
 1. Start- und Stop-Stabilitaet
-   - Gestensession mehrfach hintereinander starten und stoppen.
+   - Gestensession mehrfach starten und stoppen.
    - Pruefen, dass kein haengender Thread, blockierter Kamerazugriff oder festhaengender Preview-Stream sichtbar bleibt.
 
 2. Preview- und Statusverhalten
@@ -27,57 +27,63 @@ Pruefen, dass die Anwendung auf echter Kamera- oder Raspberry-Pi-Hardware stabil
 
 3. Rohe Basisgesten
    - `swipe_left`, `swipe_right`, `swipe_up`, `swipe_down` und `circle` jeweils mehrfach ausfuehren.
-   - Verifizieren, dass `GestureDetected` fachlich plausibel ist und im Idle-Zustand kein dauerhafter Event-Spam auftritt.
+   - Verifizieren, dass `GestureDetected` fachlich plausibel ist und im Idle-Zustand kein Event-Spam auftritt.
 
-4. Push-Klicks
-   - Einen kurzen Push-Klick ausfuehren und auf `push_click_short` pruefen.
-   - Einen langen Push-Klick ausfuehren und auf `push_click_long` pruefen.
-   - Beobachten, ob die Unterscheidung reproduzierbar bleibt und kein Mehrfachfeuern pro Pose entsteht.
+4. Push-Klicks und Zwei-Hand-Zoom
+   - kurzen und langen Push-Klick pruefen
+   - `zoom_out_hands` und `zoom_in_hands` pruefen
+   - verifizieren, dass Push und Zoom nicht mehrfach oder in Idle-Rauschen feuern
 
-5. Zwei-Hand-Zoom
-   - Beide Haende initial in naeherer Distanz platzieren und auseinanderbewegen, um `zoom_out_hands` zu pruefen.
-   - Beide Haende initial weiter auseinander platzieren und zusammenbewegen, um `zoom_in_hands` zu pruefen.
-   - Verifizieren, dass Zoom nur bei stabiler Zwei-Hand-Erfassung und nicht bei Einhandrauschen ausgeloest wird.
-
-6. Semantische UI-Aktionen
+5. Semantische UI-Aktionen
    - WebSocket-Nachrichten auf `UIActionRequested` pruefen.
-   - Erwartete Zuordnungen bestaetigen: horizontale und vertikale Swipes bewegen Fokus oder Widget, `circle` toggelt den Shop, kurzer Push ist Primaeraktion, langer Push aktiviert ArrangeMode, Zwei-Hand-Zoom skaliert Widgets im ArrangeMode.
+   - Fokusnavigation, Shop-Toggle, Primaeraktion, ArrangeMode und Resize muessen konsistent ausgeloest werden.
 
-7. Fokus, Shop und ArrangeMode in der UI
-   - Mit Swipes den Fokus ueber das 4x4-Grid bewegen.
-   - Auf einer leeren Zelle den Shop oeffnen und per Primaeraktion ein Widget einfuegen.
-   - Auf einem bestehenden Widget per Langklick den ArrangeMode aktivieren.
-   - Im ArrangeMode das selektierte Widget verschieben und mit Zoom vergroessern oder verkleinern.
-   - ArrangeMode wieder sauber verlassen und pruefen, dass Fokus und Auswahl konsistent bleiben.
+## Pflichtchecks Kalibrierungsmodus
 
-8. Kameraabstand und Licht
-   - Dieselbe Swipe-Geste einmal naeher und einmal weiter von der Kamera entfernt testen.
-   - Push- und Zoom-Gesten unter mindestens zwei Lichtbedingungen pruefen.
-   - Verifizieren, dass die Handgroessen- und Tiefennormalisierung das Verhalten stabiler macht als reine Bildkoordinaten.
+1. Wizard-Start
+   - Kalibrierungswizard oeffnen.
+   - Profilname setzen oder `default` verwenden.
+   - alle Gesten oder eine Teilmenge auswaehlen.
+   - Wiederholungszahl zwischen 10 und 20 pruefen.
 
-9. Fehlerszenarien
-   - Kamera in sicherem Rahmen waehrend inaktiver oder aktiver Session kurz trennen oder blockieren.
-   - Pruefen, dass Fehler im Statusmodell sichtbar werden und nach Neustart der Session bereinigt werden koennen.
+2. Interaktionssperre
+   - Waehren der Kalibrierung duerfen Shop, ArrangeMode und Fokusnavigation nicht mehr auf Gesten oder Tastatureingaben reagieren.
+   - Stattdessen muessen Kalibrierungsfeedback und Zielstatus sichtbar sein.
+
+3. Sample-Aufnahme
+   - jede ausgewaehlte Geste korrekt wiederholen, bis das Ziel abgeschlossen ist.
+   - WebSocket oder Wizard muessen `SampleAccepted`, moegliche Rejects und `TargetCompleted` nachvollziehbar anzeigen.
+
+4. Analyse
+   - Nach Abschluss aller Ziele Analyse starten.
+   - Verifizieren, dass pro Geste Metriken und konkrete Schwellenempfehlungen angezeigt werden.
+
+5. Apply
+   - Profil anwenden.
+   - Danach normale Gestensteuerung erneut pruefen.
+   - Verhalten soll mindestens stabiler oder konsistenter als vor der Kalibrierung sein.
+
+6. Rollback
+   - Rollback ausfuehren.
+   - Verifizieren, dass die ursprüngliche Gesture-Config wiederhergestellt wird.
+   - Danach normale Gestensteuerung erneut pruefen.
+
+7. Discard
+   - Eine neue Kalibrierung starten und vor Apply verwerfen.
+   - Verifizieren, dass keine neue Gesture-Config aktiv wird und eine neue Sitzung wieder gestartet werden kann.
 
 ## Beobachtungspunkte
 
-- Latenzeindruck von Bewegung bis rohem Event und bis sichtbarer UI-Reaktion.
-- False Positives im Idle-Zustand.
-- Konsistenz zwischen `GestureDetected` und `UIActionRequested`.
-- CPU- oder Temperaturauffaelligkeiten auf Raspberry Pi.
-- Unterschiede zwischen heller und dunkler Umgebung.
-- Versehentliches Oeffnen des Shops oder ungewolltes Betreten des ArrangeMode.
+- Latenzeindruck von Bewegung bis Event und bis sichtbarer UI-Reaktion
+- False Positives im Idle-Zustand
+- Konsistenz zwischen `GestureDetected`, `UIActionRequested` und Kalibrierungsfeedback
+- Unterschiede zwischen heller und dunkler Umgebung
+- Stabilitaet von Apply und Rollback ueber mehrere Sitzungen hinweg
 
-## Zielwerte fuer den Demo-Checkpoint
+## Zielwerte fuer den aktuellen Meilenstein
 
-- Start und Stop ohne haengenden Prozess.
-- Subjektiv fluessige Reaktion ohne grobe Aussetzer.
-- Keine dauernden Idle-Fehler und kein Event-Spam.
-- Fokusnavigation, Shop-Toggle und ArrangeMode sind vorfuehrbar reproduzierbar.
-- Kameraabstand und Lichtwechsel verschlechtern die Erkennung nicht massiv.
-
-## Offene Anschlussfragen
-
-- Wie robust bleiben Push-Klick und Zwei-Hand-Zoom auf Raspberry Pi unter realer Last?
-- Welche Gesten-Schwellwerte muessen fuer Demo versus Dauerbetrieb unterschiedlich sein?
-- Soll die UI-Aktionszuordnung spaeter pro Nutzerprofil oder Szenario umschaltbar werden?
+- Start und Stop ohne haengenden Prozess
+- reproduzierbare Fokusnavigation, Shop-Steuerung und ArrangeMode
+- Kalibrierung ueber 10 bis 20 Wiederholungen pro Geste ohne externe Videos oder Skripte
+- sichtbare Empfehlungen statt Auto-Apply
+- deterministischer Rollback auf den gespeicherten Vorher-Snapshot

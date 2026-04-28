@@ -4,6 +4,8 @@ const { spawn, exec } = require('child_process');
 const fs = require('fs');
 const path = require('path');
 const os = require('os');
+const http = require('http');
+const net = require('net');
 
 // ANSI Colors
 const colors = {
@@ -21,6 +23,14 @@ class SmartMirrorSetup {
         this.platform = os.platform();
         this.isWindows = this.platform === 'win32';
         this.args = process.argv.slice(2);
+        this.rootPath = process.cwd();
+        this.frontendPath = path.join(this.rootPath, 'Frontend', 'nimrag-frontend');
+        this.backendPath = path.join(this.rootPath, 'Backend');
+        this.backendSrcPath = path.join(this.backendPath, 'src');
+        this.backendVenvPath = path.join(this.backendPath, 'venv_py312');
+        this.children = [];
+        this.systemPythonCommand = null;
+        this.isShuttingDown = false;
     }
 
     log(message, color = 'cyan') {
@@ -71,6 +81,300 @@ class SmartMirrorSetup {
         });
     }
 
+    async commandSucceeds(command, cwd = process.cwd()) {
+        return new Promise((resolve) => {
+            exec(command, { cwd, shell: true }, (error) => {
+                resolve(!error);
+            });
+        });
+    }
+
+    async captureCommand(command, cwd = process.cwd()) {
+        return new Promise((resolve, reject) => {
+            exec(command, { cwd, shell: true }, (error, stdout, stderr) => {
+                if (error) {
+                    reject(new Error(stderr || error.message));
+                    return;
+                }
+                resolve(stdout.trim());
+            });
+        });
+    }
+
+    backendPythonPath() {
+        return this.isWindows
+            ? path.join(this.backendVenvPath, 'Scripts', 'python.exe')
+            : path.join(this.backendVenvPath, 'bin', 'python');
+    }
+
+    backendPipPath() {
+        return this.isWindows
+            ? path.join(this.backendVenvPath, 'Scripts', 'pip.exe')
+            : path.join(this.backendVenvPath, 'bin', 'pip');
+    }
+
+    async resolveSystemPython() {
+        if (this.systemPythonCommand) {
+            return this.systemPythonCommand;
+        }
+
+        const candidates = this.isWindows ? ['py -3', 'python'] : ['python3', 'python'];
+        for (const candidate of candidates) {
+            if (await this.commandSucceeds(`${candidate} --version`)) {
+                this.systemPythonCommand = candidate;
+                return candidate;
+            }
+        }
+
+        throw new Error('Python wurde nicht gefunden. Bitte Python 3 installieren.');
+    }
+
+    async ensureBackendVenv() {
+        const pythonPath = this.backendPythonPath();
+        if (fs.existsSync(pythonPath)) {
+            this.success(`Backend-Venv gefunden: ${this.backendVenvPath}`);
+            return;
+        }
+
+        const systemPython = await this.resolveSystemPython();
+        this.log(`Erzeuge Backend-Venv unter ${this.backendVenvPath}...`);
+        await this.execCommand(`${systemPython} -m venv "${this.backendVenvPath}"`, this.rootPath);
+        this.success('Backend-Venv wurde erstellt');
+    }
+
+    async installBackendDependencies() {
+        const requirementsPath = path.join(this.backendPath, 'requirements.txt');
+        if (!fs.existsSync(requirementsPath)) {
+            throw new Error('Backend/requirements.txt wurde nicht gefunden.');
+        }
+
+        this.log('Installiere Backend-Abhaengigkeiten aus requirements.txt...');
+        await this.execCommand(`"${this.backendPipPath()}" install -r requirements.txt`, this.backendPath);
+        this.success('Backend-Abhaengigkeiten sind aktuell');
+    }
+
+    async installFrontendDependencies() {
+        if (!fs.existsSync(path.join(this.frontendPath, 'package.json'))) {
+            throw new Error('Frontend package.json wurde nicht gefunden.');
+        }
+
+        this.log('Installiere Frontend-Abhaengigkeiten...');
+        await this.execCommand('npm install', this.frontendPath);
+        this.success('Frontend-Abhaengigkeiten sind aktuell');
+    }
+
+    async isPortOpen(port, host = '127.0.0.1') {
+        return new Promise((resolve) => {
+            const socket = new net.Socket();
+            socket.setTimeout(1000);
+            socket.once('connect', () => {
+                socket.destroy();
+                resolve(true);
+            });
+            socket.once('timeout', () => {
+                socket.destroy();
+                resolve(false);
+            });
+            socket.once('error', () => {
+                resolve(false);
+            });
+            socket.connect(port, host);
+        });
+    }
+
+    async stopDockerContainersPublishingPort(port) {
+        if (!(await this.commandSucceeds('docker ps --format "{{.ID}}"', this.rootPath))) {
+            return;
+        }
+
+        let containerIds = '';
+        try {
+            containerIds = await this.captureCommand(`docker ps --filter publish=${port} --format "{{.ID}}"`, this.rootPath);
+        } catch {
+            return;
+        }
+
+        if (!containerIds) {
+            return;
+        }
+
+        const ids = containerIds.split(/\s+/).filter(Boolean);
+        for (const id of ids) {
+            this.warning(`Stoppe Docker-Container ${id}, weil er Port ${port} belegt...`);
+            await new Promise((resolve) => {
+                exec(`docker stop ${id}`, { cwd: this.rootPath, shell: true }, () => resolve());
+            });
+        }
+    }
+
+    async waitUntilPortIsFree(port, timeoutMs = 15000) {
+        const deadline = Date.now() + timeoutMs;
+        while (Date.now() < deadline) {
+            if (!(await this.isPortOpen(port))) {
+                return;
+            }
+            await new Promise((resolve) => setTimeout(resolve, 500));
+        }
+
+        throw new Error(`Port ${port} konnte nicht freigegeben werden.`);
+    }
+
+    async killPort(port) {
+        this.log(`Bereinige Port ${port} vor dem Start...`);
+
+        const commands = this.isWindows
+            ? [
+                `for /f "tokens=5" %a in ('netstat -ano ^| findstr :${port} ^| findstr LISTENING') do taskkill /F /PID %a`,
+            ]
+            : [
+                `fuser -k ${port}/tcp`,
+                `lsof -ti tcp:${port} | xargs -r kill -9`,
+            ];
+
+        for (const command of commands) {
+            await new Promise((resolve) => {
+                exec(command, { cwd: this.rootPath, shell: true }, () => resolve());
+            });
+        }
+
+        if (await this.isPortOpen(port)) {
+            await this.stopDockerContainersPublishingPort(port);
+        }
+
+        if (await this.isPortOpen(port)) {
+            for (const command of commands) {
+                await new Promise((resolve) => {
+                    exec(command, { cwd: this.rootPath, shell: true }, () => resolve());
+                });
+            }
+        }
+
+        await this.waitUntilPortIsFree(port);
+    }
+
+    async waitForBackendReady(url, timeoutMs = 30000) {
+        const deadline = Date.now() + timeoutMs;
+
+        while (Date.now() < deadline) {
+            const result = await new Promise((resolve) => {
+                const request = http.get(url, (response) => {
+                    let body = '';
+                    response.setEncoding('utf8');
+                    response.on('data', (chunk) => {
+                        body += chunk;
+                    });
+                    response.on('end', () => {
+                        resolve({ statusCode: response.statusCode ?? 0, body });
+                    });
+                });
+
+                request.on('error', () => resolve(null));
+                request.setTimeout(1500, () => {
+                    request.destroy();
+                    resolve(null);
+                });
+            });
+
+            if (result && result.statusCode === 200) {
+                try {
+                    const payload = JSON.parse(result.body);
+                    if (payload && payload.status === 'running' && typeof payload.version === 'string') {
+                        return;
+                    }
+                } catch {
+                    // ignore non-Nimrag responses until timeout
+                }
+            }
+
+            if (result && result.statusCode >= 400 && result.statusCode < 500) {
+                await new Promise((resolve) => setTimeout(resolve, 500));
+                continue;
+            }
+
+            if (await this.isPortOpen(8000) === false) {
+                await new Promise((resolve) => setTimeout(resolve, 500));
+                continue;
+            }
+
+            await new Promise((resolve) => setTimeout(resolve, 500));
+        }
+
+        throw new Error(`Nimrag-Backend unter ${url} wurde nicht korrekt erreichbar.`);
+    }
+
+    async waitForFrontendReady(url, timeoutMs = 30000) {
+        const deadline = Date.now() + timeoutMs;
+        while (Date.now() < deadline) {
+            const reachable = await new Promise((resolve) => {
+                const request = http.get(url, (response) => {
+                    response.resume();
+                    resolve((response.statusCode ?? 0) < 500);
+                });
+
+                request.on('error', () => resolve(false));
+                request.setTimeout(1500, () => {
+                    request.destroy();
+                    resolve(false);
+                });
+            });
+
+            if (reachable) {
+                return;
+            }
+
+            await new Promise((resolve) => setTimeout(resolve, 500));
+        }
+
+        throw new Error(`Frontend unter ${url} wurde nicht rechtzeitig erreichbar.`);
+    }
+
+    spawnManagedProcess(command, cwd, label) {
+        const child = spawn(command, {
+            cwd,
+            shell: true,
+            stdio: 'inherit',
+            env: process.env,
+        });
+
+        child.on('exit', (code, signal) => {
+            if (this.isShuttingDown) {
+                return;
+            }
+
+            if (code !== 0 && code !== null) {
+                this.error(`${label} wurde mit Exit-Code ${code} beendet.`);
+            } else if (signal) {
+                this.warning(`${label} wurde durch Signal ${signal} beendet.`);
+            }
+
+            this.shutdownAll(code ?? 1);
+        });
+
+        this.children.push(child);
+        return child;
+    }
+
+    registerSignalHandlers() {
+        const shutdown = () => this.shutdownAll(0);
+        process.on('SIGINT', shutdown);
+        process.on('SIGTERM', shutdown);
+    }
+
+    shutdownAll(exitCode = 0) {
+        if (this.isShuttingDown) {
+            return;
+        }
+
+        this.isShuttingDown = true;
+        for (const child of this.children) {
+            if (!child.killed) {
+                child.kill('SIGTERM');
+            }
+        }
+
+        setTimeout(() => process.exit(exitCode), 200);
+    }
+
     async checkPrerequisites() {
         this.log('Checking prerequisites...');
         
@@ -90,72 +394,59 @@ class SmartMirrorSetup {
         }
         this.success('NPM is installed');
 
-        // Check Python (optional for backend)
-        const hasPython = await this.checkCommand('python') || await this.checkCommand('python3');
-        if (hasPython) {
-            this.success('Python is installed');
-        } else {
-            this.warning('Python not found - Backend features may not work');
-        }
+        await this.resolveSystemPython();
+        this.success(`Python ist installiert (${this.systemPythonCommand})`);
 
         this.info(`Platform detected: ${this.platform}`);
     }
 
-    async installFrontendDependencies() {
-        const frontendPath = path.join(process.cwd(), 'Frontend', 'nimrag-frontend');
-        
-        if (!fs.existsSync(frontendPath)) {
-            this.warning('Frontend directory not found');
-            return false;
-        }
-
-        if (!fs.existsSync(path.join(frontendPath, 'package.json'))) {
-            this.warning('Frontend package.json not found');
-            return false;
-        }
-
-        this.log('Installing Frontend dependencies...');
-        try {
-            await this.execCommand('npm install', frontendPath);
-            this.success('Frontend dependencies installed!');
-            return true;
-        } catch (error) {
-            this.error('Failed to install Frontend dependencies');
-            return false;
-        }
+    async installAllDependencies() {
+        await this.installFrontendDependencies();
+        await this.ensureBackendVenv();
+        await this.installBackendDependencies();
     }
 
-    async checkBackend() {
-        const backendPath = path.join(process.cwd(), 'Backend');
-        
-        if (fs.existsSync(backendPath)) {
-            this.info('Backend directory found');
-            
-            const requirementsPath = path.join(backendPath, 'requirements.txt');
-            if (fs.existsSync(requirementsPath)) {
-                this.info('To install Backend dependencies, run:');
-                console.log(`  cd Backend && pip install -r requirements.txt`);
-            }
-        }
+    async startFrontendOnly() {
+        await this.checkPrerequisites();
+        await this.installFrontendDependencies();
+        await this.killPort(5173);
+        this.log('Starte Frontend auf Port 5173...');
+        this.registerSignalHandlers();
+        this.spawnManagedProcess('npm run dev -- --host 0.0.0.0 --port 5173 --strictPort', this.frontendPath, 'Frontend');
     }
 
-    async startFrontend() {
-        const frontendPath = path.join(process.cwd(), 'Frontend', 'nimrag-frontend');
-        
-        if (!fs.existsSync(frontendPath)) {
-            this.error('Frontend not found! Run setup first.');
-            return;
-        }
+    async startBackendOnly() {
+        await this.checkPrerequisites();
+        await this.ensureBackendVenv();
+        await this.installBackendDependencies();
+        await this.killPort(8000);
+        this.log('Starte Backend auf Port 8000...');
+        this.registerSignalHandlers();
+        this.spawnManagedProcess(`"${this.backendPythonPath()}" -m uvicorn main:app --reload --host 0.0.0.0 --port 8000`, this.backendSrcPath, 'Backend');
+        await this.waitForBackendReady('http://127.0.0.1:8000/api/v1/system/status');
+        this.success('Backend ist erreichbar unter http://localhost:8000');
+    }
 
-        this.log('Starting Frontend development server...');
-        this.info('Frontend will open in your browser automatically');
-        this.info('Press Ctrl+C to stop the server');
-        
-        try {
-            await this.execCommand('npm run dev', frontendPath);
-        } catch (error) {
-            this.error('Failed to start Frontend');
-        }
+    async startFullStack() {
+        await this.checkPrerequisites();
+        await this.installAllDependencies();
+        await this.killPort(8000);
+        await this.killPort(5173);
+
+        this.registerSignalHandlers();
+
+        this.log('Starte Backend auf Port 8000...');
+        this.spawnManagedProcess(`"${this.backendPythonPath()}" -m uvicorn main:app --reload --host 0.0.0.0 --port 8000`, this.backendSrcPath, 'Backend');
+        await this.waitForBackendReady('http://127.0.0.1:8000/api/v1/system/status');
+        this.success('Backend ist erreichbar unter http://localhost:8000');
+
+        this.log('Starte Frontend auf Port 5173...');
+        this.spawnManagedProcess('npm run dev -- --host 0.0.0.0 --port 5173 --strictPort', this.frontendPath, 'Frontend');
+        await this.waitForFrontendReady('http://127.0.0.1:5173/');
+
+        this.success('Stack ist gestartet');
+        this.info('Frontend: http://localhost:5173/');
+        this.info('Backend: http://localhost:8000/api/v1/system/status');
     }
 
     async run() {
@@ -167,20 +458,26 @@ ${colors.cyan}
 `);
 
         try {
-            // Check what to do based on arguments
-            if (this.args.includes('--dev') || this.args.includes('--start')) {
-                await this.startFrontend();
+            if (this.args.includes('--frontend-only')) {
+                await this.startFrontendOnly();
                 return;
             }
 
-            // Full setup process
+            if (this.args.includes('--backend-only')) {
+                await this.startBackendOnly();
+                return;
+            }
+
+            if (this.args.includes('--dev') || this.args.includes('--start')) {
+                await this.startFullStack();
+                return;
+            }
+
             await this.checkPrerequisites();
-            
             console.log('');
             this.log('Starting installation process...');
-            
-            const frontendInstalled = await this.installFrontendDependencies();
-            await this.checkBackend();
+
+            await this.installAllDependencies();
 
             console.log(`
 ${colors.green}
@@ -189,31 +486,14 @@ ${colors.green}
 ======================================${colors.reset}
 
 ${colors.yellow}Next steps:${colors.reset}
-  ${colors.blue}-${colors.reset} Start Frontend: ${colors.magenta}npm run dev${colors.reset}
-  ${colors.blue}-${colors.reset} Or use: ${colors.magenta}node setup.js --dev${colors.reset}
-  ${colors.blue}-${colors.reset} Backend: ${colors.magenta}cd Backend && python main.py${colors.reset}
+    ${colors.blue}-${colors.reset} Full stack starten: ${colors.magenta}npm run dev${colors.reset}
+    ${colors.blue}-${colors.reset} Nur Backend: ${colors.magenta}node setup.js --backend-only${colors.reset}
+    ${colors.blue}-${colors.reset} Nur Frontend: ${colors.magenta}node setup.js --frontend-only${colors.reset}
 
 ${colors.yellow}Quick commands:${colors.reset}
   ${colors.blue}-${colors.reset} Setup: ${colors.magenta}node setup.js${colors.reset}
-  ${colors.blue}-${colors.reset} Start dev: ${colors.magenta}node setup.js --dev${colors.reset}
+    ${colors.blue}-${colors.reset} Start dev: ${colors.magenta}node setup.js --dev${colors.reset}
 `);
-
-            if (frontendInstalled) {
-                this.info('Would you like to start the development server now? (y/n)');
-                
-                process.stdin.setRawMode(true);
-                process.stdin.resume();
-                process.stdin.on('data', async (key) => {
-                    const input = key.toString().toLowerCase();
-                    if (input === 'y' || input === '\r') {
-                        console.log('\n');
-                        await this.startFrontend();
-                    } else {
-                        console.log('\nSetup completed. Run "node setup.js --dev" to start later.');
-                        process.exit(0);
-                    }
-                });
-            }
 
         } catch (error) {
             this.error(`Setup failed: ${error.message}`);

@@ -4,11 +4,13 @@ import { ApiError, apiClient } from '../services/api'
 import { realtimeClient } from '../services/realtime'
 import type { HardwareStatusWidgetSettings } from '../types/config'
 import type {
+  GestureCameraDevice,
   GestureStatusResponse,
   LEDColor,
   LEDStateResponse,
   RealtimeEvent,
   SystemStatusResponse,
+  VoiceInputDevice,
   VoiceStatusResponse,
 } from '../types/hardware'
 
@@ -21,6 +23,8 @@ interface HardwareWidgetProps {
 export const HARDWARE_WIDGET_DEFAULT_SETTINGS: Required<HardwareStatusWidgetSettings> = {
   showPreview: false,
   autoRefresh: true,
+  gestureCameraIndex: 0,
+  voiceDeviceIndex: -1,
 }
 
 export const LED_PRESETS: Array<{ label: string; tone: 'warm' | 'cool' | 'neutral'; color: LEDColor }> = [
@@ -44,6 +48,8 @@ export function useHardwareWidget(props: HardwareWidgetProps) {
   const gestureStatus = ref<GestureStatusResponse | null>(null)
   const ledStatus = ref<LEDStateResponse | null>(null)
   const voiceStatus = ref<VoiceStatusResponse | null>(null)
+  const gestureDevices = ref<GestureCameraDevice[]>([])
+  const voiceDevices = ref<VoiceInputDevice[]>([])
   const gesturePreview = ref<string | null>(null)
   const lastRealtimeEvent = ref<string | null>(null)
   const loading = ref(false)
@@ -55,6 +61,8 @@ export function useHardwareWidget(props: HardwareWidgetProps) {
   const effectiveSettings = computed<Required<HardwareStatusWidgetSettings>>(() => ({
     showPreview: props.settings?.showPreview ?? HARDWARE_WIDGET_DEFAULT_SETTINGS.showPreview,
     autoRefresh: props.settings?.autoRefresh ?? HARDWARE_WIDGET_DEFAULT_SETTINGS.autoRefresh,
+    gestureCameraIndex: props.settings?.gestureCameraIndex ?? HARDWARE_WIDGET_DEFAULT_SETTINGS.gestureCameraIndex,
+    voiceDeviceIndex: props.settings?.voiceDeviceIndex ?? HARDWARE_WIDGET_DEFAULT_SETTINGS.voiceDeviceIndex,
   }))
 
   const isPreviewMode = computed(() => !props.widgetId)
@@ -77,17 +85,29 @@ export function useHardwareWidget(props: HardwareWidgetProps) {
     error.value = null
 
     try {
-      const [system, gesture, led, voice] = await Promise.all([
+      const [system, gesture, gestureDeviceList, led, voiceDeviceList, voice] = await Promise.all([
         apiClient.getSystemStatus(),
         apiClient.getGestureStatus(),
+        apiClient.getGestureDevices(),
         apiClient.getLedStatus(),
+        apiClient.getVoiceDevices(),
         apiClient.getVoiceStatus(),
       ])
 
       systemStatus.value = system
       gestureStatus.value = gesture
+      gestureDevices.value = gestureDeviceList.devices
       ledStatus.value = led
+      voiceDevices.value = voiceDeviceList.devices
       voiceStatus.value = voice
+
+      if (gesture.running && gesture.camera_index !== null && gesture.camera_index !== effectiveSettings.value.gestureCameraIndex) {
+        updateSettings({ gestureCameraIndex: gesture.camera_index })
+      }
+
+      if (voice.running && voice.device_index !== null && voice.device_index !== effectiveSettings.value.voiceDeviceIndex) {
+        updateSettings({ voiceDeviceIndex: voice.device_index })
+      }
 
       if (effectiveSettings.value.showPreview) {
         await loadPreviewFrame()
@@ -120,7 +140,7 @@ export function useHardwareWidget(props: HardwareWidgetProps) {
 
   async function startGestures(): Promise<void> {
     try {
-      gestureStatus.value = await apiClient.startGestures(0)
+      gestureStatus.value = await apiClient.startGestures(effectiveSettings.value.gestureCameraIndex)
       if (effectiveSettings.value.showPreview) {
         await loadPreviewFrame()
       }
@@ -135,6 +155,40 @@ export function useHardwareWidget(props: HardwareWidgetProps) {
     } catch (stopError) {
       error.value = formatHardwareError(stopError)
     }
+  }
+
+  async function startVoice(): Promise<void> {
+    try {
+      voiceStatus.value = await apiClient.startVoice(effectiveSettings.value.voiceDeviceIndex)
+    } catch (voiceError) {
+      error.value = formatHardwareError(voiceError)
+    }
+  }
+
+  async function stopVoice(): Promise<void> {
+    try {
+      voiceStatus.value = await apiClient.stopVoice()
+    } catch (voiceError) {
+      error.value = formatHardwareError(voiceError)
+    }
+  }
+
+  function selectGestureCamera(event: Event): void {
+    const target = event.target as HTMLSelectElement
+    const cameraIndex = Number(target.value)
+    if (Number.isNaN(cameraIndex)) {
+      return
+    }
+    updateSettings({ gestureCameraIndex: cameraIndex })
+  }
+
+  function selectVoiceDevice(event: Event): void {
+    const target = event.target as HTMLSelectElement
+    const deviceIndex = Number(target.value)
+    if (Number.isNaN(deviceIndex)) {
+      return
+    }
+    updateSettings({ voiceDeviceIndex: deviceIndex })
   }
 
   async function applyLedPreset(color: LEDColor): Promise<void> {
@@ -172,6 +226,11 @@ export function useHardwareWidget(props: HardwareWidgetProps) {
 
     if (event.eventType === 'LEDStateChanged') {
       ledStatus.value = event.payload as unknown as LEDStateResponse
+      return
+    }
+
+    if (event.eventType === 'VoiceCommandDetected') {
+      void loadStatuses()
     }
   }
 
@@ -218,6 +277,7 @@ export function useHardwareWidget(props: HardwareWidgetProps) {
     changeBrightness,
     effectiveSettings,
     error,
+    gestureDevices,
     gesturePreview,
     gestureStatus,
     isPreviewMode,
@@ -225,10 +285,15 @@ export function useHardwareWidget(props: HardwareWidgetProps) {
     ledStatus,
     loadStatuses,
     loading,
+    selectGestureCamera,
+    selectVoiceDevice,
     startGestures,
+    startVoice,
     stopGestures,
+    stopVoice,
     systemStatus,
     updateSettings,
+    voiceDevices,
     voiceStatus,
   }
 }

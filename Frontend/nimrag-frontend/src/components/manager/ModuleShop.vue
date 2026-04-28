@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, defineEmits, defineExpose, ref } from 'vue'
+import { computed, ref } from 'vue'
 
 import { buildDisplayedModules, getModuleItems, moveModuleIndex } from '../../utils/moduleShop'
 

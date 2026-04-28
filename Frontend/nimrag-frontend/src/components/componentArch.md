@@ -2,73 +2,43 @@
 
 ## Scope
 
-- Snapshot basis: 7 files and 1498 lines in `src/components`
+- Snapshot basis: 8 Vue files and 2182 lines in `src/components`
 - Subtrees: `manager/` and `widgets/`
 
 ## Metric View
 
-| Slice | Files | Lines | Reading |
-| --- | ---: | ---: | --- |
-| `manager/` | 4 | 1040 | Layout orchestration, interaction feedback, board rendering and widget selection |
-| `widgets/` | 3 | 458 | Domain-facing widget UI |
-
-### Largest Component Hotspots
-
 | Component | Lines | Why it matters |
 | --- | ---: | --- |
-| `ModuleManager.vue` | 465 | Central interaction controller for focus, shop and ArrangeMode |
-| `ModuleShop.vue` | 279 | Widget insertion flow, now targeted at the focused placement |
-| `TemplateWidget.vue` | 212 | Hardware and system UI surface, now backed by extracted helper logic |
-| `GridBoard.vue` | 195 | Placement-based board rendering with selection and focus feedback |
+| `ModuleManager.vue` | 718 | Central interaction controller for layout, shop, ArrangeMode, realtime and calibration state |
+| `CalibrationWizard.vue` | 431 | Dedicated in-app calibration flow with review, apply and rollback actions |
+| `ModuleShop.vue` | 279 | Widget insertion flow |
+| `TemplateWidget.vue` | 252 | Hardware and system UI surface with camera and microphone selection |
+| `GridBoard.vue` | 195 | Placement-based board rendering |
+| `InteractionOverlay.vue` | 101 | Live feedback for normal interaction mode |
 
 ## Structure And Logic
 
-The components layer still contains the main application flow, but not as monolithically as before. `ModuleManager.vue` owns layout state, focus state, loading and persistence. `GridBoard.vue` renders the 4x4 board with row and column spans plus focus highlighting. `ModuleShop.vue` handles widget selection against the current focus target. `InteractionOverlay.vue` exposes the current raw input, semantic action, selected widget and ArrangeMode state. The widget components render the concrete weather, clock and hardware experiences.
+The biggest frontend change is that calibration is not a side panel or separate page. It is integrated into the existing manager flow as a mutually exclusive mode. `ModuleManager.vue` now owns two explicit interaction states:
 
-The key change is that helper-heavy logic is no longer forced to live inline. Layout transformation, focus movement, placement validation and rendered-widget assembly were moved into `utils/layout.ts`, module-shop mechanics into `utils/moduleShop.ts`, and hardware-widget integration logic into `utils/hardwareWidget.ts`.
+- normal control mode with focus, shop and ArrangeMode
+- calibration mode with its own lifecycle, websocket feedback and review actions
+
+`CalibrationWizard.vue` provides the calibration-specific UI, while `InteractionOverlay.vue` remains dedicated to the normal interaction flow. This separation keeps calibration visuals explicit and prevents the existing overlay from turning into a mixed state machine.
+
+`TemplateWidget.vue` also crossed from passive status display into an actual hardware control surface. It now consumes discovered camera and microphone lists, lets the user bind a specific device per widget instance and triggers the matching runtime start or stop actions through the shared hardware composable.
 
 ## Critical Assessment
 
-- The state-driven rendering model remains the right structural base.
-- `manager/` still does more than presentation. It mixes application state, persistence choreography and UI control flow.
-- `widgets/` provides good feature isolation, but the hardware widget still consumes service behavior directly through its helper layer instead of a shared state layer.
-- The biggest remaining pressure point is now `ModuleManager.vue`, followed by broader frontend state ownership rather than raw component size alone.
+- The component structure is stronger because calibration got its own dedicated surface.
+- `ModuleManager.vue` is still the main orchestration hotspot and now even more clearly the application controller of the frontend.
+- The next architectural pressure point is no longer raw rendering complexity but shared state extraction out of `ModuleManager.vue`.
+- There are still no automated component tests.
 
 ## Intended But Missing Elements
 
-- composables or stores to move layout and widget state above `ModuleManager.vue`
-- clearer split between presentation components and feature orchestration
-- automated component tests
-
-## Diagram
-
-```mermaid
-flowchart LR
-    ModuleManager[ModuleManager.vue]
-    GridBoard[GridBoard.vue]
-    InteractionOverlay[InteractionOverlay.vue]
-    ModuleShop[ModuleShop.vue]
-    WeatherWidget[WeatherWidget.vue]
-    ClockWidget[ClockWidget.vue]
-    TemplateWidget[TemplateWidget.vue]
-    Registry[widgets/registry.ts]
-    Utils[utils layer]
-    Services[services]
-    PlannedState[Planned stores or composables]
-
-    ModuleManager --> GridBoard
-    ModuleManager --> InteractionOverlay
-    ModuleManager --> ModuleShop
-    ModuleManager --> Registry
-    ModuleManager --> Utils
-    GridBoard --> WeatherWidget
-    GridBoard --> ClockWidget
-    GridBoard --> TemplateWidget
-    TemplateWidget --> Utils
-    WeatherWidget --> Services
-    Utils --> Services
-    ModuleManager -. intended extraction .-> PlannedState
-```
+- composables or stores to move calibration and layout orchestration above `ModuleManager.vue`
+- automated component or state-machine tests
+- a richer settings area with session history and profile management beyond the modal wizard
 
 ## Navigation
 

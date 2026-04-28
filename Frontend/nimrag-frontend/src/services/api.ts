@@ -1,15 +1,27 @@
 import { buildApiUrl } from './apiConfig'
+import type {
+  CalibrationApplyResponse,
+  CalibrationDefinitionsResponse,
+  CalibrationRollbackResponse,
+  CalibrationSessionCreateRequest,
+  CalibrationSessionResponse,
+} from '../types/calibration'
 import type { LayoutConfig, LayoutConfigEnvelope, SystemConfig, SystemConfigEnvelope } from '../types/config'
 import type {
+  GestureCameraListResponse,
   GestureFrameResponse,
   GestureStatusResponse,
   LEDStateResponse,
   SystemStatusResponse,
+  VoiceInputDeviceListResponse,
   VoiceStatusResponse,
 } from '../types/hardware'
 import type { WeatherCurrentResponse } from '../types/weather'
 
 type QueryValue = string | number | boolean | null | undefined
+
+const REQUEST_RETRY_COUNT = 3
+const REQUEST_RETRY_DELAY_MS = 400
 
 export class ApiError extends Error {
   status: number
@@ -35,27 +47,60 @@ function buildQuery(params: Record<string, QueryValue>): string {
   return query ? `?${query}` : ''
 }
 
-async function requestJson<T>(path: string, init?: RequestInit): Promise<T> {
-  const response = await fetch(buildApiUrl(path), {
-    ...init,
-    headers: {
-      Accept: 'application/json',
-      ...(init?.body ? { 'Content-Type': 'application/json' } : {}),
-      ...(init?.headers ?? {}),
-    },
+function sleep(ms: number): Promise<void> {
+  return new Promise((resolve) => {
+    window.setTimeout(resolve, ms)
   })
+}
 
-  const responseText = await response.text()
-  const responseData = responseText ? JSON.parse(responseText) : null
+function isRetryableNetworkError(error: unknown): boolean {
+  return error instanceof TypeError
+}
 
-  if (!response.ok) {
-    const message = typeof responseData?.detail === 'string'
-      ? responseData.detail
-      : `Request failed with status ${response.status}`
-    throw new ApiError(message, response.status)
+function isRetryableStatus(status: number): boolean {
+  return status === 502 || status === 503 || status === 504
+}
+
+async function requestJson<T>(path: string, init?: RequestInit): Promise<T> {
+  let attempt = 0
+
+  while (true) {
+    try {
+      const response = await fetch(buildApiUrl(path), {
+        ...init,
+        headers: {
+          Accept: 'application/json',
+          ...(init?.body ? { 'Content-Type': 'application/json' } : {}),
+          ...(init?.headers ?? {}),
+        },
+      })
+
+      const responseText = await response.text()
+      const responseData = responseText ? JSON.parse(responseText) : null
+
+      if (!response.ok) {
+        if (attempt < REQUEST_RETRY_COUNT && isRetryableStatus(response.status)) {
+          attempt += 1
+          await sleep(REQUEST_RETRY_DELAY_MS * attempt)
+          continue
+        }
+
+        const message = typeof responseData?.detail === 'string'
+          ? responseData.detail
+          : `Request failed with status ${response.status}`
+        throw new ApiError(message, response.status)
+      }
+
+      return responseData as T
+    } catch (error) {
+      if (attempt < REQUEST_RETRY_COUNT && isRetryableNetworkError(error)) {
+        attempt += 1
+        await sleep(REQUEST_RETRY_DELAY_MS * attempt)
+        continue
+      }
+      throw error
+    }
   }
-
-  return responseData as T
 }
 
 export const apiClient = {
@@ -89,8 +134,51 @@ export const apiClient = {
     return requestJson<SystemStatusResponse>('/system/status')
   },
 
+  getCalibrationDefinitions(): Promise<CalibrationDefinitionsResponse> {
+    return requestJson<CalibrationDefinitionsResponse>('/calibration/definitions')
+  },
+
+  startCalibrationSession(payload: CalibrationSessionCreateRequest): Promise<CalibrationSessionResponse> {
+    return requestJson<CalibrationSessionResponse>('/calibration/sessions', {
+      method: 'POST',
+      body: JSON.stringify(payload),
+    })
+  },
+
+  getCalibrationSession(sessionId: string): Promise<CalibrationSessionResponse> {
+    return requestJson<CalibrationSessionResponse>(`/calibration/sessions/${sessionId}`)
+  },
+
+  completeCalibrationSession(sessionId: string): Promise<CalibrationSessionResponse> {
+    return requestJson<CalibrationSessionResponse>(`/calibration/sessions/${sessionId}/complete`, {
+      method: 'POST',
+    })
+  },
+
+  applyCalibrationSession(sessionId: string): Promise<CalibrationApplyResponse> {
+    return requestJson<CalibrationApplyResponse>(`/calibration/sessions/${sessionId}/apply`, {
+      method: 'POST',
+    })
+  },
+
+  rollbackCalibrationSession(sessionId: string): Promise<CalibrationRollbackResponse> {
+    return requestJson<CalibrationRollbackResponse>(`/calibration/sessions/${sessionId}/rollback`, {
+      method: 'POST',
+    })
+  },
+
+  cancelCalibrationSession(sessionId: string): Promise<CalibrationSessionResponse> {
+    return requestJson<CalibrationSessionResponse>(`/calibration/sessions/${sessionId}/cancel`, {
+      method: 'POST',
+    })
+  },
+
   getGestureStatus(): Promise<GestureStatusResponse> {
     return requestJson<GestureStatusResponse>('/gestures/status')
+  },
+
+  getGestureDevices(): Promise<GestureCameraListResponse> {
+    return requestJson<GestureCameraListResponse>('/gestures/devices')
   },
 
   startGestures(cameraIndex = 0): Promise<GestureStatusResponse> {
@@ -130,5 +218,22 @@ export const apiClient = {
 
   getVoiceStatus(): Promise<VoiceStatusResponse> {
     return requestJson<VoiceStatusResponse>('/voice/status')
+  },
+
+  getVoiceDevices(): Promise<VoiceInputDeviceListResponse> {
+    return requestJson<VoiceInputDeviceListResponse>('/voice/devices')
+  },
+
+  startVoice(deviceIndex = -1): Promise<VoiceStatusResponse> {
+    return requestJson<VoiceStatusResponse>('/voice/start', {
+      method: 'POST',
+      body: JSON.stringify({ device_index: deviceIndex }),
+    })
+  },
+
+  stopVoice(): Promise<VoiceStatusResponse> {
+    return requestJson<VoiceStatusResponse>('/voice/stop', {
+      method: 'POST',
+    })
   },
 }

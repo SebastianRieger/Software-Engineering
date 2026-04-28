@@ -12,6 +12,8 @@ export interface ClockWidgetSettings extends WidgetSettings {
 export interface HardwareStatusWidgetSettings extends WidgetSettings {
   showPreview?: boolean
   autoRefresh?: boolean
+  gestureCameraIndex?: number
+  voiceDeviceIndex?: number
 }
 
 export interface WidgetPlacement {

@@ -2,59 +2,28 @@
 
 ## Scope
 
-- Snapshot basis: 3 files and 218 lines in `src/services`
+- Snapshot basis: 3 files and 261 lines in `src/services`
 - Files: `api.ts`, `apiConfig.ts`, `realtime.ts`
-
-## Metric View
-
-| File | Lines | Responsibility |
-| --- | ---: | --- |
-| `api.ts` | 134 | Typed REST client for configuration, weather and hardware-style endpoints |
-| `realtime.ts` | 70 | WebSocket client with subscribe and reconnect behavior |
-| `apiConfig.ts` | 14 | Base URL construction |
 
 ## Structure And Logic
 
-The frontend services module is intentionally thin. `apiConfig.ts` provides the backend base URL, `api.ts` centralizes REST access and typed error behavior, and `realtime.ts` exposes a shared WebSocket client with listener registration and reconnect logic.
+The frontend services layer remains intentionally thin, but it now backs a richer interaction model. `api.ts` has grown from a small config and hardware client into the single typed transport surface for layout, system, hardware and calibration. `realtime.ts` still exposes one shared websocket client, but the event stream now carries both normal interaction events and calibration lifecycle feedback.
 
-This layer is already correctly placed between the UI and the backend. The missing piece is not a different client design, but the stateful application layer above it that would consume these services consistently across more than one widget or screen.
+This keeps transport concerns centralized and prevents calibration from introducing ad hoc fetch or websocket code inside the manager components.
 
 ## Critical Assessment
 
-- The module is clean, small and already reusable.
-- REST usage is in a good state for the current project size because there is one clear typed client instead of many ad hoc fetch calls.
-- The WebSocket client is now consumed by the hardware widget, which validates the path technically but still leaves broader realtime state management open.
-- There is no auth handling, request policy abstraction, caching layer or stale-while-revalidate behavior yet.
+- The module remains clean and reusable despite the wider API surface.
+- The calibration addition validated the decision to keep one shared REST client and one shared websocket client.
+- There is still no auth handling, caching layer or domain-level state abstraction above these low-level clients.
+- Realtime is now used by both normal interaction flow and calibration flow, which increases the value of a future shared store or composable layer.
 
 ## Intended But Missing Elements
 
-- shared state consumers that subscribe to `realtime.ts`
+- shared state consumers above `api.ts` and `realtime.ts`
 - auth-aware request handling if backend auth becomes real
-- caching or request deduplication for repeated config and weather access
-- optional domain-level service wrappers or composables above the low-level client
-
-## Diagram
-
-```mermaid
-flowchart LR
-    Components[components]
-    ApiConfig[apiConfig.ts]
-    ApiClient[api.ts]
-    Realtime[realtime.ts]
-    BackendHttp[Backend REST API]
-    BackendWs[Backend /ws]
-    PlannedState[Planned store or composable consumers]
-    HardwareWidget[TemplateWidget.vue]
-
-    Components --> ApiClient
-    HardwareWidget --> Realtime
-    ApiConfig --> ApiClient
-    ApiConfig --> Realtime
-    ApiClient --> BackendHttp
-    Realtime --> BackendWs
-    ApiClient -. intended stable consumer layer .-> PlannedState
-    Realtime -. intended stable consumer layer .-> PlannedState
-```
+- caching or request deduplication for repeated config and calibration refresh reads
+- richer domain wrappers once the frontend grows beyond a single manager flow
 
 ## Navigation
 

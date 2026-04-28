@@ -23,10 +23,22 @@ class GestureStartRequest(BaseModel):
     camera_index: int = Field(default=0, ge=0)
 
 
+class GestureCameraDeviceResponse(BaseModel):
+    index: int = Field(ge=0)
+    name: str
+    available: bool = True
+    backend: str | None = None
+
+
+class GestureCameraListResponse(BaseModel):
+    devices: list[GestureCameraDeviceResponse] = Field(default_factory=list)
+
+
 class GestureStatusResponse(BaseModel):
     available: bool
     running: bool
     camera_index: int | None = None
+    camera_name: str | None = None
     last_gesture: GestureType | None = None
     last_gesture_at: datetime | None = None
     last_confidence: float | None = Field(default=None, ge=0, le=1)

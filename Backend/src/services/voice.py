@@ -26,6 +26,7 @@ except ImportError:  # pragma: no cover - optional runtime dependency
 
 
 logger = logging.getLogger(__name__)
+PORTAUDIO_ERROR = getattr(sd, "PortAudioError", OSError) if sd is not None else OSError
 
 
 class VoiceServiceError(Exception):
@@ -120,6 +121,42 @@ class VoiceService:
                 "last_command_at": self._last_command_at,
                 "last_error": last_error,
             }
+
+    def list_input_devices(self) -> list[dict[str, object]]:
+        if sd is None:
+            return []
+
+        try:
+            devices = sd.query_devices()
+        except (PORTAUDIO_ERROR, RuntimeError):
+            return []
+
+        try:
+            default_input = sd.default.device[0]
+        except (AttributeError, PORTAUDIO_ERROR, RuntimeError):  # pragma: no cover - backend dependent
+            default_input = None
+
+        result: list[dict[str, object]] = []
+        for index, device in enumerate(devices):
+            max_input_channels = int(device.get("max_input_channels", 0))
+            if max_input_channels <= 0:
+                continue
+
+            result.append(
+                {
+                    "index": index,
+                    "name": str(device.get("name", f"Input {index}")),
+                    "max_input_channels": max_input_channels,
+                    "default_samplerate": (
+                        float(device["default_samplerate"])
+                        if device.get("default_samplerate") is not None
+                        else None
+                    ),
+                    "is_default": isinstance(default_input, int) and default_input == index,
+                }
+            )
+
+        return result
 
     def start(self, device_index: int = 0) -> dict[str, object]:
         config = self.reload_config()
@@ -230,7 +267,7 @@ class VoiceService:
                         continue
 
                     self._process_audio_chunk(chunk)
-        except Exception as exc:  # pragma: no cover - depends on audio hardware
+        except (PORTAUDIO_ERROR, RuntimeError, ValueError) as exc:  # pragma: no cover - depends on audio hardware
             logger.exception("Voice capture loop failed")
             with self._lock:
                 self._last_error = str(exc)
@@ -285,7 +322,7 @@ class VoiceService:
         try:
             is_final = recognizer.AcceptWaveform(chunk)
             payload = recognizer.Result() if is_final else recognizer.PartialResult()
-        except Exception as exc:  # pragma: no cover - depends on recognizer runtime
+        except (AttributeError, RuntimeError, TypeError, ValueError) as exc:  # pragma: no cover - depends on recognizer runtime
             logger.exception("Voice recognizer failed")
             with self._lock:
                 self._last_error = str(exc)
@@ -365,12 +402,12 @@ class VoiceService:
 
         try:
             devices = sd.query_devices()
-        except Exception as exc:  # pragma: no cover - hardware dependent
+        except (PORTAUDIO_ERROR, RuntimeError) as exc:  # pragma: no cover - hardware dependent
             raise VoiceServiceError(f"Eingabegeraete konnten nicht gelesen werden: {exc}", status_code=503) from exc
 
         try:
             default_input = sd.default.device[0]
-        except Exception:  # pragma: no cover - backend dependent
+        except (AttributeError, PORTAUDIO_ERROR, RuntimeError):  # pragma: no cover - backend dependent
             default_input = None
 
         candidate_indices: list[int] = []

@@ -3,6 +3,12 @@ import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
 
 import { apiClient } from '../../services/api'
 import { realtimeClient } from '../../services/realtime'
+import type {
+  CalibrationDefinitionsResponse,
+  CalibrationRealtimeEvent,
+  CalibrationSessionCreateRequest,
+  CalibrationSessionRecord,
+} from '../../types/calibration'
 import type { SystemConfig, WidgetSettings } from '../../types/config'
 import type { FocusState, GestureDetectedPayload, UIActionRequestedPayload, UIActionType } from '../../types/interactions'
 import type { ActiveWidgetMap, ModuleShopRef } from '../../types/widgets'
@@ -23,6 +29,7 @@ import {
   upsertWidget,
 } from '../../utils/layout'
 import GridBoard from './GridBoard.vue'
+import CalibrationWizard from './CalibrationWizard.vue'
 import InteractionOverlay from './InteractionOverlay.vue'
 import ModuleShop from './ModuleShop.vue'
 
@@ -39,9 +46,31 @@ const lastUIAction = ref<UIActionType | null>(null)
 const isGestureCoolingDown = ref(false)
 const moduleShopRef = ref<ModuleShopRef>(null)
 const systemConfig = ref<SystemConfig | null>(null)
+const calibrationDefinitions = ref<CalibrationDefinitionsResponse | null>(null)
+const calibrationSession = ref<CalibrationSessionRecord | null>(null)
+const calibrationError = ref<string | null>(null)
+const calibrationEventMessage = ref<string | null>(null)
+const calibrationProfileName = ref('default')
+const calibrationSelectedTargets = ref<string[]>([])
+const calibrationTargetRepetitions = ref(12)
+const isCalibrationMode = ref(false)
+const isCalibrationLoading = ref(false)
+const isCalibrationBusy = ref(false)
 let latestSaveRequest = 0
 let unsubscribeRealtime: (() => void) | null = null
 let gestureCooldownTimer: number | null = null
+let initialLoadRetryTimer: number | null = null
+
+const calibrationEventTypes = new Set([
+  'CalibrationSessionStarted',
+  'CalibrationTargetArmed',
+  'CalibrationSampleAccepted',
+  'CalibrationSampleRejected',
+  'CalibrationTargetCompleted',
+  'CalibrationAnalysisReady',
+  'CalibrationProfileApplied',
+  'CalibrationProfileRolledBack',
+])
 
 function setLocalCooldown(): void {
   isGestureCoolingDown.value = true
@@ -88,6 +117,11 @@ function updateWidgetSettings(widgetId: string, nextSettingsPatch: WidgetSetting
 }
 
 async function loadInitialState(): Promise<void> {
+  if (initialLoadRetryTimer !== null) {
+    window.clearTimeout(initialLoadRetryTimer)
+    initialLoadRetryTimer = null
+  }
+
   isConfigLoading.value = true
   configError.value = null
 
@@ -110,6 +144,13 @@ async function loadInitialState(): Promise<void> {
 
   configError.value = failures.length > 0 ? failures.join(' ') : null
   isConfigLoading.value = false
+
+  if (failures.length > 0) {
+    initialLoadRetryTimer = window.setTimeout(() => {
+      initialLoadRetryTimer = null
+      void loadInitialState()
+    }, 1500)
+  }
 }
 
 async function persistLayout(): Promise<void> {
@@ -208,6 +249,10 @@ function resizeSelectedWidget(mode: 'expand' | 'shrink'): void {
 }
 
 function applyUIAction(action: UIActionType): void {
+  if (isCalibrationMode.value) {
+    return
+  }
+
   lastUIAction.value = action
   setLocalCooldown()
 
@@ -295,7 +340,170 @@ function applyUIAction(action: UIActionType): void {
   }
 }
 
+async function ensureCalibrationDefinitions(): Promise<void> {
+  if (calibrationDefinitions.value) {
+    return
+  }
+
+  isCalibrationLoading.value = true
+  calibrationError.value = null
+  try {
+    const definitions = await apiClient.getCalibrationDefinitions()
+    calibrationDefinitions.value = definitions
+    if (calibrationSelectedTargets.value.length === 0) {
+      calibrationSelectedTargets.value = definitions.targets
+        .filter((target) => target.modality === 'gesture' && target.supported)
+        .map((target) => target.id)
+    }
+  } catch (error) {
+    calibrationError.value = `Kalibrierungsziele konnten nicht geladen werden: ${formatApiErrorMessage(error, 'Unbekannter Fehler')}`
+  } finally {
+    isCalibrationLoading.value = false
+  }
+}
+
+async function openCalibrationWizard(): Promise<void> {
+  shopVisible.value = false
+  exitArrangeMode()
+  selectedWidgetId.value = null
+  calibrationEventMessage.value = null
+  isCalibrationMode.value = true
+  await ensureCalibrationDefinitions()
+}
+
+function closeCalibrationWizard(): void {
+  isCalibrationMode.value = false
+  calibrationEventMessage.value = null
+  calibrationError.value = null
+  calibrationSession.value = null
+}
+
+async function refreshCalibrationSession(sessionId: string): Promise<void> {
+  try {
+    const response = await apiClient.getCalibrationSession(sessionId)
+    calibrationSession.value = response.session
+  } catch (error) {
+    calibrationError.value = `Kalibrierungssitzung konnte nicht aktualisiert werden: ${formatApiErrorMessage(error, 'Unbekannter Fehler')}`
+  }
+}
+
+async function startCalibrationSession(): Promise<void> {
+  calibrationError.value = null
+  calibrationEventMessage.value = null
+  isCalibrationBusy.value = true
+
+  const payload: CalibrationSessionCreateRequest = {
+    modality: 'gesture',
+    selected_targets: calibrationSelectedTargets.value,
+    target_repetitions: calibrationTargetRepetitions.value,
+    profile: calibrationProfileName.value.trim() || 'default',
+  }
+
+  try {
+    const response = await apiClient.startCalibrationSession(payload)
+    calibrationSession.value = response.session
+  } catch (error) {
+    calibrationError.value = `Kalibrierung konnte nicht gestartet werden: ${formatApiErrorMessage(error, 'Unbekannter Fehler')}`
+  } finally {
+    isCalibrationBusy.value = false
+  }
+}
+
+async function completeCalibrationSession(): Promise<void> {
+  if (!calibrationSession.value) {
+    return
+  }
+
+  isCalibrationBusy.value = true
+  calibrationError.value = null
+  try {
+    const response = await apiClient.completeCalibrationSession(calibrationSession.value.session_id)
+    calibrationSession.value = response.session
+  } catch (error) {
+    calibrationError.value = `Analyse konnte nicht erzeugt werden: ${formatApiErrorMessage(error, 'Unbekannter Fehler')}`
+  } finally {
+    isCalibrationBusy.value = false
+  }
+}
+
+async function applyCalibrationSession(): Promise<void> {
+  if (!calibrationSession.value) {
+    return
+  }
+
+  isCalibrationBusy.value = true
+  calibrationError.value = null
+  try {
+    const response = await apiClient.applyCalibrationSession(calibrationSession.value.session_id)
+    calibrationSession.value = response.session
+    calibrationEventMessage.value = `Profil ${response.applied_profile.profile} wurde angewendet.`
+  } catch (error) {
+    calibrationError.value = `Profil konnte nicht angewendet werden: ${formatApiErrorMessage(error, 'Unbekannter Fehler')}`
+  } finally {
+    isCalibrationBusy.value = false
+  }
+}
+
+async function rollbackCalibrationSession(): Promise<void> {
+  if (!calibrationSession.value) {
+    return
+  }
+
+  isCalibrationBusy.value = true
+  calibrationError.value = null
+  try {
+    const response = await apiClient.rollbackCalibrationSession(calibrationSession.value.session_id)
+    calibrationSession.value = response.session
+    calibrationEventMessage.value = 'Das zuvor angewendete Profil wurde zurueckgesetzt.'
+  } catch (error) {
+    calibrationError.value = `Rollback konnte nicht ausgefuehrt werden: ${formatApiErrorMessage(error, 'Unbekannter Fehler')}`
+  } finally {
+    isCalibrationBusy.value = false
+  }
+}
+
+async function discardCalibrationSession(): Promise<void> {
+  if (!calibrationSession.value) {
+    closeCalibrationWizard()
+    return
+  }
+
+  const sessionStatus = calibrationSession.value.status
+  if (sessionStatus === 'collecting' || sessionStatus === 'analysis_ready') {
+    isCalibrationBusy.value = true
+    calibrationError.value = null
+    try {
+      const response = await apiClient.cancelCalibrationSession(calibrationSession.value.session_id)
+      calibrationSession.value = response.session
+    } catch (error) {
+      calibrationError.value = `Kalibrierung konnte nicht verworfen werden: ${formatApiErrorMessage(error, 'Unbekannter Fehler')}`
+      isCalibrationBusy.value = false
+      return
+    }
+    isCalibrationBusy.value = false
+  }
+
+  closeCalibrationWizard()
+}
+
 function handleRealtimeEvent(event: { eventType: string; payload: unknown }): void {
+  if (calibrationEventTypes.has(event.eventType)) {
+    const payload = event.payload as CalibrationRealtimeEvent['payload']
+    if (calibrationSession.value && payload.session_id !== calibrationSession.value.session_id) {
+      return
+    }
+
+    calibrationEventMessage.value = payload.message
+    if (calibrationSession.value) {
+      void refreshCalibrationSession(calibrationSession.value.session_id)
+    }
+    return
+  }
+
+  if (isCalibrationMode.value) {
+    return
+  }
+
   if (event.eventType === 'GestureDetected') {
     const payload = event.payload as GestureDetectedPayload
     lastRawInput.value = payload.gesture
@@ -310,6 +518,10 @@ function handleRealtimeEvent(event: { eventType: string; payload: unknown }): vo
 }
 
 function handleFocusCell(payload: { row: number; col: number }): void {
+  if (isCalibrationMode.value) {
+    return
+  }
+
   focusedState.value = createFocusState(payload.row, payload.col, activeWidgets.value)
   if (!isArrangeMode.value) {
     selectedWidgetId.value = focusedState.value.widgetId
@@ -317,15 +529,27 @@ function handleFocusCell(payload: { row: number; col: number }): void {
 }
 
 function handleFocusWidget(payload: { widgetId: string; row: number; col: number }): void {
+  if (isCalibrationMode.value) {
+    return
+  }
+
   selectedWidgetId.value = payload.widgetId
   focusedState.value = createFocusState(payload.row, payload.col, activeWidgets.value)
 }
 
 const handleAddWidget = ({ widgetType }: { widgetType: string }) => {
+  if (isCalibrationMode.value) {
+    return
+  }
+
   addFocusedWidget(widgetType)
 }
 
 const handleKeydown = (event: KeyboardEvent) => {
+  if (isCalibrationMode.value) {
+    return
+  }
+
   if (event.key === '[' && moduleShopRef.value) {
     moduleShopRef.value.prevModule()
     return
@@ -372,6 +596,9 @@ onBeforeUnmount(() => {
   if (gestureCooldownTimer !== null) {
     window.clearTimeout(gestureCooldownTimer)
   }
+  if (initialLoadRetryTimer !== null) {
+    window.clearTimeout(initialLoadRetryTimer)
+  }
 })
 </script>
 
@@ -382,6 +609,10 @@ onBeforeUnmount(() => {
       <span v-else-if="isSavingLayout">Layout wird gespeichert.</span>
       <span v-else>{{ configError }}</span>
     </div>
+
+    <button class="calibration-launch" type="button" @click="void openCalibrationWizard()">
+      Kalibrieren
+    </button>
 
     <div v-if="shopVisible" class="shop-overlay" @click.self="shopVisible = false">
       <div class="shop-modal">
@@ -396,6 +627,7 @@ onBeforeUnmount(() => {
     </div>
 
     <InteractionOverlay
+      v-if="!isCalibrationMode"
       :last-raw-input="lastRawInput"
       :last-u-i-action="lastUIAction"
       :focused-label="focusedLabel"
@@ -404,6 +636,28 @@ onBeforeUnmount(() => {
       :shop-visible="shopVisible"
       :cooldown-active="isGestureCoolingDown"
       :next-hint="nextHint"
+    />
+
+    <CalibrationWizard
+      v-if="isCalibrationMode"
+      :definitions="calibrationDefinitions"
+      :session="calibrationSession"
+      :loading="isCalibrationLoading"
+      :busy="isCalibrationBusy"
+      :error="calibrationError"
+      :profile-name="calibrationProfileName"
+      :selected-targets="calibrationSelectedTargets"
+      :target-repetitions="calibrationTargetRepetitions"
+      :last-event-message="calibrationEventMessage"
+      @update:profile-name="calibrationProfileName = $event"
+      @update:selected-targets="calibrationSelectedTargets = $event"
+      @update:target-repetitions="calibrationTargetRepetitions = $event"
+      @start="void startCalibrationSession()"
+      @complete="void completeCalibrationSession()"
+      @apply="void applyCalibrationSession()"
+      @rollback="void rollbackCalibrationSession()"
+      @discard="void discardCalibrationSession()"
+      @close="void discardCalibrationSession()"
     />
 
     <GridBoard
@@ -430,6 +684,21 @@ onBeforeUnmount(() => {
   color: #f5f5f5;
   font-size: 0.9rem;
   box-shadow: 0 10px 25px rgba(0, 0, 0, 0.28);
+}
+
+.calibration-launch {
+  position: fixed;
+  top: 16px;
+  right: 18px;
+  z-index: 1110;
+  padding: 11px 16px;
+  border-radius: 999px;
+  border: 1px solid rgba(245, 158, 11, 0.42);
+  background: rgba(120, 53, 15, 0.88);
+  color: #fef3c7;
+  font-weight: 600;
+  cursor: pointer;
+  box-shadow: 0 14px 34px rgba(120, 53, 15, 0.35);
 }
 
 .shop-overlay {

@@ -1,7 +1,7 @@
 from fastapi import APIRouter, Depends, HTTPException
 
 from schemas.led import LEDBrightnessRequest, LEDColorRequest, LEDStateResponse
-from schemas.voice import VoiceStartRequest, VoiceStatusResponse
+from schemas.voice import VoiceInputDeviceListResponse, VoiceStartRequest, VoiceStatusResponse
 from services.led import LEDService, led_service
 from services.voice import VoiceService, VoiceServiceError, voice_service
 
@@ -42,6 +42,11 @@ async def set_led_brightness(
 @voice_router.get("/status", response_model=VoiceStatusResponse)
 async def get_voice_status(service: VoiceService = Depends(get_voice_service)):
     return service.get_status()
+
+
+@voice_router.get("/devices", response_model=VoiceInputDeviceListResponse)
+async def get_voice_devices(service: VoiceService = Depends(get_voice_service)):
+    return {"devices": service.list_input_devices()}
 
 
 @voice_router.post("/start", response_model=VoiceStatusResponse)

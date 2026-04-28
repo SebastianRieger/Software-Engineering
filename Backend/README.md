@@ -48,12 +48,18 @@ Der aktuelle Zwischenstand ist bewusst backendzentriert:
 ## Starten
 
 ```bash
-python -m venv .venv
-source .venv/bin/activate
-pip install -r requirements.txt
-cd src
-uvicorn main:app --reload --host 0.0.0.0 --port 8000
+cd ..
+npm run dev
 ```
+
+Alternativ nur das Backend:
+
+```bash
+cd ..
+npm run dev:backend
+```
+
+Der Root-Bootstrapper erstellt bei Bedarf `Backend/venv_py312`, installiert `requirements.txt`, bereinigt Port `8000` und startet `uvicorn` anschliessend sauber auf dem festen API-Port.
 
 ## Tests
 
@@ -65,4 +71,3 @@ uvicorn main:app --reload --host 0.0.0.0 --port 8000
 
 - [Ist-Zustand](../docs/CURRENT_STATE.md)
 - [Zielarchitektur](../docs/TARGET_ARCHITECTURE.md)
-- [Umsetzungsplan](../docs/IMPLEMENTATION_PLAN.md)

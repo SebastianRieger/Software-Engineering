@@ -3,104 +3,44 @@
 ## Scope And Metric Basis
 
 - Snapshot date: 2026-04-28
-- Metrics cover productive frontend files in `Frontend/nimrag-frontend/src` after the placement-based interaction refactor.
-- Frontend tests are shown separately; the current snapshot still contains no actual test code.
+- Productive frontend files in `Frontend/nimrag-frontend/src`: 24 files and 3493 lines
 
-## Frontend Metrics
+## Module Metrics
 
 | Scope | Files | Lines | Notes |
 | --- | ---: | ---: | --- |
-| `App.vue` | 1 | 7 | Minimal root shell |
-| `main.ts` | 1 | 5 | Vue bootstrap |
-| `components/` | 7 | 1498 | UI, interaction overlay and orchestration hotspots |
-| `services/` | 3 | 221 | REST and WebSocket clients |
-| `types/` | 5 | 182 | Backend contract mirrors plus widget-facing and interaction types |
+| `components/` | 8 | 2182 | UI, interaction overlay, calibration wizard and orchestration hotspots |
+| `services/` | 3 | 261 | REST and websocket clients |
+| `types/` | 6 | 324 | Backend contract mirrors including calibration |
 | `utils/` | 3 | 648 | Extracted layout, hardware-widget and module-shop helpers |
-| `widgets/` | 1 | 63 | Widget registry and defaults |
-| `assets/` | 0 | 0 | Reserved but unused |
-| `middleware/` | 0 | 0 | Reserved but unused |
-| `tests/` | 0 | 0 | Reserved but unused |
+| `widgets/` | 1 | 62 | Widget registry and defaults |
+| `App.vue` and `main.ts` | 2 | 12 | Minimal bootstrap |
 
-### Concentration Signals
+## Current Logic Model
 
-- `components/` still holds most frontend complexity, but no longer all of it.
-- `ModuleManager.vue`, `ModuleShop.vue` and `TemplateWidget.vue` remain the main UI hotspots, with `InteractionOverlay.vue` added as an explicit interaction feedback surface.
-- `utils/` is now an active layer, which reduces pressure on large components and makes the folder tree closer to the actual architecture.
+The frontend is still organized around one central manager flow, but that flow is now explicitly mode-based. The same application shell can switch between normal gesture-driven UI control and calibration mode without leaving the running app.
 
-## Root Structure Reading
+The important current layers are:
 
-| Element | Current responsibility | Assessment |
-| --- | --- | --- |
-| `App.vue` and `main.ts` | App bootstrap and shell handoff | Clean and intentionally thin |
-| `components/` | Rendering, focus-driven layout orchestration and widget interaction | Still the primary UI layer, but no longer forced to carry every helper inline |
-| `services/` | Typed HTTP client plus WebSocket client | Good basis, and the realtime path is now actively used by both the hardware widget and the central manager |
-| `types/` | Local TypeScript mirrors of backend contracts and widget, focus and interaction wiring types | Improves safety, but still creates manual synchronization risk |
-| `utils/` | Extracted layout, hardware and selection helpers | First real frontend support layer and an important modularity improvement |
-| `widgets/` | Registry and widget defaults | Strong design choice that supports extensibility |
-| `assets/`, `middleware/`, `tests/` | Reserved extension points | Still mostly intent markers rather than delivered layers |
+- orchestration and presentation in `components/manager/*`
+- typed backend and realtime access in `services/*`
+- manual contract mirrors in `types/*`
+- layout and widget helpers in `utils/*`
 
-## Reading The Frontend Beyond Folders
-
-The more useful reading is now by layer rather than by folder names alone:
-
-- bootstrap layer: `App.vue`, `main.ts`, `style.css`, `shims-vue.d.ts`
-- orchestration and presentation: `components/manager/*`
-- feature widgets: `components/widgets/*`
-- helper layer: `utils/layout.ts`, `utils/hardwareWidget.ts`, `utils/moduleShop.ts`
-- client layer: `services/api.ts`, `services/realtime.ts`
-- contract layer: `types/*`
-- extension registry: `widgets/registry.ts`
-- planned but not yet implemented support layers: `assets/`, `middleware/`, `tests/`
-
-The key difference from the previous snapshot is that `components/manager/*` now models a real interaction layer instead of only layout persistence. `ModuleManager.vue` owns focus, selected widget, arrange mode and keyboard fallback. `GridBoard.vue` renders placement-based spans and focus highlights. `InteractionOverlay.vue` visualizes the bridge from raw input to semantic UI action. `ModuleShop.vue` targets the current focus rather than an old cell-button workflow.
-
-## Missing Intended Elements
-
-- a shared frontend state or composable layer above low-level clients and helpers
-- automated tests
-- middleware or request orchestration for future auth and cross-cutting concerns
-- richer widget editing and configuration flows beyond the current direct component state paths
+Calibration did not add a new top-level layer. Instead, it reused those existing ones consistently, which keeps the frontend architecture coherent.
 
 ## Critical Assessment
 
-The frontend has materially improved since the first architecture snapshot.
+- The frontend has a clearer interactive story than before because calibration is now a real first-class flow.
+- The architecture still depends heavily on `ModuleManager.vue` as the central orchestrator.
+- The new wizard validates the existing split between components, services, types and utils, but it also increases the pressure for a later shared state layer.
+- Automated tests remain the biggest missing frontend quality layer.
 
-- Widgets are still rendered from state and a registry, which remains the most important structural correction.
-- The new `utils/` layer is a real improvement because it moves layout and hardware orchestration out of the biggest components.
-- The services layer is still intentionally low-level. There is still no stable application state layer between UI and clients.
-- WebSocket consumption now exists in both the hardware widget and the layout manager. The frontend is no longer REST-only, yet it is still not organized around a shared realtime state model.
+## Intended But Missing Elements
 
-## Architecture Diagram
-
-```mermaid
-flowchart LR
-    Boot[App.vue and main.ts\nbootstrap layer]
-    Components[components\nmanager and widgets]
-    Utils[utils\nlayout, hardware, shop helpers]
-    Services[services\nREST and WebSocket clients]
-    Types[types\ncontract mirrors and widget and interaction types]
-    Registry[widgets/registry.ts\nwidget manifest]
-    Actions[focus, shop and ArrangeMode\ninteraction layer]
-    Backend[Backend API and /ws]
-    PlannedState[Planned shared state or composables]
-    PlannedTests[Planned test layer]
-    PlannedMiddleware[Planned middleware or request policy layer]
-
-    Boot --> Components
-    Components --> Registry
-    Components --> Utils
-    Components --> Services
-    Components --> Actions
-    Utils --> Services
-    Services --> Backend
-    Types --> Components
-    Types --> Utils
-    Types --> Services
-    Actions --> Services
-    Utils -. intended evolution .-> PlannedState
-    Services -. intended growth .-> PlannedMiddleware
-    Components -. intended verification .-> PlannedTests
-```
+- shared frontend state or composables above low-level clients and helpers
+- automated tests for manager state, calibration flow and realtime updates
+- broader settings or profile-management views if calibration history becomes user-facing
 
 ## Navigation
 
@@ -108,8 +48,4 @@ flowchart LR
 - Components module: `components/componentArch.md`
 - Services module: `services/serviceArch.md`
 - Types module: `types/typeArch.md`
-- Widgets module: `widgets/widgetArch.md`
-- Assets module: `assets/assetArch.md`
-- Middleware module: `middleware/middlewareArch.md`
 - Utils module: `utils/utilArch.md`
-- Tests module: `tests/testArch.md`

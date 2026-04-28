@@ -10,12 +10,24 @@ export interface GestureStatusResponse {
   available: boolean
   running: boolean
   camera_index: number | null
+  camera_name: string | null
   last_gesture: string | null
   last_gesture_at: string | null
   last_confidence: number | null
   last_tracking_source: string | null
   debug_frame_available: boolean
   last_error: string | null
+}
+
+export interface GestureCameraDevice {
+  index: number
+  name: string
+  available: boolean
+  backend: string | null
+}
+
+export interface GestureCameraListResponse {
+  devices: GestureCameraDevice[]
 }
 
 export interface GestureFrameResponse {
@@ -42,13 +54,37 @@ export interface LEDStateResponse {
 export interface VoiceStatusResponse {
   message: string
   available: boolean
+  enabled: boolean
   running: boolean
-  mode: 'skeleton' | 'unavailable'
+  mode: 'skeleton' | 'unavailable' | 'direct-mic'
   provider: string | null
   device_index: number | null
+  device_name: string | null
+  sample_rate: number | null
+  block_size: number | null
+  queue_max_chunks: number | null
+  commands: string[]
+  partial_results_enabled: boolean
+  command_cooldown_seconds: number | null
+  chunks_processed: number
+  chunks_dropped: number
+  last_audio_level: number | null
+  last_transcript: string | null
   last_command: string | null
   last_command_at: string | null
   last_error: string | null
+}
+
+export interface VoiceInputDevice {
+  index: number
+  name: string
+  max_input_channels: number
+  default_samplerate: number | null
+  is_default: boolean
+}
+
+export interface VoiceInputDeviceListResponse {
+  devices: VoiceInputDevice[]
 }
 
 export interface RealtimeEvent<TPayload = Record<string, unknown>> {

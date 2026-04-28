@@ -41,6 +41,18 @@ class CapturingRealtimeHub:
         return future
 
 
+class CapturingCalibrationRuntime:
+    def __init__(self):
+        self.samples = []
+
+    def has_active_session(self, modality="gesture"):
+        return modality == "gesture"
+
+    def capture_gesture_sample(self, sample):
+        self.samples.append(sample)
+        return None
+
+
 class StaticGestureConfigRepository:
     def __init__(
         self,
@@ -787,6 +799,33 @@ def test_service_publishes_ui_action_requested_event_for_swipe():
     assert action_message["payload"]["action"] == "move_focus_right"
 
 
+def test_service_gates_ui_actions_while_calibration_is_active():
+    hub = CapturingRealtimeHub()
+    calibration_runtime = CapturingCalibrationRuntime()
+    observations = [
+        GestureObservation(point=(0.2, 0.5), hand="right", hand_size=0.16, tracking_source="palm_center", captured_at=0.00),
+        GestureObservation(point=(0.3, 0.5), hand="right", hand_size=0.16, tracking_source="palm_center", captured_at=0.05),
+        GestureObservation(point=(0.4, 0.5), hand="right", hand_size=0.16, tracking_source="palm_center", captured_at=0.10),
+        GestureObservation(point=(0.5, 0.5), hand="right", hand_size=0.16, tracking_source="palm_center", captured_at=0.15),
+        GestureObservation(point=(0.6, 0.5), hand="right", hand_size=0.16, tracking_source="palm_center", captured_at=0.20),
+        GestureObservation(point=(0.8, 0.5), hand="right", hand_size=0.16, tracking_source="palm_center", captured_at=0.25),
+    ]
+    service = GestureService(
+        adapter_factory=lambda: SequenceAdapter(observations=observations),
+        realtime=hub,
+        config_repository_factory=lambda: StaticGestureConfigRepository(),
+        calibration_runtime=calibration_runtime,
+    )
+
+    service.start()
+    assert wait_until(lambda: len(filter_messages(hub.messages, "GestureDetected")) >= 1)
+    service.stop()
+
+    assert filter_messages(hub.messages, "UIActionRequested") == []
+    assert len(calibration_runtime.samples) == 1
+    assert calibration_runtime.samples[0].target_id == "swipe_right"
+
+
 def test_service_detects_short_push_click():
     hub = CapturingRealtimeHub()
     observations = [
@@ -889,7 +928,18 @@ async def test_get_gesture_status(client, override_gesture_dependency):
     data = response.json()
     assert data["available"] is True
     assert data["running"] is False
+    assert data["camera_name"] is None
     assert data["last_confidence"] is None
+
+
+@pytest.mark.asyncio
+async def test_get_gesture_devices(client, override_gesture_dependency):
+    _ = override_gesture_dependency
+    response = await client.get("/api/v1/gestures/devices")
+    assert response.status_code == 200
+    data = response.json()
+    assert len(data["devices"]) == 2
+    assert data["devices"][1]["name"] == "Mock USB Camera"
 
 
 @pytest.mark.asyncio

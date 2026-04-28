@@ -10,6 +10,18 @@ class VoiceStartRequest(BaseModel):
     device_index: int = Field(default=settings.VOICE_DEVICE_INDEX, ge=-1)
 
 
+class VoiceInputDeviceResponse(BaseModel):
+    index: int = Field(ge=0)
+    name: str
+    max_input_channels: int = Field(ge=0)
+    default_samplerate: float | None = Field(default=None, ge=0)
+    is_default: bool = False
+
+
+class VoiceInputDeviceListResponse(BaseModel):
+    devices: list[VoiceInputDeviceResponse] = Field(default_factory=list)
+
+
 class VoiceStatusResponse(BaseModel):
     message: str
     available: bool

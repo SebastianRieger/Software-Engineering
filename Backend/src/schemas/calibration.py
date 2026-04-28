@@ -1,0 +1,237 @@
+from __future__ import annotations
+
+from datetime import datetime
+from typing import Any, Literal
+
+from pydantic import BaseModel, Field
+
+from schemas.gestures import GestureConfig, GestureType
+from schemas.voice import VoiceConfig
+
+
+CalibrationModality = Literal["gesture", "voice"]
+CalibrationSessionStatus = Literal[
+    "collecting",
+    "analysis_ready",
+    "applied",
+    "rolled_back",
+    "cancelled",
+]
+CalibrationEventType = Literal[
+    "CalibrationSessionStarted",
+    "CalibrationTargetArmed",
+    "CalibrationSampleAccepted",
+    "CalibrationSampleRejected",
+    "CalibrationTargetCompleted",
+    "CalibrationAnalysisReady",
+    "CalibrationProfileApplied",
+    "CalibrationProfileRolledBack",
+]
+
+
+class CalibrationMetricSummary(BaseModel):
+    name: str = Field(min_length=1)
+    min_value: float | None = None
+    max_value: float | None = None
+    mean_value: float | None = None
+    median_value: float | None = None
+    p10_value: float | None = None
+    p90_value: float | None = None
+    sample_count: int = Field(default=0, ge=0)
+
+
+class CalibrationRecommendation(BaseModel):
+    parameter: str = Field(min_length=1)
+    current_value: float
+    recommended_value: float
+    min_bound: float | None = None
+    max_bound: float | None = None
+    rationale: str = Field(min_length=1)
+
+
+class CalibrationTargetDefinition(BaseModel):
+    id: str = Field(min_length=1)
+    modality: CalibrationModality
+    display_name: str = Field(min_length=1)
+    description: str = Field(min_length=1)
+    recommended_repetitions_min: int = Field(default=10, ge=1, le=100)
+    recommended_repetitions_max: int = Field(default=20, ge=1, le=100)
+    supported: bool = True
+
+
+class CalibrationModalityDefinition(BaseModel):
+    modality: CalibrationModality
+    display_name: str = Field(min_length=1)
+    supported: bool = True
+
+
+class CalibrationDefinitionsResponse(BaseModel):
+    modalities: list[CalibrationModalityDefinition] = Field(default_factory=list)
+    targets: list[CalibrationTargetDefinition] = Field(default_factory=list)
+
+
+class GestureTrajectorySummary(BaseModel):
+    point_count: int = Field(ge=0)
+    dx_total: float
+    dy_total: float
+    span_x: float = Field(ge=0)
+    span_y: float = Field(ge=0)
+    radius_mean: float | None = Field(default=None, ge=0)
+    radius_cv: float | None = Field(default=None, ge=0)
+    total_sweep: float | None = None
+
+
+class GesturePushSampleMetrics(BaseModel):
+    pose_valid: bool = False
+    forward_depth: float = Field(default=0, ge=0)
+    release_depth: float = Field(default=0, ge=0)
+    hold_duration_seconds: float | None = Field(default=None, ge=0)
+    max_depth: float | None = Field(default=None, ge=0)
+
+
+class GestureZoomSampleMetrics(BaseModel):
+    start_distance: float = Field(ge=0)
+    end_distance: float = Field(ge=0)
+    delta_distance: float
+    frame_count: int = Field(ge=0)
+
+
+class GestureCalibrationSamplePayload(BaseModel):
+    gesture: GestureType
+    confidence: float = Field(ge=0, le=1)
+    tracking_source: str | None = None
+    hand: str | None = None
+    duration_seconds: float | None = Field(default=None, ge=0)
+    hand_size: float | None = Field(default=None, ge=0)
+    hand_size_scale: float | None = Field(default=None, ge=0)
+    trajectory: GestureTrajectorySummary | None = None
+    push: GesturePushSampleMetrics | None = None
+    zoom: GestureZoomSampleMetrics | None = None
+    feature_windows: dict[str, Any] = Field(default_factory=dict)
+
+
+class CalibrationCollectedSample(BaseModel):
+    sample_id: str = Field(min_length=1)
+    modality: CalibrationModality
+    target_id: str = Field(min_length=1)
+    accepted: bool = True
+    collected_at: datetime
+    gesture_payload: GestureCalibrationSamplePayload | None = None
+
+
+class CalibrationTargetProgress(BaseModel):
+    target_id: str = Field(min_length=1)
+    collected_samples: int = Field(default=0, ge=0)
+    rejected_samples: int = Field(default=0, ge=0)
+    target_repetitions: int = Field(default=0, ge=0)
+    completed: bool = False
+    last_feedback: str | None = None
+    quality_metrics: dict[str, float] = Field(default_factory=dict)
+
+
+class CalibrationTargetAnalysis(BaseModel):
+    target_id: str = Field(min_length=1)
+    sample_count: int = Field(default=0, ge=0)
+    metrics: list[CalibrationMetricSummary] = Field(default_factory=list)
+    recommendations: list[CalibrationRecommendation] = Field(default_factory=list)
+    artifacts: dict[str, Any] = Field(default_factory=dict)
+    notes: list[str] = Field(default_factory=list)
+
+
+class CalibrationAnalysisResult(BaseModel):
+    modality: CalibrationModality
+    generated_at: datetime
+    targets: list[CalibrationTargetAnalysis] = Field(default_factory=list)
+    candidate_gesture_config: GestureConfig | None = None
+    candidate_voice_config: VoiceConfig | None = None
+    summary: str | None = None
+
+
+class CalibrationConfigSnapshot(BaseModel):
+    modality: CalibrationModality
+    profile: str = Field(default="default", min_length=1)
+    captured_at: datetime
+    gesture_config: GestureConfig | None = None
+    voice_config: VoiceConfig | None = None
+
+
+class CalibrationSessionRecord(BaseModel):
+    session_id: str = Field(min_length=1)
+    modality: CalibrationModality
+    profile: str = Field(default="default", min_length=1)
+    status: CalibrationSessionStatus = "collecting"
+    target_repetitions: int = Field(default=10, ge=1, le=100)
+    selected_targets: list[str] = Field(default_factory=list)
+    active_target_id: str | None = None
+    created_at: datetime
+    updated_at: datetime
+    completed_at: datetime | None = None
+    analysis_ready_at: datetime | None = None
+    applied_at: datetime | None = None
+    rolled_back_at: datetime | None = None
+    cancelled_at: datetime | None = None
+    original_snapshot: CalibrationConfigSnapshot
+    candidate_snapshot: CalibrationConfigSnapshot | None = None
+    applied_snapshot: CalibrationConfigSnapshot | None = None
+    samples: list[CalibrationCollectedSample] = Field(default_factory=list)
+    progress: list[CalibrationTargetProgress] = Field(default_factory=list)
+    analysis: CalibrationAnalysisResult | None = None
+    notes: list[str] = Field(default_factory=list)
+
+
+class CalibrationProfile(BaseModel):
+    modality: CalibrationModality
+    profile: str = Field(default="default", min_length=1)
+    source_session_id: str = Field(min_length=1)
+    saved_at: datetime
+    gesture_config: GestureConfig | None = None
+    voice_config: VoiceConfig | None = None
+    analysis: CalibrationAnalysisResult | None = None
+
+
+class CalibrationAppliedSnapshot(BaseModel):
+    modality: CalibrationModality
+    profile: str = Field(default="default", min_length=1)
+    source_session_id: str = Field(min_length=1)
+    captured_at: datetime
+    original_snapshot: CalibrationConfigSnapshot
+    applied_snapshot: CalibrationConfigSnapshot
+
+
+class CalibrationSessionCreateRequest(BaseModel):
+    modality: CalibrationModality
+    selected_targets: list[str] = Field(default_factory=list, min_length=1)
+    target_repetitions: int = Field(default=10, ge=1, le=100)
+    profile: str = Field(default="default", min_length=1)
+
+
+class CalibrationSessionResponse(BaseModel):
+    session: CalibrationSessionRecord
+
+
+class CalibrationApplyResponse(BaseModel):
+    session: CalibrationSessionRecord
+    applied_profile: CalibrationProfile
+
+
+class CalibrationRollbackResponse(BaseModel):
+    session: CalibrationSessionRecord
+    restored_snapshot: CalibrationAppliedSnapshot
+
+
+class CalibrationEventPayload(BaseModel):
+    session_id: str = Field(min_length=1)
+    modality: CalibrationModality
+    status: CalibrationSessionStatus | None = None
+    target_id: str | None = None
+    sample_id: str | None = None
+    collected_samples: int | None = Field(default=None, ge=0)
+    target_repetitions: int | None = Field(default=None, ge=0)
+    message: str | None = None
+    confidence: float | None = Field(default=None, ge=0, le=1)
+    metadata: dict[str, Any] = Field(default_factory=dict)
+
+
+class CalibrationEventEnvelope(BaseModel):
+    eventType: CalibrationEventType
+    payload: CalibrationEventPayload

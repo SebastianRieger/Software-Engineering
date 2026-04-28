@@ -6,7 +6,9 @@
   "scripts": {
     "setup": "node setup.js",
     "dev": "node setup.js --dev",
-    "start": "node setup.js --start"
+    "start": "node setup.js --start",
+    "dev:backend": "node setup.js --backend-only",
+    "dev:frontend": "node setup.js --frontend-only"
   },
   "dependencies": {},
   "devDependencies": {},

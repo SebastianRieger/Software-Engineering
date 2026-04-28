@@ -13,6 +13,7 @@ const {
   changeBrightness,
   effectiveSettings,
   error,
+  gestureDevices,
   gesturePreview,
   gestureStatus,
   isPreviewMode,
@@ -20,10 +21,15 @@ const {
   ledStatus,
   loadStatuses,
   loading,
+  selectGestureCamera,
+  selectVoiceDevice,
   startGestures,
+  startVoice,
   stopGestures,
+  stopVoice,
   systemStatus,
   updateSettings,
+  voiceDevices,
   voiceStatus,
 } = useHardwareWidget(props)
 </script>
@@ -55,6 +61,7 @@ const {
           <span class="status-label">Gesten</span>
           <strong>{{ gestureStatus?.running ? 'aktiv' : 'inaktiv' }}</strong>
           <span class="meta-text">{{ gestureStatus?.available ? 'Kamera bereit' : 'Kamera nicht verfuegbar' }}</span>
+          <span class="meta-text">{{ gestureStatus?.camera_name ?? 'kein Kamerageraet gewaehlt' }}</span>
           <span class="meta-text">Letzte Geste: {{ gestureStatus?.last_gesture ?? 'keine' }}</span>
         </div>
 
@@ -68,13 +75,23 @@ const {
         <div class="status-tile">
           <span class="status-label">Voice</span>
           <strong>{{ voiceStatus?.mode ?? '--' }}</strong>
-          <span class="meta-text">{{ voiceStatus?.available ? 'bereit' : 'noch nicht verdrahtet' }}</span>
+          <span class="meta-text">{{ voiceStatus?.available ? 'bereit' : 'nicht verfuegbar' }}</span>
+          <span class="meta-text">{{ voiceStatus?.device_name ?? 'kein Mikrofon gewaehlt' }}</span>
           <span class="meta-text">{{ voiceStatus?.last_error ?? 'kein Sprachereignis' }}</span>
         </div>
       </div>
 
       <div class="control-block">
         <div class="control-row">
+          <label class="device-select-group">
+            <span>Kamera</span>
+            <select class="device-select" :value="effectiveSettings.gestureCameraIndex" @change="selectGestureCamera">
+              <option v-if="gestureDevices.length === 0" :value="effectiveSettings.gestureCameraIndex">Keine Kamera gefunden</option>
+              <option v-for="device in gestureDevices" :key="device.index" :value="device.index">
+                {{ device.name }} · #{{ device.index }}
+              </option>
+            </select>
+          </label>
           <button class="action-btn" @click="startGestures">Gesten starten</button>
           <button class="action-btn" @click="stopGestures">Gesten stoppen</button>
           <button class="secondary-btn" @click="updateSettings({ autoRefresh: !effectiveSettings.autoRefresh })">
@@ -86,6 +103,18 @@ const {
         </div>
 
         <div class="control-row">
+          <label class="device-select-group">
+            <span>Mikrofon</span>
+            <select class="device-select" :value="effectiveSettings.voiceDeviceIndex" @change="selectVoiceDevice">
+              <option value="-1">Systemstandard</option>
+              <option v-if="voiceDevices.length === 0" :value="effectiveSettings.voiceDeviceIndex">Keine Eingabegeraete gefunden</option>
+              <option v-for="device in voiceDevices" :key="device.index" :value="device.index">
+                {{ device.name }} · #{{ device.index }}
+              </option>
+            </select>
+          </label>
+          <button class="action-btn" @click="startVoice">Voice starten</button>
+          <button class="action-btn" @click="stopVoice">Voice stoppen</button>
           <button
             v-for="preset in LED_PRESETS"
             :key="preset.label"
@@ -182,6 +211,21 @@ const {
   display: flex;
   align-items: center;
   gap: 8px;
+}
+
+.device-select-group {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.device-select {
+  min-width: 190px;
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.08);
+  color: inherit;
+  padding: 6px 10px;
 }
 
 .preview-block {

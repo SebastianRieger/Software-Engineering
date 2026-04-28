@@ -2,72 +2,40 @@
 
 ## Scope
 
-- Snapshot basis: 4 files and 340 lines in `Backend/src/api`
+- Snapshot basis: 5 files and 443 lines in `Backend/src/api`
 - Included structure: `__init__.py`, `system_endpoints.py`, `device_endpoints.py` and `data_endpoints.py`
+- New calibration surface: lifecycle, analysis and apply or rollback endpoints live alongside the existing config and gesture routes
 
 ## Metric View
 
-| Slice | Files | Lines | Reading |
-| --- | ---: | ---: | --- |
-| Full API module | 4 | 340 | Compact flat HTTP layer |
-| Domain endpoint modules | 3 | 323 | Actual request-handling logic |
-| Largest endpoint | 1 | 197 | `system_endpoints.py` owns config, gesture and system routes |
-
-### Endpoint Inventory
-
 | Endpoint module | Lines | Status |
 | --- | ---: | --- |
-| `system_endpoints.py` | 197 | Real layout, system, gesture config, gesture-action mapping and gesture runtime control |
-| `device_endpoints.py` | 60 | Real LED and voice control surface |
-| `data_endpoints.py` | 67 | Real weather access plus placeholder calendar and smart-home routes |
-| `__init__.py` | 17 | Router aggregation and public API export |
+| `system_endpoints.py` | 299 | Configuration, gesture runtime, calibration lifecycle and system status |
+| `data_endpoints.py` | 67 | Weather plus placeholder calendar and smart-home routes |
+| `device_endpoints.py` | 63 | LED, voice control and audio input discovery surface |
+| `__init__.py` | 18 | Router aggregation |
 
 ## Structure And Logic
 
-The API module is intentionally thin and now easier to navigate. `api/__init__.py` aggregates routers into one FastAPI `APIRouter`, while the endpoint files group routes by concern: system/configuration, devices and data domains. The design stays aligned with the target modular monolith: contracts live in `schemas`, orchestration lives in `services`, and persistence or provider access lives in `repositories`.
+The API layer is still intentionally thin. The major change is that `system_endpoints.py` now owns one more real vertical: calibration. This file now groups three closely related concerns around input behavior: persisted tuning, runtime gesture control and the calibration lifecycle that generates new tuning recommendations.
 
-The strongest verticals at the API level remain configuration, gestures and weather. LED, voice and system status are real but smaller. The biggest evolution in the system slice is that gesture settings and gesture-to-UI-action mappings are now both first-class configuration resources. Calendar and smart-home are still placeholders, now grouped more honestly with the other data-facing routes instead of pretending to be fully mature standalone modules.
+Hardware discovery also moved from implicit runtime assumptions into explicit API surfaces. Gesture camera enumeration now lives next to the gesture runtime routes, while `device_endpoints.py` exposes audio input discovery alongside voice start, stop and status. This keeps multi-device selection in the same HTTP boundary as the runtime controls the frontend actually invokes.
+
+The calibration API follows the same boundary style as the rest of the module. Request and response validation stays in `schemas`, orchestration stays in `services`, and persistence stays in `repositories`. The HTTP layer only maps domain exceptions to FastAPI responses and triggers the runtime config reload after apply or rollback.
 
 ## Critical Assessment
 
-- The layer boundary is healthy: the API still avoids deep business logic.
-- Removing the `api_v1` filesystem nesting improved discoverability without changing the public `/api/v1` prefix configured in `settings.API_V1_STR`.
-- `system_endpoints.py` is now the main concentration point. That is acceptable for the current size, but it could split again if configuration, gesture tuning and action mapping grow independently.
-- The module still advertises more completed domains than the implementation really supports because placeholder calendar and smart-home routes remain visible.
-- There is still no auth dependency, permission check or role-aware routing.
+- The API remains thin even after adding calibration.
+- `system_endpoints.py` is now clearly the largest concentration point in the backend HTTP layer.
+- The new calibration routes are coherent with existing config routes because they all manage input behavior, but the file is approaching the threshold where a later split into dedicated config and calibration modules may become worthwhile.
+- Conflict handling is now explicit: gesture-config writes are rejected while a gesture-calibration session is active.
 
 ## Intended But Missing Elements
 
 - auth and authorization dependencies on sensitive routes
-- real calendar and smart-home integrations behind the placeholder shells
-- clearer distinction between productive and placeholder domains in response semantics or documentation
-- shared request-validation or error-mapping helpers if the API grows again
-
-## Diagram
-
-```mermaid
-flowchart LR
-    Client[Frontend or external client]
-    Router[api/__init__.py\nrouter aggregation]
-    SystemRoutes[system_endpoints.py]
-    DeviceRoutes[device_endpoints.py]
-    DataRoutes[data_endpoints.py]
-    Services[services layer]
-    Schemas[schemas layer]
-    ActionConfig[gesture-action config routes]
-
-    Client --> Router
-    Router --> SystemRoutes
-    Router --> DeviceRoutes
-    Router --> DataRoutes
-    SystemRoutes --> Services
-    DeviceRoutes --> Services
-    DataRoutes --> Services
-    SystemRoutes --> Schemas
-    DeviceRoutes --> Schemas
-    DataRoutes --> Schemas
-    SystemRoutes --> ActionConfig
-```
+- real calendar and smart-home integrations behind placeholder routes
+- optional split of calibration routes out of `system_endpoints.py` if the surface grows further
+- active-session discovery or history listing endpoints for richer admin or settings UIs
 
 ## Navigation
 

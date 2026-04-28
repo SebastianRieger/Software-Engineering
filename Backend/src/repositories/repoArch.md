@@ -2,57 +2,27 @@
 
 ## Scope
 
-- Snapshot basis: 3 files and 339 lines in `Backend/src/repositories`
+- Snapshot basis: 3 files and 782 lines in `Backend/src/repositories`
 - Real repository modules: `config.py` and `weather.py`
-
-## Metric View
-
-| File | Lines | Responsibility |
-| --- | ---: | --- |
-| `weather.py` | 206 | External weather access plus SQLite cache and fallback logic |
-| `config.py` | 132 | Persistent storage for layout, system and gesture configuration |
-| `__init__.py` | 1 | Package marker |
 
 ## Structure And Logic
 
-The repository layer is one of the strongest parts of the backend because it does real separation work instead of being a nominal abstraction. `ConfigRepository` persists structured configuration slices in `app_config` through stable keys, while `WeatherRepository` combines external API access, caching and stale fallback logic.
+The repository layer is broader than before because `ConfigRepository` now persists not only layout, system, gesture, voice and input-action config, but also calibration sessions, saved profiles and deterministic apply or rollback snapshots. The important architectural decision is unchanged: a single SQLite-backed `app_config` keyspace stores structured JSON payloads behind stable domain keys.
 
-The tradeoff is visible as well: the layer is narrow. It proves the pattern for two domains, but the target architecture still expects more repositories or adapters for calendar, smart-home and possibly hardware-related persistence.
+This keeps the calibration feature aligned with existing persistence instead of introducing a second storage concept. The tradeoff is that `config.py` has become a genuine multi-domain repository and is no longer just a small config helper.
 
 ## Critical Assessment
 
-- The module demonstrates the repository pattern convincingly in the areas that matter today.
-- `WeatherRepository` mixes external API access and cache coordination inside one file. That is practical now, but it is the likely extraction point for a dedicated adapter layer later.
-- `ConfigRepository` is a good fit for the current SQLite key-value style, but it will need stronger evolution rules if configuration breadth grows significantly.
-- The layer has good current value, but limited domain coverage. It does not yet represent the full target integration landscape.
+- Reusing `app_config` for calibration was a good fit for the current stage.
+- `ConfigRepository` now clearly owns profile and session persistence concerns for input behavior.
+- The repository layer remains valuable, but `config.py` is now large enough that key naming and schema evolution need more discipline.
+- `WeatherRepository` is still independent and unchanged in architectural role.
 
 ## Intended But Missing Elements
 
-- calendar repository or adapter with cache and timeout behavior
-- smart-home repository or adapter for MQTT or device state integration
-- clearer adapter boundary for external weather provider access
-- possible migration from pure key-based config persistence toward richer persistence models if configuration becomes relational
-
-## Diagram
-
-```mermaid
-flowchart LR
-    Services[services]
-    ConfigRepo[ConfigRepository]
-    WeatherRepo[WeatherRepository]
-    SQLite[(SQLite app_config and weather_cache)]
-    WeatherAPI[OpenWeather API]
-    PlannedRepos[Planned calendar and smart-home repositories]
-    PlannedAdapters[Planned external adapters]
-
-    Services --> ConfigRepo
-    Services --> WeatherRepo
-    ConfigRepo --> SQLite
-    WeatherRepo --> SQLite
-    WeatherRepo --> WeatherAPI
-    WeatherRepo -. intended extraction .-> PlannedAdapters
-    Services -. intended new domains .-> PlannedRepos
-```
+- repository-level listing and retention policies for older calibration sessions if history becomes a user-facing feature
+- clearer migration rules for long-lived stored calibration payloads
+- broader repository coverage for calendar, smart-home or hardware state domains
 
 ## Navigation
 

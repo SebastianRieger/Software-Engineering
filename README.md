@@ -29,21 +29,34 @@ Ein stabiler Smart Mirror mit:
 
 ## Entwicklung starten
 
-### Frontend
+### Empfohlener Full-Stack-Start
 
 ```bash
-cd Frontend/nimrag-frontend
-npm install
 npm run dev
+```
+
+Der Root-Start erledigt jetzt den kompletten Entwicklungsstart in einer festen Reihenfolge:
+
+- Frontend-Abhaengigkeiten werden installiert.
+- Das Backend-Venv unter `Backend/venv_py312` wird bei Bedarf erstellt.
+- Backend-Abhaengigkeiten aus `Backend/requirements.txt` werden installiert.
+- Die festen Dev-Ports `8000` und `5173` werden vor dem Start bereinigt.
+- Das Backend startet auf `http://localhost:8000`.
+- Das Frontend startet auf `http://localhost:5173/`.
+
+Damit bleibt die API-Basis fuer das Frontend stabil auf `http://localhost:8000/api/v1` und die UI laeuft nicht mehr versehentlich gegen einen anderen Port oder einen fremden Prozess.
+
+### Einzelstarts
+
+```bash
+npm run dev:backend
+npm run dev:frontend
 ```
 
 ### Backend
 
 ```bash
-cd Backend
-pip install -r requirements.txt
-cd src
-uvicorn main:app --reload --host 0.0.0.0 --port 8000
+npm run setup
 ```
 
 ## Aktive Dokumentation
@@ -52,7 +65,6 @@ uvicorn main:app --reload --host 0.0.0.0 --port 8000
 - [Produktumfang](docs/PRODUCT_SCOPE.md)
 - [Ist-Zustand](docs/CURRENT_STATE.md)
 - [Zielarchitektur](docs/TARGET_ARCHITECTURE.md)
-- [Umsetzungsplan](docs/IMPLEMENTATION_PLAN.md)
 
 ## Historische Dokumente
 

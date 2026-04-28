@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import math
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from statistics import mean, pstdev
 
 from core.config import settings
@@ -32,6 +32,7 @@ class GestureDetectionResult:
     gesture: GestureName
     confidence: float
     tracking_source: str | None = None
+    metrics: dict[str, float | int | bool | str | None] = field(default_factory=dict)
 
 
 def detect_gesture_from_trajectory(
