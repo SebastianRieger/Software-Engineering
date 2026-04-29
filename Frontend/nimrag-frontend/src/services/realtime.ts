@@ -1,5 +1,5 @@
 import { API_BASE_URL } from './apiConfig'
-import type { RealtimeEvent } from '../types/hardware'
+import type { RealtimeEvent } from '../types/realtime'
 
 type RealtimeListener = (event: RealtimeEvent) => void
 

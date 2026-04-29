@@ -61,6 +61,16 @@ npm run dev:backend
 
 Der Root-Bootstrapper erstellt bei Bedarf `Backend/venv_py312`, installiert `requirements.txt`, bereinigt Port `8000` und startet `uvicorn` anschliessend sauber auf dem festen API-Port.
 
+## Native Abhaengigkeiten
+
+Der Musical-Audio-Pfad nutzt aubio bewusst als Pflichtkomponente fuer Live-Pitch- und Onset-Erkennung. Auf Fedora muss vor der Python-Installation der Requirements mindestens Folgendes vorhanden sein:
+
+```bash
+sudo dnf install -y python3.12-devel aubio-devel aubio-lib
+```
+
+`python3.12-devel` liefert `Python.h` fuer das venv-Build, `aubio-devel` liefert `aubio.pc` fuer `pkg-config`, und `aubio-lib` stellt die native Laufzeitbibliothek bereit. Der Root-Setup installiert zuerst `numpy<2`, baut aubio mit den noetigen GCC-15-Kompatibilitaetsflags im venv und installiert danach die restlichen Requirements.
+
 ## Tests
 
 ```bash

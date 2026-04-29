@@ -65,6 +65,7 @@ class VoiceConfigEnvelope(BaseModel):
 
 class VoiceCommandEventPayload(BaseModel):
     command: str
+    raw_input: str = Field(min_length=1)
     timestamp: datetime
     source: Literal["microphone"] = "microphone"
     transcript: str | None = None

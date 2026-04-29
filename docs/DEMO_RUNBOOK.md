@@ -1,21 +1,25 @@
 # Demo Runbook
 
-Dieses Runbook beschreibt den vorfuehrbaren End-to-End-Ablauf fuer die aktuelle Gesten-UI mit In-App-Kalibrierung.
+Dieses Runbook beschreibt den vorfuehrbaren End-to-End-Ablauf fuer die aktuelle multimodale UI mit In-App-Kalibrierung, Command-Settings und Musical-Audio-Training.
 
 ## Zielbild
 
-Die Demo zeigt vier Ebenen, die zusammenarbeiten:
+Die Demo zeigt fuenf Ebenen, die zusammenarbeiten:
 
 - rohe Gestenerkennung ueber `GestureDetected`
+- rohe normalisierte Inputs ueber `RawInputDetected`
+- Match-Entscheidungen ueber `CommandMatchEvaluated`
 - semantische UI-Eingabe ueber `UIActionRequested`
 - sichtbare UI-Reaktion ueber Fokusnavigation, Shop und ArrangeMode
 - profilorientierte Kalibrierung mit Analyse, Apply und Rollback
+- modality-weite Command-Profile und Musical-Audio-Templates
 
 ## Voraussetzungen
 
 - Backend laeuft.
 - Frontend ist gestartet oder gebaut.
 - Kamera ist verfuegbar.
+- Mikrofon ist verfuegbar.
 - Ein Browser mit der aktuellen Anwendung ist offen.
 - Optional ist ein WebSocket-Monitor fuer `/ws` offen.
 
@@ -25,7 +29,8 @@ Die Demo zeigt vier Ebenen, die zusammenarbeiten:
 2. Frontend starten.
 3. Anwendung oeffnen und Grid pruefen.
 4. Gestensession aktivieren.
-5. Im Overlay verifizieren, dass rohes Input-Feedback und UI-Aktionsfeedback sichtbar sind.
+5. Optional Voice oder Musical Audio aktivieren.
+6. Im Overlay verifizieren, dass Raw-Input-, Match- und UI-Aktionsfeedback sichtbar sind.
 
 ## Empfohlener Demo-Ablauf
 
@@ -42,17 +47,29 @@ Die Demo zeigt vier Ebenen, die zusammenarbeiten:
    - Per Langklick den ArrangeMode betreten.
    - Mit Swipes verschieben und mit Zwei-Hand-Zoom skalieren.
 
-4. Kalibrierungswizard zeigen.
+4. Command Settings zeigen.
+   - Button fuer die Command-Konfiguration oeffnen.
+   - aktives Profil, modality-weite Device-Praeferenzen und Mappings zeigen.
+   - erklaeren, dass Kamera-, Voice- und Musical-Audio-Geraete jetzt auf Profilebene und nicht mehr widget-lokal gespeichert werden.
+
+5. Musical-Audio-Training demonstrieren.
+   - ein Artefakt auswaehlen oder neu anlegen.
+   - einen oder mehrere kurze Pfeif-Takes aufnehmen.
+   - extrahierte Konturen in der Vorschau zeigen.
+   - mindestens einen Take freigeben und daraus ein Template verdichten.
+   - Artefakt als aktives Template markieren.
+
+6. Kalibrierungswizard zeigen.
    - Button `Kalibrieren` oeffnen.
    - Profilname und Zielgesten waehlen.
    - erklaeren, dass normale UI-Steuerung jetzt gesperrt wird.
 
-5. Eine kurze Kalibrierung demonstrieren.
+7. Eine kurze Kalibrierung demonstrieren.
    - eine oder zwei Gesten mit wenigen korrekten Wiederholungen vorfuehren
    - Fortschritt und Realtime-Feedback im Wizard zeigen
    - Analyse starten und Empfehlungen erklaeren
 
-6. Apply und Rollback zeigen.
+8. Apply und Rollback zeigen.
    - Profil anwenden.
    - danach kurz normale Gestensteuerung pruefen.
    - anschliessend Rollback demonstrieren.
@@ -72,6 +89,7 @@ Die Demo zeigt vier Ebenen, die zusammenarbeiten:
 ## Fallbacks waehrend der Demo
 
 - Wenn die Kamera keine stabile Erkennung liefert, dieselben UI-Schritte ueber die Tastatur demonstrieren.
+- Wenn kein Mikrofonzugriff moeglich ist, das gespeicherte Musical-Audio-Artefakt und die Konturvorschau statt Live-Aufnahme demonstrieren.
 - Wenn die Kalibrierung nicht stabil wirkt, Session verwerfen und die vorhandene Basiskonfiguration weiter demonstrieren.
 - Wenn Realtime ausfaellt, Fokus auf sichtbare UI-Reaktion und gespeicherte Konfiguration legen.
 

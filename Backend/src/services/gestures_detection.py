@@ -161,8 +161,9 @@ def detect_gesture_candidates(
         horizontal_margin > 0
         and abs(normalized_dx_total) > abs(normalized_dy_total) * 1.5
         and normalized_span_x > swipe_min_span
+        and normalized_span_y <= max(swipe_min_span * 2.0, abs(normalized_dx_total) * 0.75)
     ):
-        gesture = "swipe_right" if normalized_dx_total > 0 else "swipe_left"
+        gesture = "swipe_left" if normalized_dx_total > 0 else "swipe_right"
         confidence = min(1.0, horizontal_margin / max(swipe_threshold, 1e-6))
         candidates.append(GestureDetectionCandidate(gesture=gesture, confidence=confidence))
 
@@ -171,6 +172,7 @@ def detect_gesture_candidates(
         vertical_margin > 0
         and normalized_dy_total > abs(normalized_dx_total) * 1.2
         and normalized_span_y > swipe_min_span
+        and normalized_span_x <= max(swipe_min_span * 1.2, abs(normalized_dy_total) * 0.3)
     ):
         confidence = min(1.0, vertical_margin / max(down_threshold, 1e-6))
         candidates.append(GestureDetectionCandidate(gesture="swipe_down", confidence=confidence))
@@ -181,6 +183,7 @@ def detect_gesture_candidates(
         and upward_margin > 0
         and abs(normalized_dy_total) > abs(normalized_dx_total) * 1.2
         and normalized_span_y > swipe_min_span
+        and normalized_span_x <= max(swipe_min_span * 1.2, abs(normalized_dy_total) * 0.3)
     ):
         confidence = min(1.0, upward_margin / max(effective_up_threshold, 1e-6))
         candidates.append(GestureDetectionCandidate(gesture="swipe_up", confidence=confidence))
@@ -192,6 +195,8 @@ def detect_gesture_candidates(
         and normalized_radius_mean > circle_min_radius
         and abs(features.total_sweep) > circle_sweep_min
         and features.radius_cv < circle_cv_max
+        and min(normalized_span_x, normalized_span_y) > swipe_min_span
+        and min(normalized_span_x, normalized_span_y) / max(normalized_span_x, normalized_span_y, 1e-6) >= 0.2
     ):
         sweep_score = min(1.0, abs(features.total_sweep) / max(circle_sweep_min, 1e-6))
         radius_score = min(1.0, circle_cv_max / max(features.radius_cv, 1e-6))

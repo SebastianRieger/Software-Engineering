@@ -3,6 +3,7 @@ from pathlib import Path
 from fastapi import APIRouter, Depends, HTTPException, Query
 
 from core.config import settings
+from api.device_endpoints import get_musical_audio_service, get_voice_service
 from repositories.config import ConfigRepository
 from repositories.weather import WeatherRepository
 from schemas.calibration import (
@@ -12,6 +13,7 @@ from schemas.calibration import (
     CalibrationSessionCreateRequest,
     CalibrationSessionResponse,
 )
+from schemas.commands import CommandProfilesConfig, CommandProfilesConfigEnvelope
 from schemas.configuration import (
     LayoutConfig,
     LayoutConfigEnvelope,
@@ -28,11 +30,19 @@ from schemas.gestures import (
     GestureVideoProcessingResponse,
 )
 from schemas.interactions import InputActionConfig, InputActionConfigEnvelope
+from schemas.musical_audio import (
+    MusicalAudioConfig,
+    MusicalAudioConfigEnvelope,
+    MusicalAudioTrainingArtifact,
+    MusicalAudioTrainingArtifactEnvelope,
+    MusicalAudioTrainingArtifactListEnvelope,
+)
 from schemas.system import SystemStatusResponse
 from schemas.voice import VoiceConfig, VoiceConfigEnvelope
 from services.calibration import CalibrationService, CalibrationServiceError, calibration_service
 from services.gestures import GestureService, GestureServiceError, gesture_service
-from services.voice import voice_service
+from services.musical_audio import MusicalAudioService
+from services.voice import VoiceService
 
 
 config_router = APIRouter()
@@ -53,7 +63,16 @@ async def get_calibration_service() -> CalibrationService:
     return calibration_service
 
 
-def _select_gesture_camera_index(service: GestureService) -> int:
+def _select_gesture_camera_index(service: GestureService, requested_camera_index: int | None = None) -> int:
+    if requested_camera_index is not None:
+        return requested_camera_index
+
+    preferred_camera_getter = getattr(service, "get_preferred_camera_index", None)
+    if callable(preferred_camera_getter):
+        preferred_camera_index = preferred_camera_getter()
+        if isinstance(preferred_camera_index, int):
+            return preferred_camera_index
+
     for device in service.list_camera_devices():
         if isinstance(device, dict):
             if device.get("available", True):
@@ -65,11 +84,25 @@ def _select_gesture_camera_index(service: GestureService) -> int:
     return 0
 
 
-def _ensure_gesture_runtime_for_calibration(service: GestureService) -> None:
+def _ensure_gesture_runtime_for_calibration(
+    service: GestureService,
+    requested_camera_index: int | None = None,
+) -> None:
     status = service.get_status()
     if bool(status.get("running")):
         return
-    service.start(camera_index=_select_gesture_camera_index(service))
+    service.start(camera_index=_select_gesture_camera_index(service, requested_camera_index))
+
+
+def _reload_command_runtime_services(
+    *,
+    gesture_runtime: GestureService,
+    voice_runtime: VoiceService,
+    musical_audio_runtime: MusicalAudioService,
+) -> None:
+    gesture_runtime.reload_config()
+    voice_runtime.reload_config()
+    musical_audio_runtime.reload_config()
 
 
 @config_router.get("/layout", response_model=LayoutConfigEnvelope)
@@ -144,28 +177,180 @@ async def get_voice_config(
 async def save_voice_config(
     config: VoiceConfig,
     repository: ConfigRepository = Depends(get_config_repository),
+    voice_runtime: VoiceService = Depends(get_voice_service),
 ):
     saved_config = repository.save_voice_config(config=config)
-    voice_service.reload_config()
+    voice_runtime.reload_config()
     return VoiceConfigEnvelope(config=saved_config)
 
 
-@config_router.get("/gesture-actions", response_model=InputActionConfigEnvelope)
-async def get_input_action_config(
+async def _get_input_action_config(
     repository: ConfigRepository = Depends(get_config_repository),
 ):
     config = repository.get_input_action_config()
     return InputActionConfigEnvelope(config=config)
 
 
-@config_router.put("/gesture-actions", response_model=InputActionConfigEnvelope)
+async def _save_input_action_config(
+    config: InputActionConfig,
+    repository: ConfigRepository = Depends(get_config_repository),
+    gesture_runtime: GestureService = Depends(get_gesture_service),
+    voice_runtime: VoiceService = Depends(get_voice_service),
+    musical_audio_runtime: MusicalAudioService = Depends(get_musical_audio_service),
+):
+    saved_config = repository.save_input_action_config(config=config)
+    _reload_command_runtime_services(
+        gesture_runtime=gesture_runtime,
+        voice_runtime=voice_runtime,
+        musical_audio_runtime=musical_audio_runtime,
+    )
+    return InputActionConfigEnvelope(config=saved_config)
+
+
+@config_router.get("/command-profiles", response_model=CommandProfilesConfigEnvelope)
+async def get_command_profiles_config(
+    repository: ConfigRepository = Depends(get_config_repository),
+):
+    config = repository.get_command_profiles_config()
+    return CommandProfilesConfigEnvelope(config=config)
+
+
+@config_router.put("/command-profiles", response_model=CommandProfilesConfigEnvelope)
+async def save_command_profiles_config(
+    config: CommandProfilesConfig,
+    repository: ConfigRepository = Depends(get_config_repository),
+    gesture_runtime: GestureService = Depends(get_gesture_service),
+    voice_runtime: VoiceService = Depends(get_voice_service),
+    musical_audio_runtime: MusicalAudioService = Depends(get_musical_audio_service),
+):
+    saved_config = repository.save_command_profiles_config(config=config)
+    _reload_command_runtime_services(
+        gesture_runtime=gesture_runtime,
+        voice_runtime=voice_runtime,
+        musical_audio_runtime=musical_audio_runtime,
+    )
+    return CommandProfilesConfigEnvelope(config=saved_config)
+
+
+@config_router.get("/musical-audio", response_model=MusicalAudioConfigEnvelope)
+async def get_musical_audio_config(
+    repository: ConfigRepository = Depends(get_config_repository),
+):
+    config = repository.get_musical_audio_config()
+    return MusicalAudioConfigEnvelope(config=config)
+
+
+@config_router.put("/musical-audio", response_model=MusicalAudioConfigEnvelope)
+async def save_musical_audio_config(
+    config: MusicalAudioConfig,
+    repository: ConfigRepository = Depends(get_config_repository),
+    musical_audio_runtime: MusicalAudioService = Depends(get_musical_audio_service),
+):
+    saved_config = repository.save_musical_audio_config(config=config)
+    musical_audio_runtime.reload_config()
+    return MusicalAudioConfigEnvelope(config=saved_config)
+
+
+@config_router.get("/musical-audio/artifacts", response_model=MusicalAudioTrainingArtifactListEnvelope)
+async def list_musical_audio_training_artifacts(
+    profile: str = Query(default="default"),
+    repository: ConfigRepository = Depends(get_config_repository),
+):
+    artifacts = repository.list_musical_audio_training_artifacts(profile_id=profile)
+    return MusicalAudioTrainingArtifactListEnvelope(artifacts=artifacts)
+
+
+@config_router.get(
+    "/musical-audio/artifacts/{artifact_id}",
+    response_model=MusicalAudioTrainingArtifactEnvelope,
+)
+async def get_musical_audio_training_artifact(
+    artifact_id: str,
+    profile: str = Query(default="default"),
+    repository: ConfigRepository = Depends(get_config_repository),
+):
+    artifact = repository.get_musical_audio_training_artifact(artifact_id=artifact_id, profile_id=profile)
+    if artifact is None:
+        raise HTTPException(status_code=404, detail="Musical-Audio-Artefakt wurde nicht gefunden.")
+    return MusicalAudioTrainingArtifactEnvelope(artifact=artifact)
+
+
+@config_router.put(
+    "/musical-audio/artifacts/{artifact_id}",
+    response_model=MusicalAudioTrainingArtifactEnvelope,
+)
+async def save_musical_audio_training_artifact(
+    artifact_id: str,
+    artifact: MusicalAudioTrainingArtifact,
+    repository: ConfigRepository = Depends(get_config_repository),
+    musical_audio_runtime: MusicalAudioService = Depends(get_musical_audio_service),
+):
+    payload = artifact if artifact.artifact_id == artifact_id else artifact.model_copy(update={"artifact_id": artifact_id})
+    saved_artifact = repository.save_musical_audio_training_artifact(payload)
+    musical_audio_runtime.reload_config()
+    return MusicalAudioTrainingArtifactEnvelope(artifact=saved_artifact)
+
+
+@config_router.delete("/musical-audio/artifacts/{artifact_id}")
+async def delete_musical_audio_training_artifact(
+    artifact_id: str,
+    profile: str = Query(default="default"),
+    repository: ConfigRepository = Depends(get_config_repository),
+    musical_audio_runtime: MusicalAudioService = Depends(get_musical_audio_service),
+):
+    deleted = repository.delete_musical_audio_training_artifact(artifact_id=artifact_id, profile_id=profile)
+    if not deleted:
+        raise HTTPException(status_code=404, detail="Musical-Audio-Artefakt wurde nicht gefunden.")
+    musical_audio_runtime.reload_config()
+    return {"deleted": True, "artifact_id": artifact_id, "profile": profile}
+
+
+@config_router.get("/input-actions", response_model=InputActionConfigEnvelope)
+async def get_input_action_config(
+    repository: ConfigRepository = Depends(get_config_repository),
+):
+    return await _get_input_action_config(repository)
+
+
+@config_router.put("/input-actions", response_model=InputActionConfigEnvelope)
 async def save_input_action_config(
     config: InputActionConfig,
     repository: ConfigRepository = Depends(get_config_repository),
+    gesture_runtime: GestureService = Depends(get_gesture_service),
+    voice_runtime: VoiceService = Depends(get_voice_service),
+    musical_audio_runtime: MusicalAudioService = Depends(get_musical_audio_service),
 ):
-    saved_config = repository.save_input_action_config(config=config)
-    gesture_service.reload_config()
-    return InputActionConfigEnvelope(config=saved_config)
+    return await _save_input_action_config(
+        config,
+        repository,
+        gesture_runtime,
+        voice_runtime,
+        musical_audio_runtime,
+    )
+
+
+@config_router.get("/gesture-actions", response_model=InputActionConfigEnvelope)
+async def get_legacy_input_action_config(
+    repository: ConfigRepository = Depends(get_config_repository),
+):
+    return await _get_input_action_config(repository)
+
+
+@config_router.put("/gesture-actions", response_model=InputActionConfigEnvelope)
+async def save_legacy_input_action_config(
+    config: InputActionConfig,
+    repository: ConfigRepository = Depends(get_config_repository),
+    gesture_runtime: GestureService = Depends(get_gesture_service),
+    voice_runtime: VoiceService = Depends(get_voice_service),
+    musical_audio_runtime: MusicalAudioService = Depends(get_musical_audio_service),
+):
+    return await _save_input_action_config(
+        config,
+        repository,
+        gesture_runtime,
+        voice_runtime,
+        musical_audio_runtime,
+    )
 
 
 @system_router.get("/status", response_model=SystemStatusResponse)
@@ -261,7 +446,7 @@ async def start_calibration_session(
         session = service.start_session(payload)
         if session.modality == "gesture":
             try:
-                _ensure_gesture_runtime_for_calibration(gesture_runtime)
+                _ensure_gesture_runtime_for_calibration(gesture_runtime, payload.camera_index)
             except GestureServiceError as exc:
                 service.cancel_session(session.session_id)
                 raise HTTPException(status_code=exc.status_code, detail=str(exc)) from exc

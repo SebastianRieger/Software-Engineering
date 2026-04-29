@@ -214,6 +214,8 @@ class MediaPipeHandsAdapter:
     def __init__(self) -> None:
         self.cap = None
         self.hands = None
+        self.camera_index: int | None = None
+        self.camera_name: str | None = None
 
     def is_available(self) -> bool:
         return cv2 is not None and mp is not None
@@ -228,22 +230,11 @@ class MediaPipeHandsAdapter:
 
         devices: list[dict[str, str | int | bool | None]] = []
         for index in candidate_indices:
-            capture = cv2.VideoCapture(index)
-            if not capture or not capture.isOpened():
-                if capture is not None:
-                    capture.release()
+            capture, backend_name = MediaPipeHandsAdapter._open_camera_capture_for_index(index)
+            if capture is None:
                 continue
 
-            ok, _ = capture.read()
-            backend_name = None
-            try:
-                backend_name = str(int(capture.get(cv2.CAP_PROP_BACKEND)))
-            except (AttributeError, TypeError, ValueError):
-                backend_name = None
             capture.release()
-
-            if not ok:
-                continue
 
             devices.append(
                 {
@@ -288,12 +279,30 @@ class MediaPipeHandsAdapter:
                 "MediaPipe Hands oder OpenCV ist in dieser Umgebung nicht verfuegbar."
             )
 
-        self.cap = cv2.VideoCapture(camera_index)
-        if not (self.cap and self.cap.isOpened()):
-            if self.cap is not None:
-                self.cap.release()
-            self.cap = None
-            raise GestureAdapterError("Kamera konnte nicht geoeffnet werden.")
+        candidate_indices = [camera_index]
+        for fallback_index in self._linux_video_indices() or list(range(8)):
+            if fallback_index not in candidate_indices:
+                candidate_indices.append(fallback_index)
+
+        attempted_indices: list[str] = []
+        for candidate_index in candidate_indices:
+            capture, _backend_name = self._open_camera_capture_for_index(candidate_index)
+            attempted_indices.append(str(candidate_index))
+            if capture is None:
+                continue
+
+            self.cap = capture
+            self.camera_index = candidate_index
+            self.camera_name = self._resolve_camera_name(candidate_index)
+            break
+
+        if self.cap is None:
+            attempted = ", ".join(attempted_indices) if attempted_indices else str(camera_index)
+            raise GestureAdapterError(
+                "Kamera konnte nicht geoeffnet werden. "
+                f"Gepruefte Kamera-Indizes: {attempted}. "
+                "Bitte Kamera-Freigabe, Zugriffsrechte und konkurrierende Anwendungen pruefen."
+            )
 
         try:
             self.hands = self._create_hands_tracker()
@@ -301,6 +310,8 @@ class MediaPipeHandsAdapter:
             if self.cap is not None:
                 self.cap.release()
             self.cap = None
+            self.camera_index = None
+            self.camera_name = None
             raise
 
     def read(self) -> GestureObservation | None:
@@ -331,6 +342,47 @@ class MediaPipeHandsAdapter:
         if self.cap is not None:
             self.cap.release()
             self.cap = None
+        self.camera_index = None
+        self.camera_name = None
+
+    @staticmethod
+    def _camera_open_attempts(index: int) -> list[tuple[int | str, int | None]]:
+        attempts: list[tuple[int | str, int | None]] = [(index, None)]
+        v4l2_backend = getattr(cv2, "CAP_V4L2", None) if cv2 is not None else None
+        if v4l2_backend is not None:
+            attempts.append((index, v4l2_backend))
+
+        device_path = f"/dev/video{index}"
+        if os.path.exists(device_path):
+            attempts.append((device_path, None))
+
+        return attempts
+
+    @staticmethod
+    def _open_camera_capture_for_index(index: int):
+        if cv2 is None:
+            return None, None
+
+        for source, backend in MediaPipeHandsAdapter._camera_open_attempts(index):
+            capture = cv2.VideoCapture(source) if backend is None else cv2.VideoCapture(source, backend)
+            if not capture or not capture.isOpened():
+                if capture is not None:
+                    capture.release()
+                continue
+
+            ok, _ = capture.read()
+            if not ok:
+                capture.release()
+                continue
+
+            backend_name = None
+            try:
+                backend_name = str(int(capture.get(cv2.CAP_PROP_BACKEND)))
+            except (AttributeError, TypeError, ValueError):
+                backend_name = None
+            return capture, backend_name
+
+        return None, None
 
     def process_video(
         self,

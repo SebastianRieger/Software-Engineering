@@ -7,9 +7,16 @@ from schemas.calibration import (
     CalibrationProfile,
     CalibrationSessionRecord,
 )
+from schemas.commands import (
+    CommandDevicePreferences,
+    CommandModalitySettings,
+    CommandProfile,
+    CommandProfilesConfig,
+)
 from schemas.configuration import LayoutConfig, SystemConfig
 from schemas.gestures import GestureConfig
 from schemas.interactions import InputActionConfig
+from schemas.musical_audio import MusicalAudioConfig, MusicalAudioTrainingArtifact
 from schemas.voice import VoiceConfig
 
 
@@ -130,10 +137,19 @@ class ConfigRepository:
                 (config_key,),
             ).fetchone()
 
-        if row is None:
-            return VoiceConfig()
+        config = VoiceConfig() if row is None else VoiceConfig.model_validate_json(row["payload"])
+        active_profile = self._get_active_command_profile_from_row()
+        if active_profile is None:
+            return config
 
-        return VoiceConfig.model_validate_json(row["payload"])
+        modality = active_profile.modality_settings.get("voice", CommandModalitySettings(enabled=config.enabled))
+        device_index = active_profile.device_preferences.voice_device_index
+        return config.model_copy(
+            update={
+                "enabled": modality.enabled,
+                "device_index": device_index if device_index is not None else config.device_index,
+            }
+        )
 
     def save_voice_config(self, config: VoiceConfig) -> VoiceConfig:
         timestamp = datetime.now(timezone.utc)
@@ -156,20 +172,44 @@ class ConfigRepository:
                 ),
             )
 
+        command_profiles = self.get_command_profiles_config()
+        active_profile = self._select_active_command_profile(command_profiles)
+        updated_profile = active_profile.model_copy(
+            update={
+                "device_preferences": active_profile.device_preferences.model_copy(
+                    update={"voice_device_index": updated_config.device_index}
+                ),
+                "modality_settings": {
+                    **active_profile.modality_settings,
+                    "voice": active_profile.modality_settings.get(
+                        "voice",
+                        CommandModalitySettings(enabled=True),
+                    ).model_copy(update={"enabled": updated_config.enabled}),
+                },
+                "updated_at": timestamp,
+            }
+        )
+        self.save_command_profiles_config(
+            command_profiles.model_copy(
+                update={
+                    "profiles": [
+                        updated_profile if profile.profile_id == updated_profile.profile_id else profile
+                        for profile in command_profiles.profiles
+                    ],
+                    "updated_at": timestamp,
+                }
+            )
+        )
+
         return updated_config
 
     def get_input_action_config(self) -> InputActionConfig:
-        config_key = self._input_action_key()
-        with get_db_connection() as connection:
-            row = connection.execute(
-                "SELECT payload FROM app_config WHERE config_key = ?",
-                (config_key,),
-            ).fetchone()
+        command_profiles = self._get_command_profiles_row()
+        if command_profiles is not None:
+            config = CommandProfilesConfig.model_validate_json(command_profiles["payload"])
+            return self._select_active_command_profile(config).input_action_config
 
-        if row is None:
-            return InputActionConfig()
-
-        return InputActionConfig.model_validate_json(row["payload"])
+        return self._get_legacy_input_action_config()
 
     def save_input_action_config(self, config: InputActionConfig) -> InputActionConfig:
         timestamp = datetime.now(timezone.utc)
@@ -192,7 +232,261 @@ class ConfigRepository:
                 ),
             )
 
+        command_profiles = self.get_command_profiles_config()
+        active_profile = self._select_active_command_profile(command_profiles)
+        updated_profile = active_profile.model_copy(
+            update={
+                "input_action_config": updated_config,
+                "updated_at": timestamp,
+            }
+        )
+        self.save_command_profiles_config(
+            command_profiles.model_copy(
+                update={
+                    "profiles": [
+                        updated_profile if profile.profile_id == updated_profile.profile_id else profile
+                        for profile in command_profiles.profiles
+                    ],
+                    "updated_at": timestamp,
+                }
+            )
+        )
+
         return updated_config
+
+    def get_command_profiles_config(self) -> CommandProfilesConfig:
+        row = self._get_command_profiles_row()
+        if row is not None:
+            return CommandProfilesConfig.model_validate_json(row["payload"])
+
+        legacy_input_actions = self._get_legacy_input_action_config()
+        voice_config = self.get_voice_config()
+        return CommandProfilesConfig(
+            active_profile_id="default",
+            profiles=[
+                CommandProfile(
+                    profile_id="default",
+                    display_name="Standard",
+                    input_action_config=legacy_input_actions,
+                    modality_settings={
+                        "gesture": CommandModalitySettings(enabled=True),
+                        "voice": CommandModalitySettings(enabled=voice_config.enabled),
+                        "musical_audio": CommandModalitySettings(enabled=False),
+                        "keyboard": CommandModalitySettings(enabled=True),
+                        "dev": CommandModalitySettings(enabled=True),
+                    },
+                    device_preferences=CommandDevicePreferences(
+                        voice_device_index=voice_config.device_index,
+                    ),
+                )
+            ],
+        )
+
+    def save_command_profiles_config(self, config: CommandProfilesConfig) -> CommandProfilesConfig:
+        timestamp = datetime.now(timezone.utc)
+        updated_config = config.model_copy(
+            update={
+                "profiles": [
+                    profile.model_copy(update={"updated_at": timestamp})
+                    for profile in config.profiles
+                ],
+                "updated_at": timestamp,
+            }
+        )
+        config_key = self._command_profiles_key()
+
+        with get_db_connection() as connection:
+            connection.execute(
+                """
+                INSERT INTO app_config (config_key, payload, updated_at)
+                VALUES (?, ?, ?)
+                ON CONFLICT(config_key) DO UPDATE SET
+                    payload = excluded.payload,
+                    updated_at = excluded.updated_at
+                """,
+                (
+                    config_key,
+                    updated_config.model_dump_json(),
+                    timestamp.isoformat(),
+                ),
+            )
+
+        active_profile = self._select_active_command_profile(updated_config)
+        legacy_input_actions = active_profile.input_action_config.model_copy(update={"updated_at": timestamp})
+        with get_db_connection() as connection:
+            connection.execute(
+                """
+                INSERT INTO app_config (config_key, payload, updated_at)
+                VALUES (?, ?, ?)
+                ON CONFLICT(config_key) DO UPDATE SET
+                    payload = excluded.payload,
+                    updated_at = excluded.updated_at
+                """,
+                (
+                    self._input_action_key(),
+                    legacy_input_actions.model_dump_json(),
+                    timestamp.isoformat(),
+                ),
+            )
+
+        return updated_config
+
+    def get_active_command_profile(self) -> CommandProfile:
+        return self._select_active_command_profile(self.get_command_profiles_config())
+
+    def get_musical_audio_config(self) -> MusicalAudioConfig:
+        config_key = self._musical_audio_key()
+        with get_db_connection() as connection:
+            row = connection.execute(
+                "SELECT payload FROM app_config WHERE config_key = ?",
+                (config_key,),
+            ).fetchone()
+
+        active_profile = self.get_active_command_profile()
+        modality = active_profile.modality_settings.get("musical_audio", CommandModalitySettings(enabled=False))
+        device_index = active_profile.device_preferences.musical_audio_device_index
+
+        if row is None:
+            return MusicalAudioConfig(
+                enabled=modality.enabled,
+                device_index=device_index if device_index is not None else -1,
+                active_artifact_id=modality.active_training_artifact_id,
+            )
+
+        config = MusicalAudioConfig.model_validate_json(row["payload"])
+        return config.model_copy(
+            update={
+                "enabled": modality.enabled,
+                "device_index": device_index if device_index is not None else config.device_index,
+                "active_artifact_id": modality.active_training_artifact_id
+                if modality.active_training_artifact_id is not None
+                else config.active_artifact_id,
+            }
+        )
+
+    def save_musical_audio_config(self, config: MusicalAudioConfig) -> MusicalAudioConfig:
+        timestamp = datetime.now(timezone.utc)
+        updated_config = config.model_copy(update={"updated_at": timestamp})
+        config_key = self._musical_audio_key()
+
+        with get_db_connection() as connection:
+            connection.execute(
+                """
+                INSERT INTO app_config (config_key, payload, updated_at)
+                VALUES (?, ?, ?)
+                ON CONFLICT(config_key) DO UPDATE SET
+                    payload = excluded.payload,
+                    updated_at = excluded.updated_at
+                """,
+                (
+                    config_key,
+                    updated_config.model_dump_json(),
+                    timestamp.isoformat(),
+                ),
+            )
+
+        command_profiles = self.get_command_profiles_config()
+        active_profile = self._select_active_command_profile(command_profiles)
+        updated_profile = active_profile.model_copy(
+            update={
+                "device_preferences": active_profile.device_preferences.model_copy(
+                    update={"musical_audio_device_index": updated_config.device_index}
+                ),
+                "modality_settings": {
+                    **active_profile.modality_settings,
+                    "musical_audio": active_profile.modality_settings.get(
+                        "musical_audio",
+                        CommandModalitySettings(enabled=False),
+                    ).model_copy(
+                        update={
+                            "enabled": updated_config.enabled,
+                            "active_training_artifact_id": updated_config.active_artifact_id,
+                        }
+                    ),
+                },
+                "updated_at": timestamp,
+            }
+        )
+        self.save_command_profiles_config(
+            command_profiles.model_copy(
+                update={
+                    "profiles": [
+                        updated_profile if profile.profile_id == updated_profile.profile_id else profile
+                        for profile in command_profiles.profiles
+                    ],
+                    "updated_at": timestamp,
+                }
+            )
+        )
+
+        return updated_config
+
+    def list_musical_audio_training_artifacts(self, profile_id: str = "default") -> list[MusicalAudioTrainingArtifact]:
+        like_pattern = self._musical_audio_artifact_prefix(profile_id)
+        with get_db_connection() as connection:
+            rows = connection.execute(
+                "SELECT payload FROM app_config WHERE config_key LIKE ? ORDER BY updated_at DESC",
+                (f"{like_pattern}%",),
+            ).fetchall()
+
+        return [MusicalAudioTrainingArtifact.model_validate_json(row["payload"]) for row in rows]
+
+    def get_musical_audio_training_artifact(
+        self,
+        artifact_id: str,
+        profile_id: str = "default",
+    ) -> MusicalAudioTrainingArtifact | None:
+        config_key = self._musical_audio_artifact_key(profile_id=profile_id, artifact_id=artifact_id)
+        with get_db_connection() as connection:
+            row = connection.execute(
+                "SELECT payload FROM app_config WHERE config_key = ?",
+                (config_key,),
+            ).fetchone()
+
+        if row is None:
+            return None
+
+        return MusicalAudioTrainingArtifact.model_validate_json(row["payload"])
+
+    def save_musical_audio_training_artifact(
+        self,
+        artifact: MusicalAudioTrainingArtifact,
+    ) -> MusicalAudioTrainingArtifact:
+        timestamp = datetime.now(timezone.utc)
+        existing = self.get_musical_audio_training_artifact(artifact.artifact_id, profile_id=artifact.profile_id)
+        created_at = existing.created_at if existing is not None else timestamp
+        updated_artifact = artifact.model_copy(update={"created_at": created_at, "updated_at": timestamp})
+        config_key = self._musical_audio_artifact_key(
+            profile_id=updated_artifact.profile_id,
+            artifact_id=updated_artifact.artifact_id,
+        )
+
+        with get_db_connection() as connection:
+            connection.execute(
+                """
+                INSERT INTO app_config (config_key, payload, updated_at)
+                VALUES (?, ?, ?)
+                ON CONFLICT(config_key) DO UPDATE SET
+                    payload = excluded.payload,
+                    updated_at = excluded.updated_at
+                """,
+                (
+                    config_key,
+                    updated_artifact.model_dump_json(),
+                    timestamp.isoformat(),
+                ),
+            )
+
+        return updated_artifact
+
+    def delete_musical_audio_training_artifact(self, artifact_id: str, profile_id: str = "default") -> bool:
+        config_key = self._musical_audio_artifact_key(profile_id=profile_id, artifact_id=artifact_id)
+        with get_db_connection() as connection:
+            cursor = connection.execute(
+                "DELETE FROM app_config WHERE config_key = ?",
+                (config_key,),
+            )
+        return cursor.rowcount > 0
 
     def get_calibration_session(self, session_id: str) -> CalibrationSessionRecord | None:
         config_key = self._calibration_session_key(session_id)
@@ -334,6 +628,86 @@ class ConfigRepository:
             row = connection.execute("SELECT COUNT(*) AS count FROM app_config").fetchone()
         return int(row["count"])
 
+    def _get_legacy_input_action_config(self) -> InputActionConfig:
+        config_key = self._input_action_key()
+        with get_db_connection() as connection:
+            row = connection.execute(
+                "SELECT payload FROM app_config WHERE config_key = ?",
+                (config_key,),
+            ).fetchone()
+
+        if row is None:
+            return InputActionConfig()
+
+        return InputActionConfig.model_validate_json(row["payload"])
+
+    def _get_command_profiles_row(self):
+        config_key = self._command_profiles_key()
+        with get_db_connection() as connection:
+            return connection.execute(
+                "SELECT payload FROM app_config WHERE config_key = ?",
+                (config_key,),
+            ).fetchone()
+
+    def _apply_voice_command_profile_overrides(self, config: VoiceConfig) -> VoiceConfig:
+        command_profiles_row = self._get_command_profiles_row()
+        if command_profiles_row is None:
+            return config
+
+        active_profile = self._select_active_command_profile(
+            CommandProfilesConfig.model_validate_json(command_profiles_row["payload"])
+        )
+        voice_settings = active_profile.modality_settings.get("voice", CommandModalitySettings(enabled=config.enabled))
+        device_index = active_profile.device_preferences.voice_device_index
+        return config.model_copy(
+            update={
+                "enabled": voice_settings.enabled,
+                "device_index": device_index if device_index is not None else config.device_index,
+            }
+        )
+
+    def _apply_musical_audio_command_profile_overrides(
+        self,
+        config: MusicalAudioConfig,
+    ) -> MusicalAudioConfig:
+        command_profiles_row = self._get_command_profiles_row()
+        if command_profiles_row is None:
+            return config
+
+        active_profile = self._select_active_command_profile(
+            CommandProfilesConfig.model_validate_json(command_profiles_row["payload"])
+        )
+        musical_settings = active_profile.modality_settings.get(
+            "musical_audio",
+            CommandModalitySettings(enabled=config.enabled),
+        )
+        device_index = active_profile.device_preferences.musical_audio_device_index
+        return config.model_copy(
+            update={
+                "enabled": musical_settings.enabled,
+                "device_index": device_index if device_index is not None else config.device_index,
+                "active_artifact_id": (
+                    musical_settings.active_training_artifact_id
+                    if musical_settings.active_training_artifact_id is not None
+                    else config.active_artifact_id
+                ),
+            }
+        )
+
+    def _get_active_command_profile_from_row(self) -> CommandProfile | None:
+        row = self._get_command_profiles_row()
+        if row is None:
+            return None
+        config = CommandProfilesConfig.model_validate_json(row["payload"])
+        return self._select_active_command_profile(config)
+
+    @staticmethod
+    def _select_active_command_profile(config: CommandProfilesConfig) -> CommandProfile:
+        for profile in config.profiles:
+            if profile.profile_id == config.active_profile_id:
+                return profile
+        return config.profiles[0]
+
     @staticmethod
     def _layout_key(profile: str) -> str:
         return f"layout:{profile}"
@@ -353,6 +727,22 @@ class ConfigRepository:
     @staticmethod
     def _input_action_key() -> str:
         return "input-actions:global"
+
+    @staticmethod
+    def _command_profiles_key() -> str:
+        return "command-profiles:global"
+
+    @staticmethod
+    def _musical_audio_key() -> str:
+        return "musical-audio:global"
+
+    @staticmethod
+    def _musical_audio_artifact_prefix(profile_id: str) -> str:
+        return f"musical-audio:artifact:{profile_id}:"
+
+    @classmethod
+    def _musical_audio_artifact_key(cls, profile_id: str, artifact_id: str) -> str:
+        return f"{cls._musical_audio_artifact_prefix(profile_id)}{artifact_id}"
 
     @staticmethod
     def _calibration_sessions_prefix() -> str:

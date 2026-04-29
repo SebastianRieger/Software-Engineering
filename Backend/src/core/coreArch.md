@@ -10,7 +10,7 @@
 `core/` remains the infrastructure spine of the backend. The new calibration flow increased the importance of two existing primitives without introducing a new infrastructure package:
 
 - `database.py` still bootstraps and serves SQLite connections, now also for calibration sessions, profiles and rollback snapshots.
-- `realtime.py` now carries not only gesture and UI-action events, but also calibration lifecycle events such as session start, target arm, sample accepted, analysis ready and profile applied.
+- `realtime.py` now carries raw modality-specific input events, modality-generic `RawInputDetected`, semantic UI-action events and calibration lifecycle events such as session start, target arm, sample accepted, analysis ready and profile applied.
 
 The backend startup path in `main.py` now initializes the calibration service in the same lifecycle phase that already bound the realtime loop and bootstrapped persistence.
 
@@ -18,7 +18,7 @@ The backend startup path in `main.py` now initializes the calibration service in
 
 - The module stays small and high leverage.
 - Calibration reused existing infrastructure instead of adding a parallel event or persistence mechanism. That is the right tradeoff for the current project size.
-- `realtime.py` is now more central because it bridges both user-facing interaction and operator-facing calibration feedback.
+- `realtime.py` is now more central because it bridges user-facing interaction, multimodal raw-input diagnostics and operator-facing calibration feedback.
 - The operational gaps remain the same: no backpressure strategy for slow websocket consumers, no structured health surface and no real migration layer.
 
 ## Intended But Missing Elements

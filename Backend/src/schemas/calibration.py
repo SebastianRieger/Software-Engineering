@@ -203,6 +203,7 @@ class CalibrationSessionCreateRequest(BaseModel):
     selected_targets: list[str] = Field(default_factory=list, min_length=1)
     target_repetitions: int = Field(default=10, ge=1, le=100)
     profile: str = Field(default="default", min_length=1)
+    camera_index: int | None = Field(default=None, ge=0)
 
 
 class CalibrationSessionResponse(BaseModel):

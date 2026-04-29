@@ -9,8 +9,25 @@ import type {
   CalibrationSessionCreateRequest,
   CalibrationSessionRecord,
 } from '../../types/calibration'
+import type {
+  CommandProfilesConfig,
+  MusicalAudioConfig,
+  MusicalAudioTrainingArtifact,
+} from '../../types/commands'
 import type { SystemConfig, WidgetSettings } from '../../types/config'
-import type { FocusState, GestureDetectedPayload, UIActionRequestedPayload, UIActionType } from '../../types/interactions'
+import type {
+  GestureCameraDevice,
+  MusicalAudioInputDevice,
+  MusicalAudioStatusResponse,
+  VoiceInputDevice,
+} from '../../types/hardware'
+import type {
+  CommandMatchEvaluatedPayload,
+  FocusState,
+  UIActionRequestedPayload,
+  UIActionType,
+} from '../../types/interactions'
+import type { RealtimeEvent } from '../../types/realtime'
 import type { ActiveWidgetMap, ModuleShopRef } from '../../types/widgets'
 import {
   applyLoadedLayout,
@@ -20,16 +37,18 @@ import {
   findWidgetAtCell,
   formatApiErrorMessage,
   getDefaultFocus,
-  getFocusStateForWidget,
   getWidgetDisplayTitle,
-  moveFocus,
-  moveWidgetByOffset,
   patchWidgetSettings,
-  resizeWidget,
   upsertWidget,
 } from '../../utils/layout'
+import {
+  reduceInteractionState,
+  type InteractionReducerEffect,
+  type InteractionState,
+} from '../../utils/interactionReducer'
 import GridBoard from './GridBoard.vue'
 import CalibrationWizard from './CalibrationWizard.vue'
+import CommandSettingsPanel from './CommandSettingsPanel.vue'
 import InteractionOverlay from './InteractionOverlay.vue'
 import ModuleShop from './ModuleShop.vue'
 
@@ -42,6 +61,7 @@ const focusedState = ref<FocusState>({ row: 1, col: 1, widgetId: null })
 const selectedWidgetId = ref<string | null>(null)
 const isArrangeMode = ref(false)
 const lastRawInput = ref<string | null>(null)
+const lastCommandMatch = ref<string | null>(null)
 const lastUIAction = ref<UIActionType | null>(null)
 const isGestureCoolingDown = ref(false)
 const moduleShopRef = ref<ModuleShopRef>(null)
@@ -51,11 +71,24 @@ const calibrationSession = ref<CalibrationSessionRecord | null>(null)
 const calibrationError = ref<string | null>(null)
 const calibrationEventMessage = ref<string | null>(null)
 const calibrationProfileName = ref('default')
+const calibrationGestureDevices = ref<GestureCameraDevice[]>([])
+const calibrationCameraIndex = ref(0)
 const calibrationSelectedTargets = ref<string[]>([])
 const calibrationTargetRepetitions = ref(12)
 const isCalibrationMode = ref(false)
 const isCalibrationLoading = ref(false)
 const isCalibrationBusy = ref(false)
+const isCommandSettingsMode = ref(false)
+const isCommandSettingsLoading = ref(false)
+const isCommandSettingsSaving = ref(false)
+const commandSettingsError = ref<string | null>(null)
+const commandProfilesConfig = ref<CommandProfilesConfig | null>(null)
+const commandGestureDevices = ref<GestureCameraDevice[]>([])
+const commandVoiceDevices = ref<VoiceInputDevice[]>([])
+const commandMusicalAudioDevices = ref<MusicalAudioInputDevice[]>([])
+const musicalAudioStatus = ref<MusicalAudioStatusResponse | null>(null)
+const musicalAudioConfig = ref<MusicalAudioConfig | null>(null)
+const musicalAudioArtifacts = ref<MusicalAudioTrainingArtifact[]>([])
 let latestSaveRequest = 0
 let unsubscribeRealtime: (() => void) | null = null
 let gestureCooldownTimer: number | null = null
@@ -92,18 +125,6 @@ function syncFocus(target?: { row: number; col: number }): void {
     selectedWidgetId.value = null
     isArrangeMode.value = false
   }
-}
-
-function enterArrangeMode(widgetId: string): void {
-  const widget = activeWidgets.value[widgetId]
-  if (!widget) {
-    return
-  }
-
-  selectedWidgetId.value = widgetId
-  isArrangeMode.value = true
-  shopVisible.value = false
-  syncFocus({ row: widget.row, col: widget.col })
 }
 
 function exitArrangeMode(): void {
@@ -218,126 +239,69 @@ function addFocusedWidget(widgetType: string): void {
   void persistLayout()
 }
 
-function moveSelectedWidget(rowOffset: number, colOffset: number): void {
-  if (!selectedWidgetId.value) {
-    return
+function getInteractionState(): InteractionState {
+  return {
+    activeWidgets: activeWidgets.value,
+    focusedState: focusedState.value,
+    selectedWidgetId: selectedWidgetId.value,
+    isArrangeMode: isArrangeMode.value,
+    shopVisible: shopVisible.value,
+    isCalibrationMode: isCalibrationMode.value,
   }
-
-  const nextWidgets = moveWidgetByOffset(activeWidgets.value, selectedWidgetId.value, rowOffset, colOffset)
-  if (nextWidgets === activeWidgets.value) {
-    return
-  }
-
-  activeWidgets.value = nextWidgets
-  syncFocus()
-  void persistLayout()
 }
 
-function resizeSelectedWidget(mode: 'expand' | 'shrink'): void {
-  if (!selectedWidgetId.value) {
-    return
-  }
-
-  const nextWidgets = resizeWidget(activeWidgets.value, selectedWidgetId.value, mode)
-  if (nextWidgets === activeWidgets.value) {
-    return
-  }
-
-  activeWidgets.value = nextWidgets
-  syncFocus()
-  void persistLayout()
+function applyInteractionState(nextState: InteractionState): void {
+  activeWidgets.value = nextState.activeWidgets
+  focusedState.value = nextState.focusedState
+  selectedWidgetId.value = nextState.selectedWidgetId
+  isArrangeMode.value = nextState.isArrangeMode
+  shopVisible.value = nextState.shopVisible
 }
 
-function applyUIAction(action: UIActionType): void {
-  if (isCalibrationMode.value) {
-    return
-  }
+function applyInteractionEffects(effects: InteractionReducerEffect[]): void {
+  effects.forEach((effect) => {
+    if (effect.type === 'persist-layout') {
+      void persistLayout()
+      return
+    }
 
-  lastUIAction.value = action
+    if (!moduleShopRef.value) {
+      return
+    }
+
+    if (effect.direction === 'prev') {
+      moduleShopRef.value.prevModule()
+      return
+    }
+
+    moduleShopRef.value.nextModule()
+  })
+}
+
+function dispatchUIActionPayload(payload: UIActionRequestedPayload): void {
+  lastRawInput.value = payload.raw_input
+  lastUIAction.value = payload.action
   setLocalCooldown()
 
-  if (isArrangeMode.value && selectedWidgetId.value) {
-    if (action === 'move_focus_left') {
-      moveSelectedWidget(0, -1)
-      return
-    }
-    if (action === 'move_focus_right') {
-      moveSelectedWidget(0, 1)
-      return
-    }
-    if (action === 'move_focus_up') {
-      moveSelectedWidget(-1, 0)
-      return
-    }
-    if (action === 'move_focus_down') {
-      moveSelectedWidget(1, 0)
-      return
-    }
+  const result = reduceInteractionState(getInteractionState(), payload.action, {
+    shopCurrentWidgetType: moduleShopRef.value?.getCurrentModuleType() ?? null,
+  })
+
+  applyInteractionState(result.state)
+  if (result.error) {
+    configError.value = result.error
+  }
+  applyInteractionEffects(result.effects)
+}
+
+function formatCommandMatch(payload: CommandMatchEvaluatedPayload): string {
+  const source = payload.input_source.replace('_', ' ')
+  if (payload.outcome === 'accepted') {
+    return `${source}: ${payload.action ?? payload.raw_input}`
   }
 
-  switch (action) {
-    case 'move_focus_left':
-      focusedState.value = moveFocus(activeWidgets.value, focusedState.value, 0, -1)
-      return
-    case 'move_focus_right':
-      focusedState.value = moveFocus(activeWidgets.value, focusedState.value, 0, 1)
-      return
-    case 'move_focus_up':
-      focusedState.value = moveFocus(activeWidgets.value, focusedState.value, -1, 0)
-      return
-    case 'move_focus_down':
-      focusedState.value = moveFocus(activeWidgets.value, focusedState.value, 1, 0)
-      return
-    case 'toggle_shop':
-      if (isArrangeMode.value) {
-        exitArrangeMode()
-      } else {
-        shopVisible.value = !shopVisible.value
-      }
-      return
-    case 'primary_click':
-      if (shopVisible.value) {
-        const widgetType = moduleShopRef.value?.getCurrentModuleType()
-        if (widgetType) {
-          addFocusedWidget(widgetType)
-        }
-        return
-      }
-
-      if (focusedWidget.value) {
-        selectedWidgetId.value = focusedWidget.value.widget_id
-        focusedState.value = getFocusStateForWidget(activeWidgets.value, focusedWidget.value.widget_id)
-        return
-      }
-
-      shopVisible.value = true
-      return
-    case 'secondary_select':
-      if (isArrangeMode.value) {
-        exitArrangeMode()
-        return
-      }
-      if (focusedWidget.value) {
-        enterArrangeMode(focusedWidget.value.widget_id)
-      }
-      return
-    case 'resize_expand':
-      if (isArrangeMode.value) {
-        resizeSelectedWidget('expand')
-      }
-      return
-    case 'resize_shrink':
-      if (isArrangeMode.value) {
-        resizeSelectedWidget('shrink')
-      }
-      return
-    case 'cancel_selection':
-      exitArrangeMode()
-      shopVisible.value = false
-      return
-    case 'move_selected_widget':
-      return
-  }
+  const reason = payload.reason ? ` (${payload.reason})` : ''
+  return `${source}: ${payload.outcome}${reason}`
 }
 
 async function ensureCalibrationDefinitions(): Promise<void> {
@@ -363,12 +327,14 @@ async function ensureCalibrationDefinitions(): Promise<void> {
 }
 
 async function openCalibrationWizard(): Promise<void> {
+  isCommandSettingsMode.value = false
   shopVisible.value = false
   exitArrangeMode()
   selectedWidgetId.value = null
   calibrationEventMessage.value = null
+  calibrationError.value = null
   isCalibrationMode.value = true
-  await ensureCalibrationDefinitions()
+  await Promise.all([ensureCalibrationDefinitions(), loadCalibrationCameraContext()])
 }
 
 function closeCalibrationWizard(): void {
@@ -376,6 +342,126 @@ function closeCalibrationWizard(): void {
   calibrationEventMessage.value = null
   calibrationError.value = null
   calibrationSession.value = null
+}
+
+async function loadCommandSettings(): Promise<void> {
+  isCommandSettingsLoading.value = true
+  commandSettingsError.value = null
+
+  try {
+    const [
+      commandProfilesEnvelope,
+      musicalAudioEnvelope,
+      gestureDeviceList,
+      voiceDeviceList,
+      musicalAudioDeviceList,
+      musicalAudioRuntimeStatus,
+      musicalAudioArtifactList,
+    ] = await Promise.all([
+      apiClient.getCommandProfilesConfig(),
+      apiClient.getMusicalAudioConfig(),
+      apiClient.getGestureDevices(),
+      apiClient.getVoiceDevices(),
+      apiClient.getMusicalAudioDevices(),
+      apiClient.getMusicalAudioStatus(),
+      apiClient.listMusicalAudioArtifacts(),
+    ])
+
+    commandProfilesConfig.value = commandProfilesEnvelope.config
+    musicalAudioConfig.value = musicalAudioEnvelope.config
+    commandGestureDevices.value = gestureDeviceList.devices
+    commandVoiceDevices.value = voiceDeviceList.devices
+    commandMusicalAudioDevices.value = musicalAudioDeviceList.devices
+    musicalAudioStatus.value = musicalAudioRuntimeStatus
+    musicalAudioArtifacts.value = musicalAudioArtifactList.artifacts
+  } catch (error) {
+    commandSettingsError.value = `Command Settings konnten nicht geladen werden: ${formatApiErrorMessage(error, 'Unbekannter Fehler')}`
+  } finally {
+    isCommandSettingsLoading.value = false
+  }
+}
+
+async function openCommandSettings(): Promise<void> {
+  isCalibrationMode.value = false
+  shopVisible.value = false
+  exitArrangeMode()
+  selectedWidgetId.value = null
+  isCommandSettingsMode.value = true
+  await loadCommandSettings()
+}
+
+function closeCommandSettings(): void {
+  isCommandSettingsMode.value = false
+}
+
+async function saveCommandProfiles(nextConfig: CommandProfilesConfig): Promise<void> {
+  isCommandSettingsSaving.value = true
+  commandSettingsError.value = null
+  try {
+    const response = await apiClient.saveCommandProfilesConfig(nextConfig)
+    commandProfilesConfig.value = response.config
+  } catch (error) {
+    commandSettingsError.value = `Command-Profil konnte nicht gespeichert werden: ${formatApiErrorMessage(error, 'Unbekannter Fehler')}`
+  } finally {
+    isCommandSettingsSaving.value = false
+  }
+}
+
+async function saveMusicalAudioConfigDraft(nextConfig: MusicalAudioConfig): Promise<void> {
+  isCommandSettingsSaving.value = true
+  commandSettingsError.value = null
+  try {
+    const response = await apiClient.saveMusicalAudioConfig(nextConfig)
+    musicalAudioConfig.value = response.config
+  } catch (error) {
+    commandSettingsError.value = `Musical-Audio-Config konnte nicht gespeichert werden: ${formatApiErrorMessage(error, 'Unbekannter Fehler')}`
+  } finally {
+    isCommandSettingsSaving.value = false
+  }
+}
+
+async function saveMusicalAudioArtifact(artifact: MusicalAudioTrainingArtifact): Promise<void> {
+  isCommandSettingsSaving.value = true
+  commandSettingsError.value = null
+  try {
+    await apiClient.saveMusicalAudioArtifact(artifact)
+    const response = await apiClient.listMusicalAudioArtifacts(artifact.profile_id)
+    musicalAudioArtifacts.value = response.artifacts
+  } catch (error) {
+    commandSettingsError.value = `Musical-Audio-Artefakt konnte nicht gespeichert werden: ${formatApiErrorMessage(error, 'Unbekannter Fehler')}`
+  } finally {
+    isCommandSettingsSaving.value = false
+  }
+}
+
+async function deleteMusicalAudioArtifact(payload: { artifactId: string; profileId: string }): Promise<void> {
+  isCommandSettingsSaving.value = true
+  commandSettingsError.value = null
+  try {
+    await apiClient.deleteMusicalAudioArtifact(payload.artifactId, payload.profileId)
+    const response = await apiClient.listMusicalAudioArtifacts(payload.profileId)
+    musicalAudioArtifacts.value = response.artifacts
+  } catch (error) {
+    commandSettingsError.value = `Musical-Audio-Artefakt konnte nicht geloescht werden: ${formatApiErrorMessage(error, 'Unbekannter Fehler')}`
+  } finally {
+    isCommandSettingsSaving.value = false
+  }
+}
+
+async function startMusicalAudioRuntime(deviceIndex: number): Promise<void> {
+  try {
+    musicalAudioStatus.value = await apiClient.startMusicalAudio(deviceIndex)
+  } catch (error) {
+    commandSettingsError.value = `Musical-Audio-Runtime konnte nicht gestartet werden: ${formatApiErrorMessage(error, 'Unbekannter Fehler')}`
+  }
+}
+
+async function stopMusicalAudioRuntime(): Promise<void> {
+  try {
+    musicalAudioStatus.value = await apiClient.stopMusicalAudio()
+  } catch (error) {
+    commandSettingsError.value = `Musical-Audio-Runtime konnte nicht gestoppt werden: ${formatApiErrorMessage(error, 'Unbekannter Fehler')}`
+  }
 }
 
 async function refreshCalibrationSession(sessionId: string): Promise<void> {
@@ -397,6 +483,7 @@ async function startCalibrationSession(): Promise<void> {
     selected_targets: calibrationSelectedTargets.value,
     target_repetitions: calibrationTargetRepetitions.value,
     profile: calibrationProfileName.value.trim() || 'default',
+    camera_index: calibrationCameraIndex.value,
   }
 
   try {
@@ -406,6 +493,29 @@ async function startCalibrationSession(): Promise<void> {
     calibrationError.value = `Kalibrierung konnte nicht gestartet werden: ${formatApiErrorMessage(error, 'Unbekannter Fehler')}`
   } finally {
     isCalibrationBusy.value = false
+  }
+}
+
+async function loadCalibrationCameraContext(): Promise<void> {
+  try {
+    const [gestureStatus, gestureDeviceList] = await Promise.all([
+      apiClient.getGestureStatus(),
+      apiClient.getGestureDevices(),
+    ])
+    calibrationGestureDevices.value = gestureDeviceList.devices
+
+    if (gestureStatus.camera_index !== null) {
+      calibrationCameraIndex.value = gestureStatus.camera_index
+      return
+    }
+
+    const firstAvailableDevice = gestureDeviceList.devices.find((device) => device.available)
+    if (firstAvailableDevice) {
+      calibrationCameraIndex.value = firstAvailableDevice.index
+    }
+  } catch (error) {
+    calibrationGestureDevices.value = []
+    calibrationError.value = `Kameraliste konnte nicht geladen werden: ${formatApiErrorMessage(error, 'Unbekannter Fehler')}`
   }
 }
 
@@ -486,7 +596,7 @@ async function discardCalibrationSession(): Promise<void> {
   closeCalibrationWizard()
 }
 
-function handleRealtimeEvent(event: { eventType: string; payload: unknown }): void {
+function handleRealtimeEvent(event: RealtimeEvent): void {
   if (calibrationEventTypes.has(event.eventType)) {
     const payload = event.payload as CalibrationRealtimeEvent['payload']
     if (calibrationSession.value && payload.session_id !== calibrationSession.value.session_id) {
@@ -504,21 +614,38 @@ function handleRealtimeEvent(event: { eventType: string; payload: unknown }): vo
     return
   }
 
+  if (event.eventType === 'RawInputDetected') {
+    lastRawInput.value = event.payload.raw_input
+    return
+  }
+
+  if (event.eventType === 'CommandMatchEvaluated') {
+    lastRawInput.value = event.payload.raw_input
+    lastCommandMatch.value = formatCommandMatch(event.payload)
+    return
+  }
+
   if (event.eventType === 'GestureDetected') {
-    const payload = event.payload as GestureDetectedPayload
-    lastRawInput.value = payload.gesture
+    lastRawInput.value = event.payload.gesture
+    return
+  }
+
+  if (event.eventType === 'VoiceCommandDetected') {
+    lastRawInput.value = event.payload.raw_input
     return
   }
 
   if (event.eventType === 'UIActionRequested') {
-    const payload = event.payload as UIActionRequestedPayload
-    lastRawInput.value = payload.raw_input
-    applyUIAction(payload.action)
+    dispatchUIActionPayload(event.payload)
   }
 }
 
 function handleFocusCell(payload: { row: number; col: number }): void {
   if (isCalibrationMode.value) {
+    return
+  }
+
+  if (isCommandSettingsMode.value) {
     return
   }
 
@@ -533,6 +660,10 @@ function handleFocusWidget(payload: { widgetId: string; row: number; col: number
     return
   }
 
+  if (isCommandSettingsMode.value) {
+    return
+  }
+
   selectedWidgetId.value = payload.widgetId
   focusedState.value = createFocusState(payload.row, payload.col, activeWidgets.value)
 }
@@ -542,11 +673,19 @@ const handleAddWidget = ({ widgetType }: { widgetType: string }) => {
     return
   }
 
+  if (isCommandSettingsMode.value) {
+    return
+  }
+
   addFocusedWidget(widgetType)
 }
 
 const handleKeydown = (event: KeyboardEvent) => {
   if (isCalibrationMode.value) {
+    return
+  }
+
+  if (isCommandSettingsMode.value) {
     return
   }
 
@@ -581,7 +720,13 @@ const handleKeydown = (event: KeyboardEvent) => {
   }
 
   event.preventDefault()
-  applyUIAction(action)
+  dispatchUIActionPayload({
+    action,
+    input_source: 'keyboard',
+    raw_input: `keyboard.${event.key.toLowerCase().replace(/\s+/g, '_')}`,
+    timestamp: new Date().toISOString(),
+    metadata: { key: event.key },
+  })
 }
 
 onMounted(() => {
@@ -610,9 +755,15 @@ onBeforeUnmount(() => {
       <span v-else>{{ configError }}</span>
     </div>
 
-    <button class="calibration-launch" type="button" @click="void openCalibrationWizard()">
-      Kalibrieren
-    </button>
+    <div class="launcher-stack">
+      <button class="command-launch" type="button" @click="void openCommandSettings()">
+        Command Settings
+      </button>
+
+      <button class="calibration-launch" type="button" @click="void openCalibrationWizard()">
+        Kalibrieren
+      </button>
+    </div>
 
     <div v-if="shopVisible" class="shop-overlay" @click.self="shopVisible = false">
       <div class="shop-modal">
@@ -627,8 +778,9 @@ onBeforeUnmount(() => {
     </div>
 
     <InteractionOverlay
-      v-if="!isCalibrationMode"
+      v-if="!isCalibrationMode && !isCommandSettingsMode"
       :last-raw-input="lastRawInput"
+      :last-command-match="lastCommandMatch"
       :last-u-i-action="lastUIAction"
       :focused-label="focusedLabel"
       :is-arrange-mode="isArrangeMode"
@@ -646,10 +798,13 @@ onBeforeUnmount(() => {
       :busy="isCalibrationBusy"
       :error="calibrationError"
       :profile-name="calibrationProfileName"
+      :gesture-devices="calibrationGestureDevices"
+      :camera-index="calibrationCameraIndex"
       :selected-targets="calibrationSelectedTargets"
       :target-repetitions="calibrationTargetRepetitions"
       :last-event-message="calibrationEventMessage"
       @update:profile-name="calibrationProfileName = $event"
+      @update:camera-index="calibrationCameraIndex = $event"
       @update:selected-targets="calibrationSelectedTargets = $event"
       @update:target-repetitions="calibrationTargetRepetitions = $event"
       @start="void startCalibrationSession()"
@@ -658,6 +813,27 @@ onBeforeUnmount(() => {
       @rollback="void rollbackCalibrationSession()"
       @discard="void discardCalibrationSession()"
       @close="void discardCalibrationSession()"
+    />
+
+    <CommandSettingsPanel
+      v-if="isCommandSettingsMode"
+      :command-profiles="commandProfilesConfig"
+      :musical-audio-config="musicalAudioConfig"
+      :artifacts="musicalAudioArtifacts"
+      :gesture-devices="commandGestureDevices"
+      :voice-devices="commandVoiceDevices"
+      :musical-audio-devices="commandMusicalAudioDevices"
+      :musical-audio-status="musicalAudioStatus"
+      :loading="isCommandSettingsLoading"
+      :saving="isCommandSettingsSaving"
+      :error="commandSettingsError"
+      @close="closeCommandSettings"
+      @save-command-profiles="void saveCommandProfiles($event)"
+      @save-musical-audio-config="void saveMusicalAudioConfigDraft($event)"
+      @save-artifact="void saveMusicalAudioArtifact($event)"
+      @delete-artifact="void deleteMusicalAudioArtifact($event)"
+      @start-musical-audio="void startMusicalAudioRuntime($event)"
+      @stop-musical-audio="void stopMusicalAudioRuntime()"
     />
 
     <GridBoard
@@ -686,18 +862,34 @@ onBeforeUnmount(() => {
   box-shadow: 0 10px 25px rgba(0, 0, 0, 0.28);
 }
 
-.calibration-launch {
+.launcher-stack {
   position: fixed;
   top: 16px;
   right: 18px;
   z-index: 1110;
+  display: grid;
+  gap: 10px;
+}
+
+.command-launch,
+.calibration-launch {
   padding: 11px 16px;
   border-radius: 999px;
+  cursor: pointer;
+  font-weight: 600;
+}
+
+.command-launch {
+  border: 1px solid rgba(56, 189, 248, 0.42);
+  background: rgba(7, 89, 133, 0.88);
+  color: #e0f2fe;
+  box-shadow: 0 14px 34px rgba(7, 89, 133, 0.28);
+}
+
+.calibration-launch {
   border: 1px solid rgba(245, 158, 11, 0.42);
   background: rgba(120, 53, 15, 0.88);
   color: #fef3c7;
-  font-weight: 600;
-  cursor: pointer;
   box-shadow: 0 14px 34px rgba(120, 53, 15, 0.35);
 }
 

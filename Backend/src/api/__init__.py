@@ -1,7 +1,7 @@
 from fastapi import APIRouter
 
 from .data_endpoints import calendar_router, smart_home_router, weather_router
-from .device_endpoints import led_router, voice_router
+from .device_endpoints import led_router, musical_audio_router, voice_router
 from .system_endpoints import calibration_router, config_router, gesture_router, system_router
 
 
@@ -16,3 +16,4 @@ api_router.include_router(led_router, prefix="/led", tags=["led"])
 api_router.include_router(smart_home_router, prefix="/smart-home", tags=["smart-home"])
 api_router.include_router(system_router, prefix="/system", tags=["system"])
 api_router.include_router(voice_router, prefix="/voice", tags=["voice"])
+api_router.include_router(musical_audio_router, prefix="/musical-audio", tags=["musical-audio"])

@@ -8,14 +8,26 @@ import type {
 } from '../types/calibration'
 import type { LayoutConfig, LayoutConfigEnvelope, SystemConfig, SystemConfigEnvelope } from '../types/config'
 import type {
+  CommandProfilesConfig,
+  CommandProfilesConfigEnvelope,
+  MusicalAudioConfig,
+  MusicalAudioConfigEnvelope,
+  MusicalAudioTrainingArtifact,
+  MusicalAudioTrainingArtifactEnvelope,
+  MusicalAudioTrainingArtifactListEnvelope,
+} from '../types/commands'
+import type {
   GestureCameraListResponse,
   GestureFrameResponse,
   GestureStatusResponse,
   LEDStateResponse,
+  MusicalAudioInputDeviceListResponse,
+  MusicalAudioStatusResponse,
   SystemStatusResponse,
   VoiceInputDeviceListResponse,
   VoiceStatusResponse,
 } from '../types/hardware'
+import type { InputActionConfig, InputActionConfigEnvelope } from '../types/interactions'
 import type { WeatherCurrentResponse } from '../types/weather'
 
 type QueryValue = string | number | boolean | null | undefined
@@ -126,6 +138,60 @@ export const apiClient = {
     })
   },
 
+  getInputActionConfig(): Promise<InputActionConfigEnvelope> {
+    return requestJson<InputActionConfigEnvelope>('/config/input-actions')
+  },
+
+  saveInputActionConfig(config: InputActionConfig): Promise<InputActionConfigEnvelope> {
+    return requestJson<InputActionConfigEnvelope>('/config/input-actions', {
+      method: 'PUT',
+      body: JSON.stringify(config),
+    })
+  },
+
+  getCommandProfilesConfig(): Promise<CommandProfilesConfigEnvelope> {
+    return requestJson<CommandProfilesConfigEnvelope>('/config/command-profiles')
+  },
+
+  saveCommandProfilesConfig(config: CommandProfilesConfig): Promise<CommandProfilesConfigEnvelope> {
+    return requestJson<CommandProfilesConfigEnvelope>('/config/command-profiles', {
+      method: 'PUT',
+      body: JSON.stringify(config),
+    })
+  },
+
+  getMusicalAudioConfig(): Promise<MusicalAudioConfigEnvelope> {
+    return requestJson<MusicalAudioConfigEnvelope>('/config/musical-audio')
+  },
+
+  saveMusicalAudioConfig(config: MusicalAudioConfig): Promise<MusicalAudioConfigEnvelope> {
+    return requestJson<MusicalAudioConfigEnvelope>('/config/musical-audio', {
+      method: 'PUT',
+      body: JSON.stringify(config),
+    })
+  },
+
+  listMusicalAudioArtifacts(profile = 'default'): Promise<MusicalAudioTrainingArtifactListEnvelope> {
+    return requestJson<MusicalAudioTrainingArtifactListEnvelope>(`/config/musical-audio/artifacts${buildQuery({ profile })}`)
+  },
+
+  getMusicalAudioArtifact(artifactId: string, profile = 'default'): Promise<MusicalAudioTrainingArtifactEnvelope> {
+    return requestJson<MusicalAudioTrainingArtifactEnvelope>(`/config/musical-audio/artifacts/${artifactId}${buildQuery({ profile })}`)
+  },
+
+  saveMusicalAudioArtifact(artifact: MusicalAudioTrainingArtifact): Promise<MusicalAudioTrainingArtifactEnvelope> {
+    return requestJson<MusicalAudioTrainingArtifactEnvelope>(`/config/musical-audio/artifacts/${artifact.artifact_id}`, {
+      method: 'PUT',
+      body: JSON.stringify(artifact),
+    })
+  },
+
+  deleteMusicalAudioArtifact(artifactId: string, profile = 'default'): Promise<{ deleted: boolean; artifact_id: string; profile: string }> {
+    return requestJson<{ deleted: boolean; artifact_id: string; profile: string }>(`/config/musical-audio/artifacts/${artifactId}${buildQuery({ profile })}`, {
+      method: 'DELETE',
+    })
+  },
+
   getCurrentWeather(params?: { lat?: number; lon?: number }): Promise<WeatherCurrentResponse> {
     return requestJson<WeatherCurrentResponse>(`/weather/current${buildQuery(params ?? {})}`)
   },
@@ -233,6 +299,27 @@ export const apiClient = {
 
   stopVoice(): Promise<VoiceStatusResponse> {
     return requestJson<VoiceStatusResponse>('/voice/stop', {
+      method: 'POST',
+    })
+  },
+
+  getMusicalAudioStatus(): Promise<MusicalAudioStatusResponse> {
+    return requestJson<MusicalAudioStatusResponse>('/musical-audio/status')
+  },
+
+  getMusicalAudioDevices(): Promise<MusicalAudioInputDeviceListResponse> {
+    return requestJson<MusicalAudioInputDeviceListResponse>('/musical-audio/devices')
+  },
+
+  startMusicalAudio(deviceIndex = -1): Promise<MusicalAudioStatusResponse> {
+    return requestJson<MusicalAudioStatusResponse>('/musical-audio/start', {
+      method: 'POST',
+      body: JSON.stringify({ device_index: deviceIndex }),
+    })
+  },
+
+  stopMusicalAudio(): Promise<MusicalAudioStatusResponse> {
+    return requestJson<MusicalAudioStatusResponse>('/musical-audio/stop', {
       method: 'POST',
     })
   },

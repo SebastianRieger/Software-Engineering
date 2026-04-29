@@ -15,6 +15,7 @@ from core.realtime import realtime_hub
 from services.calibration import calibration_service
 from services.gestures import gesture_service
 from services.led import led_service
+from services.musical_audio import musical_audio_service
 from services.voice import voice_service
 
 
@@ -29,12 +30,14 @@ async def lifespan(app: FastAPI):
     realtime_hub.bind_loop(asyncio.get_running_loop())
     calibration_service.startup()
     led_service.startup()
+    musical_audio_service.startup()
     voice_service.startup()
     logger.info("Nimrag backend started")
     yield
     calibration_service.shutdown()
     gesture_service.shutdown()
     led_service.shutdown()
+    musical_audio_service.shutdown()
     voice_service.shutdown()
     logger.info("Nimrag backend stopped")
 

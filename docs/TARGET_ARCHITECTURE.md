@@ -88,6 +88,7 @@ flowchart LR
 
 - REST bleibt der Standard fuer Lesen, Schreiben und Konfiguration
 - WebSocket pusht nur relevante Statusaenderungen
+- modality-spezifische Detectoren publizieren rohe Inputs in eine gemeinsame Input-Orchestrierung, die semantische UI-Aktionen erzeugt
 - Wetter und Kalender laufen ueber Repositories mit Timeout, Retry und Cache
 - optionale Features wie Gesten haengen sich als Adapter und fachliche Events an den gemeinsamen Backend-Kanal
 - FastAPI-Lifespan initialisiert optionale Hintergrundjobs sauber
@@ -102,12 +103,16 @@ flowchart LR
 - Gestenparameter sollen als persistierbare Backend-Konfiguration gepflegt werden und nicht nur als starre ENV-Werte existieren
 - Gestenereignisse und Statusantworten sollen neben dem Gestentyp auch Confidence und Tracking-Herkunft transportieren koennen
 - Laufzeitfehler der Kamera- oder Adapterpfade muessen im Statusmodell sichtbar bleiben und bei transienten Lesefehlern kontrolliert abgefangen werden
+- semantische UI-Aktionsauflosung soll nicht in einem modality-spezifischen Runtime-Service verankert bleiben, sondern ueber eine gemeinsame Input-Orchestrierung fuer Gesten, Voice und spaetere weitere Quellen laufen
 
 ### Konfigurationsdomänen
 
 - `layout` bleibt profilspezifisch und beschreibt Widget-Typ, Position und widgetbezogene Settings
 - `system` beschreibt allgemeine Systemeinstellungen wie Ort, Koordinaten, Einheiten, Theme und Refresh-Intervall
-- beide Domaenen nutzen denselben Router unter `/api/v1/config`, aber getrennte Schemas und getrennte Persistenzkeys
+- `input-actions` beschreibt modality-generic die Abbildung von normalisierten Raw-Inputs aus Gesture, Voice, Musical Audio, Dev oder Keyboard auf semantische UI-Aktionen
+- `command-profiles` beschreibt das aktive multimodale Steuerungsprofil mit Enablement, Device-Praeferenzen, Arbitration-Policy und aktivem Training-Artefakt
+- `musical-audio` beschreibt Runtime-Parameter fuer den melodischen Audio-Pfad; separate Artefakt-Keys halten kompakte Few-Shot-Templates und Trainingsmetadaten
+- alle Domaenen nutzen denselben Router unter `/api/v1/config`, aber getrennte Schemas und getrennte Persistenzkeys
 
 ## Geplante Featureerweiterungen
 
@@ -128,6 +133,19 @@ flowchart LR
 - das heutige Hardware-Widget wird zum kleinen Kontrollzentrum fuer Gesture-, LED-, Voice- und Systemstatus
 - Realtime-Events sollen dort gezielt aggregiert werden, statt unkoordiniert auf viele Widgets verteilt zu werden
 - echte GPIO- oder Device-Adapter koennen spaeter denselben sichtbaren UI-Vertrag weiter bedienen
+
+### Multimodale Input-Steuerung
+
+- rohe modality-spezifische Events wie `GestureDetected` und `VoiceCommandDetected` bleiben fuer Debugging, Telemetrie und Diagnose sichtbar
+- ein gemeinsamer `RawInputDetected`-Vertrag transportiert normalisierte Eingaben modality-generic
+- ein gemeinsamer Input-Orchestrator im Backend wendet Mappings, Policies und spaetere Arbitration-Regeln an, publiziert `CommandMatchEvaluated` fuer akzeptierte, unterdrueckte oder deaktivierte Matches und erst danach `UIActionRequested`
+- das Frontend konsumiert semantische Aktionen ueber einen lokalen Interaction-Reducer, der Kontext wie Shop, ArrangeMode und Kalibrierungsmodus aufloest
+
+### Command-Settings und Training
+
+- modality-weite Geraeteauswahl gehoert dem aktiven Command-Profil und nicht einzelnen Widgets
+- der Hardware-Slice darf diese Auswahl sichtbar machen und Runtimes starten oder stoppen, aber nicht mehr selbst persistent besitzen
+- Musical-Audio-Training bleibt ein eigener Flow neben der Kalibrierung: mehrere Takes aufnehmen, Konturen visualisieren, Beispiele akzeptieren oder verwerfen und daraus ein kompaktes Template ableiten
 
 ### Qualitaets- und Betriebs-Slice
 
@@ -164,7 +182,7 @@ SQLite ist fuer die naechsten Projektphasen ausreichend und sinnvoll:
 
 Eine schlanke Event-Strategie ist sinnvoll, aber nur intern:
 
-- interne Python-Events oder einfache Service-Callbacks fuer lose Kopplung
+- interne Orchestrierungs- und Service-Grenzen fuer lose Kopplung, ohne externen Broker
 - WebSocket fuer UI-Push
 - MQTT nur fuer echte Geraete- und Smart-Home-Kommunikation
 

@@ -13,7 +13,6 @@ const {
   changeBrightness,
   effectiveSettings,
   error,
-  gestureDevices,
   gesturePreview,
   gestureStatus,
   isPreviewMode,
@@ -21,15 +20,14 @@ const {
   ledStatus,
   loadStatuses,
   loading,
-  selectGestureCamera,
-  selectVoiceDevice,
+  preferredGestureDeviceLabel,
+  preferredVoiceDeviceLabel,
   startGestures,
   startVoice,
   stopGestures,
   stopVoice,
   systemStatus,
   updateSettings,
-  voiceDevices,
   voiceStatus,
 } = useHardwareWidget(props)
 </script>
@@ -83,15 +81,7 @@ const {
 
       <div class="control-block">
         <div class="control-row">
-          <label class="device-select-group">
-            <span>Kamera</span>
-            <select class="device-select" :value="effectiveSettings.gestureCameraIndex" @change="selectGestureCamera">
-              <option v-if="gestureDevices.length === 0" :value="effectiveSettings.gestureCameraIndex">Keine Kamera gefunden</option>
-              <option v-for="device in gestureDevices" :key="device.index" :value="device.index">
-                {{ device.name }} · #{{ device.index }}
-              </option>
-            </select>
-          </label>
+          <span class="device-summary">Kamera aus Command-Profil: {{ preferredGestureDeviceLabel }}</span>
           <button class="action-btn" @click="startGestures">Gesten starten</button>
           <button class="action-btn" @click="stopGestures">Gesten stoppen</button>
           <button class="secondary-btn" @click="updateSettings({ autoRefresh: !effectiveSettings.autoRefresh })">
@@ -103,16 +93,7 @@ const {
         </div>
 
         <div class="control-row">
-          <label class="device-select-group">
-            <span>Mikrofon</span>
-            <select class="device-select" :value="effectiveSettings.voiceDeviceIndex" @change="selectVoiceDevice">
-              <option value="-1">Systemstandard</option>
-              <option v-if="voiceDevices.length === 0" :value="effectiveSettings.voiceDeviceIndex">Keine Eingabegeraete gefunden</option>
-              <option v-for="device in voiceDevices" :key="device.index" :value="device.index">
-                {{ device.name }} · #{{ device.index }}
-              </option>
-            </select>
-          </label>
+          <span class="device-summary">Mikrofon aus Command-Profil: {{ preferredVoiceDeviceLabel }}</span>
           <button class="action-btn" @click="startVoice">Voice starten</button>
           <button class="action-btn" @click="stopVoice">Voice stoppen</button>
           <button
@@ -217,6 +198,11 @@ const {
   display: flex;
   align-items: center;
   gap: 8px;
+}
+
+.device-summary {
+  font-size: 0.85rem;
+  opacity: 0.82;
 }
 
 .device-select {

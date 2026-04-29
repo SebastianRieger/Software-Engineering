@@ -139,6 +139,12 @@ class FlakyAdapter(SequenceAdapter):
         return super().read()
 
 
+class ResolvedIndexAdapter(SequenceAdapter):
+    def open(self, camera_index: int):
+        super().open(camera_index)
+        self.camera_index = camera_index + 1
+
+
 class TimedObservationAdapter(SequenceAdapter):
     def __init__(self, observations=None, event_after=None):
         super().__init__(observations=observations)
@@ -282,7 +288,7 @@ def test_detect_swipe_right():
         circle_sweep_min=settings.GESTURE_CIRCLE_SWEEP_MIN,
         circle_cv_max=settings.GESTURE_CIRCLE_RADIUS_CV_MAX,
     )
-    assert gesture == "swipe_right"
+    assert gesture == "swipe_left"
 
 
 def test_detect_swipe_left():
@@ -300,7 +306,7 @@ def test_detect_swipe_left():
         circle_sweep_min=settings.GESTURE_CIRCLE_SWEEP_MIN,
         circle_cv_max=settings.GESTURE_CIRCLE_RADIUS_CV_MAX,
     )
-    assert gesture == "swipe_left"
+    assert gesture == "swipe_right"
 
 
 def test_detect_swipe_down():
@@ -354,6 +360,46 @@ def test_detect_circle():
         circle_cv_max=settings.GESTURE_CIRCLE_RADIUS_CV_MAX,
     )
     assert gesture == "circle"
+
+
+def test_detect_circle_rejects_narrow_vertical_return_motion():
+    gesture = detect_gesture_from_trajectory(
+        trajectory=[
+            (0.50, 0.18),
+            (0.50, 0.30),
+            (0.51, 0.44),
+            (0.50, 0.58),
+            (0.50, 0.44),
+            (0.50, 0.29),
+        ],
+        swipe_threshold=settings.GESTURE_SWIPE_THRESHOLD,
+        down_threshold=settings.GESTURE_DOWN_THRESHOLD,
+        circle_sweep_min=settings.GESTURE_CIRCLE_SWEEP_MIN,
+        circle_cv_max=settings.GESTURE_CIRCLE_RADIUS_CV_MAX,
+        up_threshold=settings.GESTURE_UP_THRESHOLD,
+    )
+
+    assert gesture is None
+
+
+def test_detect_swipe_up_rejects_wide_off_axis_motion():
+    gesture = detect_gesture_from_trajectory(
+        trajectory=[
+            (0.54, 0.70),
+            (0.58, 0.66),
+            (0.62, 0.60),
+            (0.60, 0.55),
+            (0.57, 0.49),
+            (0.52, 0.45),
+        ],
+        swipe_threshold=settings.GESTURE_SWIPE_THRESHOLD,
+        down_threshold=settings.GESTURE_DOWN_THRESHOLD,
+        circle_sweep_min=settings.GESTURE_CIRCLE_SWEEP_MIN,
+        circle_cv_max=settings.GESTURE_CIRCLE_RADIUS_CV_MAX,
+        up_threshold=settings.GESTURE_UP_THRESHOLD,
+    )
+
+    assert gesture is None
 
 
 def test_detect_short_trajectory_returns_none():
@@ -412,7 +458,7 @@ def test_detect_gesture_candidates_prefers_strong_horizontal_swipe():
     best = select_best_gesture_candidate(candidates, min_confidence=0.0)
 
     assert best is not None
-    assert best.gesture == "swipe_right"
+    assert best.gesture == "swipe_left"
     assert best.confidence > 0.9
 
 
@@ -438,7 +484,7 @@ def test_detect_gesture_with_confidence_returns_metadata():
     )
 
     assert detection is not None
-    assert detection.gesture == "swipe_right"
+    assert detection.gesture == "swipe_left"
     assert detection.confidence > 0.9
     assert detection.tracking_source == "palm_center"
 
@@ -473,7 +519,7 @@ def test_hand_size_normalization_recovers_small_far_hand_swipe():
     )
 
     assert detection is not None
-    assert detection.gesture == "swipe_right"
+    assert detection.gesture == "swipe_left"
 
 
 def test_small_far_hand_swipe_without_hand_size_normalization_is_rejected():
@@ -554,6 +600,42 @@ def test_start_and_stop_session():
     assert adapter.closed is True
 
 
+def test_service_uses_adapter_resolved_camera_index_on_start():
+    service = GestureService(
+        adapter_factory=lambda: ResolvedIndexAdapter(observations=[GestureObservation(point=None)]),
+        realtime=CapturingRealtimeHub(),
+        config_repository_factory=lambda: StaticGestureConfigRepository(),
+    )
+
+    started = service.start(camera_index=2)
+
+    assert started["camera_index"] == 3
+    service.stop()
+
+
+def test_service_uses_command_profile_camera_preference_when_no_runtime_preference_exists():
+    class CommandProfileGestureRepository(StaticGestureConfigRepository):
+        def get_active_command_profile(self):
+            return type(
+                "CommandProfileStub",
+                (),
+                {
+                    "device_preferences": type(
+                        "PreferencesStub",
+                        (),
+                        {"gesture_camera_index": 5},
+                    )(),
+                },
+            )()
+
+    service = GestureService(
+        realtime=CapturingRealtimeHub(),
+        config_repository_factory=lambda: CommandProfileGestureRepository(),
+    )
+
+    assert service.get_preferred_camera_index() == 5
+
+
 def test_unavailable_adapter_raises_service_error():
     service = GestureService(
         adapter_factory=lambda: SequenceAdapter(available=False),
@@ -603,7 +685,7 @@ def test_service_retries_transient_adapter_failure_and_recovers():
     service.stop()
 
     assert adapter.failures_seen == 1
-    assert hub.messages[0]["payload"]["gesture"] == "swipe_right"
+    assert hub.messages[0]["payload"]["gesture"] == "swipe_left"
 
 
 def test_stop_sets_error_when_thread_does_not_finish_in_time():
@@ -678,7 +760,7 @@ def test_reload_config_safe_during_detection():
     status = service.get_status()
     service.stop()
 
-    assert status["last_gesture"] == "swipe_right"
+    assert status["last_gesture"] == "swipe_left"
 
 
 def test_service_instances_keep_separate_configs():
@@ -721,7 +803,7 @@ def test_service_detects_and_exposes_confidence_metadata():
     status = service.get_status()
     service.stop()
 
-    assert status["last_gesture"] == "swipe_right"
+    assert status["last_gesture"] == "swipe_left"
     assert status["last_confidence"] is not None
     assert status["last_confidence"] > 0.9
     assert status["last_tracking_source"] == "palm_center"
@@ -759,7 +841,7 @@ def test_cooldown_prevents_spam_and_emits_event():
     assert len(action_messages) == 1
     assert gesture_messages[0]["payload"]["confidence"] is not None
     assert gesture_messages[0]["payload"]["tracking_source"] == "palm_center"
-    assert action_messages[0]["payload"]["action"] == "move_focus_right"
+    assert action_messages[0]["payload"]["action"] == "move_focus_left"
     assert service.get_frame() is not None
 
 
@@ -778,8 +860,8 @@ def test_service_publishes_ui_action_requested_event_for_swipe():
             mappings=[
                 InputActionMapping(
                     input_source="gesture",
-                    raw_input="swipe_right",
-                    action="move_focus_right",
+                    raw_input="swipe_left",
+                    action="move_focus_left",
                 )
             ]
         )
@@ -795,8 +877,8 @@ def test_service_publishes_ui_action_requested_event_for_swipe():
     service.stop()
 
     action_message = filter_messages(hub.messages, "UIActionRequested")[0]
-    assert action_message["payload"]["raw_input"] == "swipe_right"
-    assert action_message["payload"]["action"] == "move_focus_right"
+    assert action_message["payload"]["raw_input"] == "swipe_left"
+    assert action_message["payload"]["action"] == "move_focus_left"
 
 
 def test_service_gates_ui_actions_while_calibration_is_active():
@@ -823,7 +905,7 @@ def test_service_gates_ui_actions_while_calibration_is_active():
 
     assert filter_messages(hub.messages, "UIActionRequested") == []
     assert len(calibration_runtime.samples) == 1
-    assert calibration_runtime.samples[0].target_id == "swipe_right"
+    assert calibration_runtime.samples[0].target_id == "swipe_left"
 
 
 def test_service_detects_short_push_click():
@@ -872,6 +954,49 @@ def test_service_detects_long_push_click():
     assert action_message["payload"]["action"] == "secondary_select"
 
 
+def test_service_detects_long_push_click_when_release_crosses_threshold():
+    hub = CapturingRealtimeHub()
+    observations = [
+        make_push_observation(index_tip_depth=-0.15, captured_at=0.00),
+        make_push_observation(index_tip_depth=-0.15, captured_at=0.46),
+        make_push_observation(index_tip_depth=-0.01, captured_at=0.56),
+    ]
+    service = GestureService(
+        adapter_factory=lambda: SequenceAdapter(observations=observations),
+        realtime=hub,
+        config_repository_factory=lambda: StaticGestureConfigRepository(),
+    )
+
+    service.start()
+    assert wait_until(lambda: len(filter_messages(hub.messages, "GestureDetected")) >= 1)
+    service.stop()
+
+    gesture_message = filter_messages(hub.messages, "GestureDetected")[0]
+    assert gesture_message["payload"]["gesture"] == "push_click_long"
+
+
+def test_service_detects_long_push_click_despite_brief_tracking_gap():
+    hub = CapturingRealtimeHub()
+    observations = [
+        make_push_observation(index_tip_depth=-0.15, captured_at=0.00),
+        make_push_observation(index_tip_depth=-0.16, captured_at=0.24),
+        GestureObservation(point=None, captured_at=0.36),
+        make_push_observation(index_tip_depth=-0.15, captured_at=0.58),
+    ]
+    service = GestureService(
+        adapter_factory=lambda: SequenceAdapter(observations=observations),
+        realtime=hub,
+        config_repository_factory=lambda: StaticGestureConfigRepository(),
+    )
+
+    service.start()
+    assert wait_until(lambda: len(filter_messages(hub.messages, "GestureDetected")) >= 1)
+    service.stop()
+
+    gesture_message = filter_messages(hub.messages, "GestureDetected")[0]
+    assert gesture_message["payload"]["gesture"] == "push_click_long"
+
+
 def test_service_detects_zoom_out_hands():
     hub = CapturingRealtimeHub()
     observations = [
@@ -918,6 +1043,166 @@ def test_service_detects_zoom_in_hands():
     action_message = filter_messages(hub.messages, "UIActionRequested")[0]
     assert gesture_message["payload"]["gesture"] == "zoom_in_hands"
     assert action_message["payload"]["action"] == "resize_shrink"
+
+
+def test_service_prefers_recent_runtime_motion_window_for_swipes():
+    service = GestureService(
+        config_repository_factory=lambda: StaticGestureConfigRepository(),
+        realtime=CapturingRealtimeHub(),
+    )
+    service.reload_config()
+
+    trajectory = [
+        (0.5, 0.82),
+        (0.5, 0.74),
+        (0.5, 0.66),
+        (0.5, 0.58),
+        (0.72, 0.5),
+        (0.64, 0.5),
+        (0.56, 0.5),
+        (0.48, 0.5),
+        (0.40, 0.5),
+        (0.28, 0.5),
+    ]
+    timestamps = [0.00, 0.10, 0.20, 0.30, 0.72, 0.80, 0.88, 0.96, 1.04, 1.12]
+
+    detection = service._detect_runtime_gesture(
+        observation=GestureObservation(point=trajectory[-1], tracking_source="palm_center"),
+        observed_at=timestamps[-1],
+        trajectory=trajectory,
+        trajectory_timestamps=timestamps,
+        hand_size=0.16,
+    )
+
+    assert detection is not None
+    assert detection.gesture == "swipe_right"
+
+
+def test_service_rejects_upward_centering_motion_before_true_swipe_up():
+    service = GestureService(
+        config_repository_factory=lambda: StaticGestureConfigRepository(),
+        realtime=CapturingRealtimeHub(),
+    )
+    service.reload_config()
+
+    trajectory = [
+        (0.50, 0.78),
+        (0.50, 0.71),
+        (0.50, 0.64),
+        (0.50, 0.58),
+        (0.50, 0.53),
+        (0.50, 0.47),
+    ]
+    timestamps = [0.00, 0.10, 0.20, 0.30, 0.40, 0.50]
+
+    detection = service._detect_runtime_gesture(
+        observation=GestureObservation(point=trajectory[-1], tracking_source="palm_center"),
+        observed_at=timestamps[-1],
+        trajectory=trajectory,
+        trajectory_timestamps=timestamps,
+        hand_size=0.16,
+    )
+
+    assert detection is None
+
+
+def test_service_global_cooldown_blocks_immediate_followup_gesture():
+    service = GestureService(
+        config_repository_factory=lambda: StaticGestureConfigRepository(),
+        realtime=CapturingRealtimeHub(),
+    )
+    service.reload_config()
+
+    assert service._cooldown_elapsed("swipe_up") is True
+    assert service._cooldown_elapsed("swipe_down") is False
+
+
+def test_service_suppresses_swipe_when_click_pose_is_staging():
+    service = GestureService(
+        config_repository_factory=lambda: StaticGestureConfigRepository(),
+        realtime=CapturingRealtimeHub(),
+    )
+    service.reload_config()
+
+    trajectory = [
+        (0.50, 0.72),
+        (0.50, 0.66),
+        (0.50, 0.60),
+        (0.50, 0.54),
+        (0.50, 0.48),
+        (0.50, 0.43),
+    ]
+    timestamps = [0.00, 0.08, 0.16, 0.24, 0.32, 0.40]
+
+    detection = service._detect_runtime_gesture(
+        observation=make_push_observation(index_tip_depth=-0.01, captured_at=timestamps[-1]),
+        observed_at=timestamps[-1],
+        trajectory=trajectory,
+        trajectory_timestamps=timestamps,
+        hand_size=0.16,
+    )
+
+    assert detection is None
+
+
+def test_service_detects_swipe_down_from_recent_upper_turning_point():
+    service = GestureService(
+        config_repository_factory=lambda: StaticGestureConfigRepository(),
+        realtime=CapturingRealtimeHub(),
+    )
+    service.reload_config()
+
+    trajectory = [
+        (0.50, 0.64),
+        (0.50, 0.54),
+        (0.50, 0.44),
+        (0.50, 0.34),
+        (0.50, 0.42),
+        (0.50, 0.52),
+        (0.50, 0.63),
+    ]
+    timestamps = [0.00, 0.12, 0.24, 0.36, 0.48, 0.60, 0.72]
+
+    detection = service._detect_runtime_gesture(
+        observation=GestureObservation(point=trajectory[-1], tracking_source="palm_center"),
+        observed_at=timestamps[-1],
+        trajectory=trajectory,
+        trajectory_timestamps=timestamps,
+        hand_size=0.16,
+    )
+
+    assert detection is not None
+    assert detection.gesture == "swipe_down"
+
+
+def test_service_holds_swipe_when_recent_window_already_looks_circular():
+    service = GestureService(
+        config_repository_factory=lambda: StaticGestureConfigRepository(),
+        realtime=CapturingRealtimeHub(),
+    )
+    service.reload_config()
+
+    trajectory = [
+        (0.56, 0.74),
+        (0.60, 0.63),
+        (0.61, 0.53),
+        (0.58, 0.44),
+        (0.51, 0.41),
+        (0.43, 0.46),
+        (0.40, 0.53),
+    ]
+    timestamps = [0.00, 0.12, 0.24, 0.36, 0.48, 0.60, 0.72]
+
+    detection = service._detect_runtime_gesture(
+        observation=GestureObservation(point=trajectory[-1], tracking_source="palm_center"),
+        observed_at=timestamps[-1],
+        trajectory=trajectory,
+        trajectory_timestamps=timestamps,
+        hand_size=0.16,
+    )
+
+    assert detection is not None
+    assert detection.gesture == "circle"
 
 
 @pytest.mark.asyncio

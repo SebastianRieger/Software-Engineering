@@ -12,6 +12,7 @@ from core.config import settings
 from core.realtime import RealtimeHub, realtime_hub
 from repositories.config import ConfigRepository
 from schemas.voice import VoiceConfig
+from services.interactions import InputOrchestrator
 
 try:
     import sounddevice as sd
@@ -40,9 +41,14 @@ class VoiceService:
         self,
         realtime: RealtimeHub | None = None,
         config_repository_factory: type[ConfigRepository] | None = None,
+        input_orchestrator_service: InputOrchestrator | None = None,
     ) -> None:
         self.realtime = realtime or realtime_hub
         self.config_repository_factory = config_repository_factory or ConfigRepository
+        self.input_orchestrator = input_orchestrator_service or InputOrchestrator(
+            realtime=self.realtime,
+            config_repository_factory=self.config_repository_factory,
+        )
         self._lock = threading.RLock()
         self._stop_event = threading.Event()
         self._thread: threading.Thread | None = None
@@ -76,6 +82,8 @@ class VoiceService:
         except (OSError, TypeError, ValueError) as exc:
             logger.warning("Could not reload voice config, using defaults: %s", exc)
             config = VoiceConfig()
+
+        self.input_orchestrator.reload_config()
 
         with self._lock:
             self._active_config = config
@@ -158,7 +166,7 @@ class VoiceService:
 
         return result
 
-    def start(self, device_index: int = 0) -> dict[str, object]:
+    def start(self, device_index: int = -1) -> dict[str, object]:
         config = self.reload_config()
 
         with self._lock:
@@ -345,6 +353,8 @@ class VoiceService:
         if command is None:
             return
 
+        raw_input = self._normalize_command_identifier(command)
+
         now = time.monotonic()
         timestamp = datetime.now(timezone.utc)
         with self._lock:
@@ -362,6 +372,7 @@ class VoiceService:
             "eventType": "VoiceCommandDetected",
             "payload": {
                 "command": command,
+                "raw_input": raw_input,
                 "timestamp": timestamp.isoformat(),
                 "source": "microphone",
                 "transcript": transcript,
@@ -370,6 +381,24 @@ class VoiceService:
             },
         }
         self.realtime.publish_from_thread(event)
+        metadata = {
+            "command": command,
+            "transcript": transcript,
+            "partial": partial,
+            "device_index": device_index,
+        }
+        self.input_orchestrator.publish_raw_input_detected(
+            input_source="voice",
+            raw_input=raw_input,
+            timestamp=timestamp,
+            metadata=metadata,
+        )
+        self.input_orchestrator.publish_ui_action_requested(
+            input_source="voice",
+            raw_input=raw_input,
+            timestamp=timestamp,
+            metadata=metadata,
+        )
 
     def _match_command(self, transcript: str) -> str | None:
         normalized_transcript = self._normalize_text(transcript)
@@ -482,6 +511,13 @@ class VoiceService:
         )
         normalized = re.sub(r"[^a-z0-9\s]", " ", normalized)
         return " ".join(normalized.split())
+
+    @classmethod
+    def _normalize_command_identifier(cls, command: str) -> str:
+        normalized_command = cls._normalize_text(command)
+        if not normalized_command:
+            return "voice.unknown"
+        return f"voice.{normalized_command.replace(' ', '_')}"
 
 
 voice_service = VoiceService()

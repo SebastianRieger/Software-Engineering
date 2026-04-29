@@ -87,6 +87,39 @@ export interface VoiceInputDeviceListResponse {
   devices: VoiceInputDevice[]
 }
 
+export interface MusicalAudioStatusResponse {
+  message: string
+  available: boolean
+  enabled: boolean
+  running: boolean
+  mode: 'unavailable' | 'direct-mic'
+  provider: string | null
+  device_index: number | null
+  device_name: string | null
+  sample_rate: number | null
+  block_size: number | null
+  queue_max_chunks: number | null
+  active_artifact_id: string | null
+  artifacts_loaded: number
+  last_pitch_hz: number | null
+  last_match: string | null
+  last_match_score: number | null
+  last_event_at: string | null
+  last_error: string | null
+}
+
+export interface MusicalAudioInputDevice {
+  index: number
+  name: string
+  max_input_channels: number
+  default_samplerate: number | null
+  is_default: boolean
+}
+
+export interface MusicalAudioInputDeviceListResponse {
+  devices: MusicalAudioInputDevice[]
+}
+
 export interface RealtimeEvent<TPayload = Record<string, unknown>> {
   eventType: string
   payload: TPayload

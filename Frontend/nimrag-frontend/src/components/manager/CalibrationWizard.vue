@@ -6,6 +6,7 @@ import type {
   CalibrationSessionRecord,
   CalibrationTargetAnalysis,
 } from '../../types/calibration'
+import type { GestureCameraDevice } from '../../types/hardware'
 
 const props = defineProps<{
   definitions: CalibrationDefinitionsResponse | null
@@ -14,6 +15,8 @@ const props = defineProps<{
   busy: boolean
   error: string | null
   profileName: string
+  gestureDevices: GestureCameraDevice[]
+  cameraIndex: number
   selectedTargets: string[]
   targetRepetitions: number
   lastEventMessage: string | null
@@ -21,6 +24,7 @@ const props = defineProps<{
 
 const emit = defineEmits<{
   (event: 'update:profileName', value: string): void
+  (event: 'update:cameraIndex', value: number): void
   (event: 'update:selectedTargets', value: string[]): void
   (event: 'update:targetRepetitions', value: number): void
   (event: 'start'): void
@@ -58,6 +62,10 @@ function clearTargets(): void {
 
 function updateProfileName(event: Event): void {
   emit('update:profileName', (event.target as HTMLInputElement).value)
+}
+
+function updateCameraIndex(event: Event): void {
+  emit('update:cameraIndex', Number((event.target as HTMLSelectElement).value))
 }
 
 function updateTargetRepetitions(event: Event): void {
@@ -120,6 +128,14 @@ function recommendationKey(analysis: CalibrationTargetAnalysis, parameter: strin
           <section class="wizard-card">
             <label class="field-label" for="profile-name">Profilname</label>
             <input id="profile-name" class="field-input" :value="profileName" @input="updateProfileName" />
+
+            <label class="field-label" for="camera-index">Kamera</label>
+            <select id="camera-index" class="field-input" :value="cameraIndex" @change="updateCameraIndex">
+              <option v-if="gestureDevices.length === 0" :value="cameraIndex">Keine Kamera gefunden</option>
+              <option v-for="device in gestureDevices" :key="device.index" :value="device.index">
+                {{ device.name }}
+              </option>
+            </select>
 
             <label class="field-label" for="target-repetitions">Wiederholungen pro Geste</label>
             <input id="target-repetitions" class="field-input" type="number" min="10" max="20" :value="targetRepetitions" @input="updateTargetRepetitions" />

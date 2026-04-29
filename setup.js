@@ -73,6 +73,18 @@ class SmartMirrorSetup {
         });
     }
 
+    shellEnvPrefix(env) {
+        if (this.isWindows) {
+            return Object.entries(env)
+                .map(([key, value]) => `set ${key}=${value}&&`)
+                .join(' ');
+        }
+
+        return Object.entries(env)
+            .map(([key, value]) => `${key}='${String(value).replace(/'/g, `'\\''`)}'`)
+            .join(' ');
+    }
+
     async checkCommand(command) {
         return new Promise((resolve) => {
             exec(`${command} --version`, (error) => {
@@ -148,9 +160,44 @@ class SmartMirrorSetup {
             throw new Error('Backend/requirements.txt wurde nicht gefunden.');
         }
 
+        await this.ensureAubioBuildPrerequisites();
+
+        this.log('Installiere aubio-Build-Basis fuer Python 3.12...');
+        await this.execCommand(`"${this.backendPipPath()}" install "numpy>=1.26.1,<2" wheel setuptools`, this.backendPath);
+
+        this.log('Baue aubio im Backend-Venv mit kompatiblen GCC-Flags...');
+        const aubioBuildEnv = this.shellEnvPrefix({
+            CFLAGS: '-Wno-error=incompatible-pointer-types -Wno-incompatible-pointer-types'
+        });
+        const aubioCommand = `${aubioBuildEnv} "${this.backendPipPath()}" install --no-build-isolation "aubio>=0.4.9"`;
+        await this.execCommand(aubioCommand, this.backendPath);
+
         this.log('Installiere Backend-Abhaengigkeiten aus requirements.txt...');
         await this.execCommand(`"${this.backendPipPath()}" install -r requirements.txt`, this.backendPath);
         this.success('Backend-Abhaengigkeiten sind aktuell');
+    }
+
+    async ensureAubioBuildPrerequisites() {
+        if (this.isWindows) {
+            this.warning('aubio wird auf Windows nicht automatisch mit nativen Systempaketen vorbereitet. Fuer den produktiven Musical-Audio-Pfad Linux/Fedora verwenden.');
+            return;
+        }
+
+        const pythonInclude = await this.captureCommand(`"${this.backendPythonPath()}" -c "import sysconfig; print(sysconfig.get_config_var('INCLUDEPY'))"`, this.backendPath);
+        const pythonHeader = path.join(pythonInclude, 'Python.h');
+        if (!fs.existsSync(pythonHeader)) {
+            throw new Error(
+                `Python-Header fuer das Backend-Venv fehlen: ${pythonHeader}\n` +
+                'Auf Fedora installieren mit: sudo dnf install -y python3.12-devel aubio-devel aubio-lib'
+            );
+        }
+
+        if (!(await this.commandSucceeds('pkg-config --modversion aubio', this.backendPath))) {
+            throw new Error(
+                'Native aubio-Entwicklungsdateien fehlen oder pkg-config findet aubio.pc nicht.\n' +
+                'Auf Fedora installieren mit: sudo dnf install -y python3.12-devel aubio-devel aubio-lib'
+            );
+        }
     }
 
     async installFrontendDependencies() {

@@ -92,6 +92,7 @@ export interface CalibrationSessionCreateRequest {
   selected_targets: string[]
   target_repetitions: number
   profile: string
+  camera_index?: number
 }
 
 export interface CalibrationSessionResponse {

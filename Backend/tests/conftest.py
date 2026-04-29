@@ -10,7 +10,7 @@ if src_path not in sys.path:
     sys.path.append(src_path)
 
 from api.data_endpoints import get_weather_service
-from api.device_endpoints import get_led_service, get_voice_service
+from api.device_endpoints import get_led_service, get_musical_audio_service, get_voice_service
 from api.system_endpoints import get_calibration_service, get_config_repository, get_gesture_service
 from core.config import settings
 from core.database import init_db
@@ -19,6 +19,7 @@ from repositories.config import ConfigRepository
 from repositories.weather import WeatherRepositoryError
 from services.calibration import CalibrationService
 from services.gestures import GestureServiceError
+from services.musical_audio import MusicalAudioServiceError
 from services.voice import VoiceServiceError
 
 
@@ -173,6 +174,7 @@ def mock_led_service():
 def mock_voice_service():
     class MockVoiceService:
         def __init__(self):
+            self.reload_count = 0
             self.state = {
                 "message": "Voice status",
                 "available": False,
@@ -231,12 +233,72 @@ def mock_voice_service():
             }
 
         def reload_config(self):
+            self.reload_count += 1
             return None
 
         def shutdown(self):
             return None
 
     return MockVoiceService()
+
+
+@pytest.fixture
+def mock_musical_audio_service():
+    class MockMusicalAudioService:
+        def __init__(self):
+            self.reload_count = 0
+            self.state = {
+                "message": "Musical audio status",
+                "available": False,
+                "enabled": False,
+                "running": False,
+                "mode": "unavailable",
+                "provider": "aubio+dtaidistance",
+                "device_index": None,
+                "device_name": None,
+                "sample_rate": 16000,
+                "block_size": 1024,
+                "queue_max_chunks": 12,
+                "active_artifact_id": None,
+                "artifacts_loaded": 0,
+                "last_pitch_hz": None,
+                "last_match": None,
+                "last_match_score": None,
+                "last_event_at": None,
+                "last_error": "Musical-Audio-Service ist nicht verfuegbar. Fehlende Abhaengigkeiten: aubio, dtaidistance",
+            }
+
+        def get_status(self):
+            return dict(self.state)
+
+        def list_input_devices(self):
+            return [
+                {
+                    "index": 1,
+                    "name": "Mock Whistle Mic",
+                    "max_input_channels": 1,
+                    "default_samplerate": 16000.0,
+                    "is_default": True,
+                }
+            ]
+
+        def start(self, device_index: int = -1):
+            self.state["device_index"] = device_index
+            raise MusicalAudioServiceError(self.state["last_error"], status_code=503)
+
+        def stop(self):
+            self.state["running"] = False
+            self.state["device_index"] = None
+            return {**self.state, "message": "Musical audio stopped"}
+
+        def reload_config(self):
+            self.reload_count += 1
+            return None
+
+        def shutdown(self):
+            return None
+
+    return MockMusicalAudioService()
 
 
 @pytest.fixture
@@ -249,6 +311,7 @@ def mock_gesture_service():
     class MockGestureService:
         def __init__(self, available: bool = True):
             self.available = available
+            self.reload_count = 0
             self.running = False
             self.camera_index = None
             self.last_gesture = None
@@ -288,6 +351,7 @@ def mock_gesture_service():
             return self.get_status()
 
         def reload_config(self):
+            self.reload_count += 1
             return None
 
         def get_frame(self):
@@ -407,6 +471,16 @@ def override_voice_dependency(mock_voice_service):
     app.dependency_overrides[get_voice_service] = _override_voice_service
     yield mock_voice_service
     app.dependency_overrides.pop(get_voice_service, None)
+
+
+@pytest.fixture
+def override_musical_audio_dependency(mock_musical_audio_service):
+    async def _override_musical_audio_service():
+        return mock_musical_audio_service
+
+    app.dependency_overrides[get_musical_audio_service] = _override_musical_audio_service
+    yield mock_musical_audio_service
+    app.dependency_overrides.pop(get_musical_audio_service, None)
 
 
 @pytest.fixture

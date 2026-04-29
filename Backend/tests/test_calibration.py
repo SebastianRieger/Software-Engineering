@@ -278,12 +278,13 @@ async def test_calibration_api_session_lifecycle(client, override_calibration_de
             "selected_targets": ["swipe_right"],
             "target_repetitions": 1,
             "profile": "demo-user",
+            "camera_index": 1,
         },
     )
     assert start_response.status_code == 200
     session_id = start_response.json()["session"]["session_id"]
     assert gesture_runtime.running is True
-    assert gesture_runtime.camera_index == 0
+    assert gesture_runtime.camera_index == 1
 
     service.capture_gesture_sample(make_swipe_sample("swipe_right"))
 

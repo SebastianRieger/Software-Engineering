@@ -2,17 +2,18 @@ import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 
 import { ApiError, apiClient } from '../services/api'
 import { realtimeClient } from '../services/realtime'
+import type { CommandProfile } from '../types/commands'
 import type { HardwareStatusWidgetSettings } from '../types/config'
 import type {
   GestureCameraDevice,
   GestureStatusResponse,
   LEDColor,
   LEDStateResponse,
-  RealtimeEvent,
   SystemStatusResponse,
   VoiceInputDevice,
   VoiceStatusResponse,
 } from '../types/hardware'
+import type { RealtimeEvent } from '../types/realtime'
 
 interface HardwareWidgetProps {
   widgetId?: string
@@ -23,8 +24,6 @@ interface HardwareWidgetProps {
 export const HARDWARE_WIDGET_DEFAULT_SETTINGS: Required<HardwareStatusWidgetSettings> = {
   showPreview: false,
   autoRefresh: true,
-  gestureCameraIndex: 0,
-  voiceDeviceIndex: -1,
 }
 
 export const LED_PRESETS: Array<{ label: string; tone: 'warm' | 'cool' | 'neutral'; color: LEDColor }> = [
@@ -50,6 +49,7 @@ export function useHardwareWidget(props: HardwareWidgetProps) {
   const voiceStatus = ref<VoiceStatusResponse | null>(null)
   const gestureDevices = ref<GestureCameraDevice[]>([])
   const voiceDevices = ref<VoiceInputDevice[]>([])
+  const activeCommandProfile = ref<CommandProfile | null>(null)
   const gesturePreview = ref<string | null>(null)
   const lastRealtimeEvent = ref<string | null>(null)
   const loading = ref(false)
@@ -61,9 +61,38 @@ export function useHardwareWidget(props: HardwareWidgetProps) {
   const effectiveSettings = computed<Required<HardwareStatusWidgetSettings>>(() => ({
     showPreview: props.settings?.showPreview ?? HARDWARE_WIDGET_DEFAULT_SETTINGS.showPreview,
     autoRefresh: props.settings?.autoRefresh ?? HARDWARE_WIDGET_DEFAULT_SETTINGS.autoRefresh,
-    gestureCameraIndex: props.settings?.gestureCameraIndex ?? HARDWARE_WIDGET_DEFAULT_SETTINGS.gestureCameraIndex,
-    voiceDeviceIndex: props.settings?.voiceDeviceIndex ?? HARDWARE_WIDGET_DEFAULT_SETTINGS.voiceDeviceIndex,
   }))
+
+  const preferredGestureCameraIndex = computed(() => activeCommandProfile.value?.device_preferences.gesture_camera_index ?? 0)
+  const preferredVoiceDeviceIndex = computed(() => activeCommandProfile.value?.device_preferences.voice_device_index ?? -1)
+
+  const preferredGestureDeviceLabel = computed(() => {
+    if (gestureDevices.value.length === 0) {
+      return 'Keine Kamera gefunden'
+    }
+
+    const configuredIndex = activeCommandProfile.value?.device_preferences.gesture_camera_index
+    if (configuredIndex === null || configuredIndex === undefined) {
+      return 'Automatisch'
+    }
+
+    const device = gestureDevices.value.find((entry) => entry.index === configuredIndex)
+    return device ? `${device.name} · #${device.index}` : `Kamera #${configuredIndex}`
+  })
+
+  const preferredVoiceDeviceLabel = computed(() => {
+    if (voiceDevices.value.length === 0) {
+      return 'Keine Eingabegeraete gefunden'
+    }
+
+    const configuredIndex = activeCommandProfile.value?.device_preferences.voice_device_index
+    if (configuredIndex === null || configuredIndex === undefined || configuredIndex === -1) {
+      return 'Systemstandard'
+    }
+
+    const device = voiceDevices.value.find((entry) => entry.index === configuredIndex)
+    return device ? `${device.name} · #${device.index}` : `Mikrofon #${configuredIndex}`
+  })
 
   const isPreviewMode = computed(() => !props.widgetId)
 
@@ -85,13 +114,14 @@ export function useHardwareWidget(props: HardwareWidgetProps) {
     error.value = null
 
     try {
-      const [system, gesture, gestureDeviceList, led, voiceDeviceList, voice] = await Promise.all([
+      const [system, gesture, gestureDeviceList, led, voiceDeviceList, voice, commandProfilesEnvelope] = await Promise.all([
         apiClient.getSystemStatus(),
         apiClient.getGestureStatus(),
         apiClient.getGestureDevices(),
         apiClient.getLedStatus(),
         apiClient.getVoiceDevices(),
         apiClient.getVoiceStatus(),
+        apiClient.getCommandProfilesConfig(),
       ])
 
       systemStatus.value = system
@@ -100,14 +130,9 @@ export function useHardwareWidget(props: HardwareWidgetProps) {
       ledStatus.value = led
       voiceDevices.value = voiceDeviceList.devices
       voiceStatus.value = voice
-
-      if (gesture.running && gesture.camera_index !== null && gesture.camera_index !== effectiveSettings.value.gestureCameraIndex) {
-        updateSettings({ gestureCameraIndex: gesture.camera_index })
-      }
-
-      if (voice.running && voice.device_index !== null && voice.device_index !== effectiveSettings.value.voiceDeviceIndex) {
-        updateSettings({ voiceDeviceIndex: voice.device_index })
-      }
+      activeCommandProfile.value = commandProfilesEnvelope.config.profiles.find(
+        (profile) => profile.profile_id === commandProfilesEnvelope.config.active_profile_id,
+      ) ?? commandProfilesEnvelope.config.profiles[0] ?? null
 
       if (effectiveSettings.value.showPreview) {
         await loadPreviewFrame()
@@ -140,7 +165,7 @@ export function useHardwareWidget(props: HardwareWidgetProps) {
 
   async function startGestures(): Promise<void> {
     try {
-      gestureStatus.value = await apiClient.startGestures(effectiveSettings.value.gestureCameraIndex)
+      gestureStatus.value = await apiClient.startGestures(preferredGestureCameraIndex.value)
       if (effectiveSettings.value.showPreview) {
         await loadPreviewFrame()
       }
@@ -159,7 +184,7 @@ export function useHardwareWidget(props: HardwareWidgetProps) {
 
   async function startVoice(): Promise<void> {
     try {
-      voiceStatus.value = await apiClient.startVoice(effectiveSettings.value.voiceDeviceIndex)
+      voiceStatus.value = await apiClient.startVoice(preferredVoiceDeviceIndex.value)
     } catch (voiceError) {
       error.value = formatHardwareError(voiceError)
     }
@@ -171,24 +196,6 @@ export function useHardwareWidget(props: HardwareWidgetProps) {
     } catch (voiceError) {
       error.value = formatHardwareError(voiceError)
     }
-  }
-
-  function selectGestureCamera(event: Event): void {
-    const target = event.target as HTMLSelectElement
-    const cameraIndex = Number(target.value)
-    if (Number.isNaN(cameraIndex)) {
-      return
-    }
-    updateSettings({ gestureCameraIndex: cameraIndex })
-  }
-
-  function selectVoiceDevice(event: Event): void {
-    const target = event.target as HTMLSelectElement
-    const deviceIndex = Number(target.value)
-    if (Number.isNaN(deviceIndex)) {
-      return
-    }
-    updateSettings({ voiceDeviceIndex: deviceIndex })
   }
 
   async function applyLedPreset(color: LEDColor): Promise<void> {
@@ -280,13 +287,13 @@ export function useHardwareWidget(props: HardwareWidgetProps) {
     gestureDevices,
     gesturePreview,
     gestureStatus,
+    preferredGestureDeviceLabel,
+    preferredVoiceDeviceLabel,
     isPreviewMode,
     lastRealtimeEvent,
     ledStatus,
     loadStatuses,
     loading,
-    selectGestureCamera,
-    selectVoiceDevice,
     startGestures,
     startVoice,
     stopGestures,

@@ -18,7 +18,8 @@ UIActionType = Literal[
     "cancel_selection",
 ]
 
-InputSourceType = Literal["gesture", "voice", "dev", "keyboard"]
+InputSourceType = Literal["gesture", "voice", "musical_audio", "dev", "keyboard"]
+CommandMatchOutcome = Literal["accepted", "suppressed", "unmapped", "disabled"]
 
 
 class InputActionMapping(BaseModel):
@@ -43,8 +44,21 @@ def build_default_input_action_mappings() -> list[InputActionMapping]:
     ]
 
 
+def build_default_source_priorities() -> dict[InputSourceType, int]:
+    return {
+        "voice": 100,
+        "musical_audio": 90,
+        "gesture": 80,
+        "keyboard": 70,
+        "dev": 100,
+    }
+
+
 class InputActionConfig(BaseModel):
     mappings: list[InputActionMapping] = Field(default_factory=build_default_input_action_mappings)
+    global_cooldown_seconds: float = Field(default=0.75, ge=0, le=30)
+    repeat_same_action_window_seconds: float = Field(default=1.25, ge=0, le=30)
+    source_priorities: dict[InputSourceType, int] = Field(default_factory=build_default_source_priorities)
     updated_at: datetime | None = None
 
 
@@ -63,3 +77,30 @@ class UIActionEventPayload(BaseModel):
 class UIActionEventEnvelope(BaseModel):
     eventType: Literal["UIActionRequested"] = "UIActionRequested"
     payload: UIActionEventPayload
+
+
+class RawInputDetectedEventPayload(BaseModel):
+    input_source: InputSourceType
+    raw_input: str = Field(min_length=1)
+    timestamp: datetime
+    metadata: dict[str, Any] = Field(default_factory=dict)
+
+
+class RawInputDetectedEventEnvelope(BaseModel):
+    eventType: Literal["RawInputDetected"] = "RawInputDetected"
+    payload: RawInputDetectedEventPayload
+
+
+class CommandMatchEventPayload(BaseModel):
+    input_source: InputSourceType
+    raw_input: str = Field(min_length=1)
+    timestamp: datetime
+    outcome: CommandMatchOutcome
+    action: UIActionType | None = None
+    reason: str | None = None
+    metadata: dict[str, Any] = Field(default_factory=dict)
+
+
+class CommandMatchEventEnvelope(BaseModel):
+    eventType: Literal["CommandMatchEvaluated"] = "CommandMatchEvaluated"
+    payload: CommandMatchEventPayload

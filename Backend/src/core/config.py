@@ -86,6 +86,17 @@ class Settings(BaseSettings):
         "naechstes widget",
         "vorheriges widget",
     ]
+    MUSICAL_AUDIO_ENABLED: bool = False
+    MUSICAL_AUDIO_DEVICE_INDEX: int = -1
+    MUSICAL_AUDIO_SAMPLE_RATE: int = 16000
+    MUSICAL_AUDIO_BLOCK_SIZE: int = 1024
+    MUSICAL_AUDIO_QUEUE_MAX_CHUNKS: int = 12
+    MUSICAL_AUDIO_SILENCE_THRESHOLD: float = 0.015
+    MUSICAL_AUDIO_PITCH_CONFIDENCE_THRESHOLD: float = 0.65
+    MUSICAL_AUDIO_COMMAND_COOLDOWN_SECONDS: float = 1.2
+    MUSICAL_AUDIO_MIN_PATTERN_NOTES: int = 3
+    MUSICAL_AUDIO_MAX_PATTERN_WINDOW_SECONDS: float = 4.0
+    MUSICAL_AUDIO_STOP_JOIN_TIMEOUT_SECONDS: float = 2.0
 
     # MQTT settings
     MQTT_BROKER: str = "localhost"

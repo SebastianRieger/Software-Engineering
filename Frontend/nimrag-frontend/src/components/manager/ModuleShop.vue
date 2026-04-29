@@ -42,6 +42,15 @@ const addCurrentWidget = () => {
   emit('addWidget', { widgetType: currentModule.type })
 }
 
+const handleModuleCardClick = (index: number) => {
+  const isActiveCard = index === currentIndex.value
+  setCurrentModule(index)
+
+  if (isActiveCard && props.canAdd) {
+    addCurrentWidget()
+  }
+}
+
 defineExpose({
   nextModule,
   prevModule,
@@ -63,6 +72,7 @@ defineExpose({
           :key="item.index"
           class="module-card"
           :class="[`pos-${item.position}`, { 'is-active': item.index === currentIndex }]"
+          @click="handleModuleCardClick(item.index)"
         >
           <h4 class="module-name">{{ item.name }}</h4>
 

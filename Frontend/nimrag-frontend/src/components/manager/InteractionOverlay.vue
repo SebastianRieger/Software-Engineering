@@ -1,6 +1,7 @@
 <script setup lang="ts">
 defineProps<{
   lastRawInput: string | null
+  lastCommandMatch: string | null
   lastUIAction: string | null
   focusedLabel: string
   isArrangeMode: boolean
@@ -15,6 +16,7 @@ defineProps<{
   <aside class="overlay-panel">
     <div class="overlay-chip-group">
       <span class="overlay-chip">Raw: {{ lastRawInput ?? 'keine' }}</span>
+      <span class="overlay-chip">Match: {{ lastCommandMatch ?? 'keine' }}</span>
       <span class="overlay-chip">Action: {{ lastUIAction ?? 'keine' }}</span>
       <span class="overlay-chip">Fokus: {{ focusedLabel }}</span>
     </div>
