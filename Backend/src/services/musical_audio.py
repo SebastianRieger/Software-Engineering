@@ -13,7 +13,12 @@ import numpy as np
 from core.realtime import RealtimeHub, realtime_hub
 from repositories.config import ConfigRepository
 from schemas.commands import CommandProfile
-from schemas.musical_audio import MusicalAudioConfig, MusicalAudioNoteEvent, MusicalAudioTrainingArtifact
+from schemas.musical_audio import (
+    MusicalAudioConfig,
+    MusicalAudioNoteEvent,
+    MusicalAudioStatusCode,
+    MusicalAudioTrainingArtifact,
+)
 from services.interactions import InputOrchestrator
 
 try:
@@ -43,10 +48,25 @@ class _DetectedPitchEvent:
     confidence: float | None
 
 
+@dataclass
+class _PreflightResult:
+    config: MusicalAudioConfig
+    device_index: int
+    device_name: str
+    pitch_detector: Any
+    onset_detector: Any
+
+
 class MusicalAudioServiceError(Exception):
-    def __init__(self, message: str, status_code: int = 500) -> None:
+    def __init__(
+        self,
+        message: str,
+        status_code: int = 500,
+        error_code: MusicalAudioStatusCode = "runtime_start_failed",
+    ) -> None:
         super().__init__(message)
         self.status_code = status_code
+        self.error_code = error_code
 
 
 class MusicalAudioService:
@@ -67,10 +87,13 @@ class MusicalAudioService:
         self._thread: threading.Thread | None = None
         self._audio_queue: queue.Queue[np.ndarray] = queue.Queue(maxsize=1)
         self._active_config = MusicalAudioConfig()
+        self._active_profile_id = "default"
         self._artifacts: list[MusicalAudioTrainingArtifact] = []
         self._running = False
         self._device_index: int | None = None
         self._device_name: str | None = None
+        self._validated_device_index: int | None = None
+        self._validated_sample_rate: int | None = None
         self._pitch_detector = None
         self._onset_detector = None
         self._sequence_events: list[_DetectedPitchEvent] = []
@@ -80,6 +103,7 @@ class MusicalAudioService:
         self._last_event_at: datetime | None = None
         self._last_activity_at = 0.0
         self._last_error = self._build_unavailable_message()
+        self._last_error_code: MusicalAudioStatusCode | None = "unavailable"
 
     def startup(self) -> None:
         self.reload_config()
@@ -110,11 +134,15 @@ class MusicalAudioService:
 
         with self._lock:
             self._active_config = config
+            self._active_profile_id = profile_id
             self._artifacts = filtered_artifacts
             if not self.is_available():
                 self._last_error = self._build_unavailable_message()
+                self._last_error_code = "unavailable"
             else:
-                self._last_error = None
+                if self._last_error_code == "unavailable":
+                    self._last_error = None
+                    self._last_error_code = None
         return config
 
     def is_available(self) -> bool:
@@ -122,13 +150,16 @@ class MusicalAudioService:
 
     def get_status(self) -> dict[str, object]:
         with self._lock:
+            status_code = self._derive_status_code_locked()
             return {
                 "message": "Musical audio status",
                 "available": self.is_available(),
                 "enabled": self._active_config.enabled,
                 "running": self._running,
+                "status_code": status_code,
                 "mode": "direct-mic" if self.is_available() else "unavailable",
                 "provider": self._provider_name(),
+                "active_profile_id": self._active_profile_id,
                 "device_index": self._device_index,
                 "device_name": self._device_name,
                 "sample_rate": self._active_config.sample_rate,
@@ -136,11 +167,14 @@ class MusicalAudioService:
                 "queue_max_chunks": self._active_config.queue_max_chunks,
                 "active_artifact_id": self._active_config.active_artifact_id,
                 "artifacts_loaded": len(self._artifacts),
+                "validated_device_index": self._validated_device_index,
+                "validated_sample_rate": self._validated_sample_rate,
                 "last_pitch_hz": self._last_pitch_hz,
                 "last_match": self._last_match,
                 "last_match_score": self._last_match_score,
                 "last_event_at": self._last_event_at,
                 "last_error": self._last_error,
+                "last_error_code": self._last_error_code,
             }
 
     def list_input_devices(self) -> list[dict[str, object]]:
@@ -178,36 +212,33 @@ class MusicalAudioService:
         return result
 
     def start(self, device_index: int = -1) -> dict[str, object]:
-        config = self.reload_config()
+        self.reload_config()
 
         with self._lock:
             if self._running:
                 return self.get_status()
 
-        if not config.enabled:
+        try:
+            preflight = self._preflight_start(device_index)
+        except MusicalAudioServiceError as exc:
             with self._lock:
-                self._last_error = "Musical-Audio-Service ist per Konfiguration deaktiviert."
-            raise MusicalAudioServiceError("Musical-Audio-Service ist per Konfiguration deaktiviert.", status_code=503)
-
-        if not self.is_available():
-            message = self._build_unavailable_message()
-            with self._lock:
-                self._last_error = message
-            raise MusicalAudioServiceError(message, status_code=503)
-
-        resolved_device_index, resolved_device_name = self._resolve_input_device(
-            device_index if device_index >= 0 else config.device_index
-        )
-        pitch_detector, onset_detector = self._build_processors(config)
+                self._last_error = str(exc)
+                self._last_error_code = exc.error_code
+                self._validated_device_index = None
+                self._validated_sample_rate = None
+            raise
 
         with self._lock:
-            self._audio_queue = queue.Queue(maxsize=config.queue_max_chunks)
+            self._active_config = preflight.config
+            self._audio_queue = queue.Queue(maxsize=preflight.config.queue_max_chunks)
             self._stop_event.clear()
             self._running = True
-            self._device_index = resolved_device_index
-            self._device_name = resolved_device_name
-            self._pitch_detector = pitch_detector
-            self._onset_detector = onset_detector
+            self._device_index = preflight.device_index
+            self._device_name = preflight.device_name
+            self._validated_device_index = preflight.device_index
+            self._validated_sample_rate = preflight.config.sample_rate
+            self._pitch_detector = preflight.pitch_detector
+            self._onset_detector = preflight.onset_detector
             self._sequence_events = []
             self._last_pitch_hz = None
             self._last_match = None
@@ -215,6 +246,7 @@ class MusicalAudioService:
             self._last_event_at = None
             self._last_activity_at = 0.0
             self._last_error = None
+            self._last_error_code = None
             self._thread = threading.Thread(target=self._run_loop, daemon=True)
             self._thread.start()
 
@@ -236,6 +268,9 @@ class MusicalAudioService:
             self._pitch_detector = None
             self._onset_detector = None
             self._sequence_events = []
+            if self._last_error_code in {"runtime_start_failed", "permission_blocked"}:
+                self._last_error = None
+                self._last_error_code = None
             status = self.get_status()
 
         return {**status, "message": "Musical audio stopped"}
@@ -307,11 +342,63 @@ class MusicalAudioService:
         except (PORTAUDIO_ERROR, RuntimeError, ValueError) as exc:  # pragma: no cover - depends on audio hardware
             logger.exception("Musical audio capture loop failed")
             with self._lock:
-                self._last_error = str(exc)
+                self._last_error = self._format_runtime_error(exc)
+                self._last_error_code = self._runtime_error_code(exc)
                 self._running = False
         finally:
             with self._lock:
                 self._running = False
+
+    def _preflight_start(self, device_index: int) -> _PreflightResult:
+        with self._lock:
+            config = self._active_config
+            artifacts = list(self._artifacts)
+
+        if not config.enabled:
+            raise MusicalAudioServiceError(
+                "Musical-Audio-Service ist per Konfiguration deaktiviert.",
+                status_code=503,
+                error_code="configuration_disabled",
+            )
+
+        if not self.is_available():
+            raise MusicalAudioServiceError(
+                self._build_unavailable_message(),
+                status_code=503,
+                error_code="unavailable",
+            )
+
+        if not config.active_artifact_id:
+            raise MusicalAudioServiceError(
+                "Kein aktives Musical-Audio-Artefakt konfiguriert.",
+                status_code=409,
+                error_code="no_active_artifact",
+            )
+
+        if not artifacts:
+            raise MusicalAudioServiceError(
+                f"Aktives Musical-Audio-Artefakt '{config.active_artifact_id}' wurde nicht gefunden oder ist deaktiviert.",
+                status_code=409,
+                error_code="no_active_artifact",
+            )
+
+        resolved_device = self._resolve_input_device(device_index if device_index >= 0 else config.device_index)
+        resolved_device_index, resolved_device_name = self._device_identity(resolved_device)
+        resolved_sample_rate = self._resolve_sample_rate(config=config, device=resolved_device)
+        runtime_config = config.model_copy(
+            update={
+                "device_index": resolved_device_index,
+                "sample_rate": resolved_sample_rate,
+            }
+        )
+        pitch_detector, onset_detector = self._build_processors(runtime_config)
+        return _PreflightResult(
+            config=runtime_config,
+            device_index=resolved_device_index,
+            device_name=resolved_device_name,
+            pitch_detector=pitch_detector,
+            onset_detector=onset_detector,
+        )
 
     def _audio_callback(self, indata, frames, time_info, status) -> None:  # pragma: no cover - callback from audio backend
         del frames, time_info
@@ -462,33 +549,107 @@ class MusicalAudioService:
             return None, best_score
         return best_artifact, best_score
 
-    def _resolve_input_device(self, requested_device_index: int) -> tuple[int, str]:
+    def _resolve_input_device(self, requested_device_index: int) -> dict[str, object]:
         devices = self.list_input_devices()
         if not devices:
-            raise MusicalAudioServiceError("Keine Audioeingabegeraete verfuegbar.", status_code=503)
+            raise MusicalAudioServiceError(
+                "Keine Audioeingabegeraete verfuegbar.",
+                status_code=503,
+                error_code="device_missing",
+            )
 
         if requested_device_index >= 0:
             for device in devices:
                 if device["index"] == requested_device_index:
-                    return self._device_identity(device)
+                    return device
             raise MusicalAudioServiceError(
                 f"Eingabegeraet {requested_device_index} wurde nicht gefunden.",
                 status_code=404,
+                error_code="device_missing",
             )
 
         default_device = next((device for device in devices if device.get("is_default")), None)
         if default_device is not None:
-            return self._device_identity(default_device)
+            return default_device
 
-        fallback = devices[0]
-        return self._device_identity(fallback)
+        return devices[0]
 
     @staticmethod
     def _device_identity(device: dict[str, object]) -> tuple[int, str]:
         index = device.get("index")
         if not isinstance(index, int):
-            raise MusicalAudioServiceError("Audioeingabegeraet hat keinen gueltigen Index.", status_code=503)
+            raise MusicalAudioServiceError(
+                "Audioeingabegeraet hat keinen gueltigen Index.",
+                status_code=503,
+                error_code="device_missing",
+            )
         return index, str(device.get("name", f"Input {index}"))
+
+    def _resolve_sample_rate(self, *, config: MusicalAudioConfig, device: dict[str, object]) -> int:
+        resolved_device_index, resolved_device_name = self._device_identity(device)
+        candidate_rates: list[int] = [config.sample_rate]
+        default_samplerate = device.get("default_samplerate")
+        if isinstance(default_samplerate, (float, int)):
+            fallback_rate = int(round(float(default_samplerate)))
+            if fallback_rate > 0 and fallback_rate not in candidate_rates:
+                candidate_rates.append(fallback_rate)
+
+        last_exception: MusicalAudioServiceError | None = None
+        for sample_rate in candidate_rates:
+            try:
+                self._validate_input_settings(
+                    device_index=resolved_device_index,
+                    device_name=resolved_device_name,
+                    sample_rate=sample_rate,
+                )
+                return sample_rate
+            except MusicalAudioServiceError as exc:
+                if exc.error_code == "permission_blocked":
+                    raise
+                last_exception = exc
+
+        if last_exception is not None:
+            raise last_exception
+
+        raise MusicalAudioServiceError(
+            f"Fuer Eingabegeraet '{resolved_device_name}' konnte keine gueltige Sample-Rate bestimmt werden.",
+            status_code=422,
+            error_code="invalid_sample_rate",
+        )
+
+    def _validate_input_settings(self, *, device_index: int, device_name: str, sample_rate: int) -> None:
+        sounddevice_module = sd
+        if sounddevice_module is None:
+            raise MusicalAudioServiceError(
+                self._build_unavailable_message(),
+                status_code=503,
+                error_code="unavailable",
+            )
+
+        checker = getattr(sounddevice_module, "check_input_settings", None)
+        if not callable(checker):
+            return
+
+        try:
+            checker(
+                device=device_index,
+                channels=1,
+                samplerate=sample_rate,
+                dtype="float32",
+            )
+        except (PORTAUDIO_ERROR, RuntimeError, ValueError) as exc:
+            if self._is_permission_error(exc):
+                raise MusicalAudioServiceError(
+                    f"Zugriff auf Eingabegeraet '{device_name}' wurde verweigert.",
+                    status_code=403,
+                    error_code="permission_blocked",
+                ) from exc
+
+            raise MusicalAudioServiceError(
+                f"Sample-Rate {sample_rate} Hz wird von Eingabegeraet '{device_name}' nicht unterstuetzt.",
+                status_code=422,
+                error_code="invalid_sample_rate",
+            ) from exc
 
     @staticmethod
     def _build_processors(config: MusicalAudioConfig):
@@ -496,6 +657,7 @@ class MusicalAudioService:
             raise MusicalAudioServiceError(
                 "Musical-Audio-Service benoetigt aubio fuer Pitch- und Onset-Erkennung.",
                 status_code=503,
+                error_code="unavailable",
             )
 
         pitch_factory = getattr(aubio, "pitch", None)
@@ -504,6 +666,7 @@ class MusicalAudioService:
             raise MusicalAudioServiceError(
                 "aubio ist installiert, stellt aber pitch/onset nicht bereit.",
                 status_code=503,
+                error_code="unavailable",
             )
 
         pitch_factory_callable = cast(Callable[..., Any], pitch_factory)
@@ -537,8 +700,43 @@ class MusicalAudioService:
             raise MusicalAudioServiceError(
                 "Musical-Audio-Service benoetigt dtaidistance fuer DTW-Matching.",
                 status_code=503,
+                error_code="unavailable",
             )
         return float(dtw.distance_fast(left, right, use_pruning=True))
+
+    def _derive_status_code_locked(self) -> MusicalAudioStatusCode:
+        if not self.is_available():
+            return "unavailable"
+        if not self._active_config.enabled:
+            return "configuration_disabled"
+        if self._running:
+            return "runtime_running_no_matchable_artifacts" if not self._artifacts else "running"
+        if self._last_error_code in {
+            "device_missing",
+            "invalid_sample_rate",
+            "permission_blocked",
+            "runtime_start_failed",
+            "no_active_artifact",
+        }:
+            return self._last_error_code
+        if not self._active_config.active_artifact_id or not self._artifacts:
+            return "no_active_artifact"
+        return "ready"
+
+    @staticmethod
+    def _is_permission_error(exc: BaseException) -> bool:
+        message = str(exc).lower()
+        return any(keyword in message for keyword in ("permission", "forbidden", "access denied", "not permitted"))
+
+    def _runtime_error_code(self, exc: BaseException) -> MusicalAudioStatusCode:
+        if self._is_permission_error(exc):
+            return "permission_blocked"
+        return "runtime_start_failed"
+
+    def _format_runtime_error(self, exc: BaseException) -> str:
+        if self._is_permission_error(exc):
+            return "Zugriff auf das konfigurierte Audioeingabegeraet wurde verweigert."
+        return str(exc)
 
     @staticmethod
     def _estimate_pitch_hz(chunk: np.ndarray, sample_rate: int) -> tuple[float, float | None]:

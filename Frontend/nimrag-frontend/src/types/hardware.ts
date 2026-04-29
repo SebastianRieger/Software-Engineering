@@ -92,8 +92,20 @@ export interface MusicalAudioStatusResponse {
   available: boolean
   enabled: boolean
   running: boolean
+  status_code:
+    | 'unavailable'
+    | 'ready'
+    | 'running'
+    | 'configuration_disabled'
+    | 'no_active_artifact'
+    | 'device_missing'
+    | 'invalid_sample_rate'
+    | 'permission_blocked'
+    | 'runtime_start_failed'
+    | 'runtime_running_no_matchable_artifacts'
   mode: 'unavailable' | 'direct-mic'
   provider: string | null
+  active_profile_id: string | null
   device_index: number | null
   device_name: string | null
   sample_rate: number | null
@@ -101,11 +113,14 @@ export interface MusicalAudioStatusResponse {
   queue_max_chunks: number | null
   active_artifact_id: string | null
   artifacts_loaded: number
+  validated_device_index: number | null
+  validated_sample_rate: number | null
   last_pitch_hz: number | null
   last_match: string | null
   last_match_score: number | null
   last_event_at: string | null
   last_error: string | null
+  last_error_code: MusicalAudioStatusResponse['status_code'] | null
 }
 
 export interface MusicalAudioInputDevice {

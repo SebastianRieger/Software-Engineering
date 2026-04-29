@@ -98,12 +98,21 @@ flowchart LR
 
 - der primäre Erkennungspfad basiert auf MediaPipe Hands und einer handzentrierten Repräsentation statt auf allgemeiner Body- oder Pose-Erkennung
 - Tracking und Klassifikation trennen Rohlandmarks, abgeleitete Bewegungsmerkmale, Kandidatenerzeugung und fachliche Gestenentscheidungen
+- Rohbeobachtungen werden zusaetzlich in normalisierte Hand- und Pose-Features ueberfuehrt; dazu gehoeren Palm-Center, Fingerzustand, Handoffenheit, Index-Extension und Push-Tiefe
 - Bewegungsmerkmale sollen gegen Handgroesse oder Palmspanne skaliert werden, damit die Basiserkennung nicht von fixen Bildkoordinaten allein abhaengt
 - Hand, Handgelenk und palmnahe Punkte bilden den Standardpfad; Ellenbogen- oder Armkontext bleibt optional fuer spaetere Erweiterungen
 - Gestenparameter sollen als persistierbare Backend-Konfiguration gepflegt werden und nicht nur als starre ENV-Werte existieren
-- Gestenereignisse und Statusantworten sollen neben dem Gestentyp auch Confidence und Tracking-Herkunft transportieren koennen
+- ueber den Basiskandidaten liegt jetzt eine additive Runtime-Schicht aus Temporal-Window, Primitive-Bewertung und deklarativen Gesture-Specs, damit bestehende Swipes, Pushes und Zooms erklaerbar aufgeloest werden koennen
+- Gestenereignisse und Statusantworten sollen neben dem Gestentyp auch Confidence, Tracking-Herkunft, Phase, Candidate-Scores, Reject-Reason, Spec-ID und Primitive-Hits transportieren koennen
 - Laufzeitfehler der Kamera- oder Adapterpfade muessen im Statusmodell sichtbar bleiben und bei transienten Lesefehlern kontrolliert abgefangen werden
 - semantische UI-Aktionsauflosung soll nicht in einem modality-spezifischen Runtime-Service verankert bleiben, sondern ueber eine gemeinsame Input-Orchestrierung fuer Gesten, Voice und spaetere weitere Quellen laufen
+
+### Gesture Runtime Slice
+
+- `gestures_tracking.py` liefert normalisierte Beobachtungen und Pose-Merkmale pro Hand, ohne den MediaPipe-Hands-Tracker selbst auszutauschen
+- `gestures_detection.py` kapselt reine Runtime-Analyse als Temporal-Window, Primitive-Detektion, Gesture-Specs und Resolver ueber bestehende Kandidatenpfade
+- `gestures.py` orchestriert nur noch Tracking, Cooldown, Event-Publishing und Kalibrierungs-Snapshots; die eigentliche Begruendung einer Erkennung bleibt in der Detection-Schicht
+- Kalibrierungssamples enthalten jetzt neben Trajectory-, Push- und Zoom-Metriken auch Pose-Snapshots und echte Temporal-Window-Werte fuer spaetere Schwellwertanalyse
 
 ### Konfigurationsdomänen
 

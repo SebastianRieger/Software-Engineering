@@ -252,8 +252,10 @@ def mock_musical_audio_service():
                 "available": False,
                 "enabled": False,
                 "running": False,
+                "status_code": "unavailable",
                 "mode": "unavailable",
                 "provider": "aubio+dtaidistance",
+                "active_profile_id": "default",
                 "device_index": None,
                 "device_name": None,
                 "sample_rate": 16000,
@@ -261,11 +263,14 @@ def mock_musical_audio_service():
                 "queue_max_chunks": 12,
                 "active_artifact_id": None,
                 "artifacts_loaded": 0,
+                "validated_device_index": None,
+                "validated_sample_rate": None,
                 "last_pitch_hz": None,
                 "last_match": None,
                 "last_match_score": None,
                 "last_event_at": None,
                 "last_error": "Musical-Audio-Service ist nicht verfuegbar. Fehlende Abhaengigkeiten: aubio, dtaidistance",
+                "last_error_code": "unavailable",
             }
 
         def get_status(self):

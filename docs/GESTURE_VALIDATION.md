@@ -28,11 +28,13 @@ Pruefen, dass die Anwendung auf echter Kamera- oder Raspberry-Pi-Hardware stabil
 3. Rohe Basisgesten
    - `swipe_left`, `swipe_right`, `swipe_up`, `swipe_down` und `circle` jeweils mehrfach ausfuehren.
    - Verifizieren, dass `GestureDetected` fachlich plausibel ist und im Idle-Zustand kein Event-Spam auftritt.
+   - Im WebSocket oder Statusmodell pruefen, dass `active_phase`, `spec_id`, `candidate_scores` und `primitive_hits` zu einer erkannten Geste passen.
 
 4. Push-Klicks und Zwei-Hand-Zoom
    - kurzen und langen Push-Klick pruefen
    - `zoom_out_hands` und `zoom_in_hands` pruefen
    - verifizieren, dass Push und Zoom nicht mehrfach oder in Idle-Rauschen feuern
+   - bei bewusst falsch ausgefuehrten Versuchen auf `reject_reason` achten, damit Ablehnungen nachvollziehbar bleiben
 
 5. Semantische UI-Aktionen
    - WebSocket-Nachrichten auf `UIActionRequested` pruefen.
@@ -57,6 +59,7 @@ Pruefen, dass die Anwendung auf echter Kamera- oder Raspberry-Pi-Hardware stabil
 4. Analyse
    - Nach Abschluss aller Ziele Analyse starten.
    - Verifizieren, dass pro Geste Metriken und konkrete Schwellenempfehlungen angezeigt werden.
+   - Pose- und Temporal-Snapshots pruefen: Fingerzustand, Push-Tiefe, Hold-Stability, Peak-Speed und Delta-Distance muessen zum aufgenommenen Bewegungsmuster passen.
 
 5. Apply
    - Profil anwenden.
@@ -77,6 +80,7 @@ Pruefen, dass die Anwendung auf echter Kamera- oder Raspberry-Pi-Hardware stabil
 - Latenzeindruck von Bewegung bis Event und bis sichtbarer UI-Reaktion
 - False Positives im Idle-Zustand
 - Konsistenz zwischen `GestureDetected`, `UIActionRequested` und Kalibrierungsfeedback
+- Konsistenz zwischen Basiskandidat und Runtime-Metadaten wie `active_phase`, `spec_id`, `candidate_scores`, `primitive_hits` und `reject_reason`
 - Unterschiede zwischen heller und dunkler Umgebung
 - Stabilitaet von Apply und Rollback ueber mehrere Sitzungen hinweg
 

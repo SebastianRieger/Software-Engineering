@@ -6,6 +6,20 @@ from pydantic import BaseModel, Field
 from core.config import settings
 
 
+MusicalAudioStatusCode = Literal[
+    "unavailable",
+    "ready",
+    "running",
+    "configuration_disabled",
+    "no_active_artifact",
+    "device_missing",
+    "invalid_sample_rate",
+    "permission_blocked",
+    "runtime_start_failed",
+    "runtime_running_no_matchable_artifacts",
+]
+
+
 class MusicalAudioStartRequest(BaseModel):
     device_index: int = Field(default=settings.MUSICAL_AUDIO_DEVICE_INDEX, ge=-1)
 
@@ -27,8 +41,10 @@ class MusicalAudioStatusResponse(BaseModel):
     available: bool
     enabled: bool = True
     running: bool
+    status_code: MusicalAudioStatusCode = "unavailable"
     mode: Literal["unavailable", "direct-mic"] = "unavailable"
     provider: str | None = None
+    active_profile_id: str | None = None
     device_index: int | None = None
     device_name: str | None = None
     sample_rate: int | None = None
@@ -36,11 +52,14 @@ class MusicalAudioStatusResponse(BaseModel):
     queue_max_chunks: int | None = None
     active_artifact_id: str | None = None
     artifacts_loaded: int = 0
+    validated_device_index: int | None = None
+    validated_sample_rate: int | None = None
     last_pitch_hz: float | None = None
     last_match: str | None = None
     last_match_score: float | None = None
     last_event_at: datetime | None = None
     last_error: str | None = None
+    last_error_code: MusicalAudioStatusCode | None = None
 
 
 class MusicalAudioConfig(BaseModel):

@@ -19,7 +19,8 @@ Pruefen, dass alle Eingabepfade nur ueber den gemeinsamen `InputOrchestrator` se
 
 1. `Command Settings` oeffnen.
 2. Aktives Profil, Mappings, Device-Praeferenzen und Musical-Audio-Artefakte laden lassen.
-3. Pruefen, dass fuer Gesten, Voice und Musical Audio jeweils Enablement und Device-Zuordnung sichtbar sind.
+3. Pruefen, dass die Bereiche `Profiles`, `Mappings`, `Runtime` und `Training` getrennt sichtbar sind.
+4. Pruefen, dass fuer Gesten, Voice und Musical Audio jeweils Enablement und Device-Zuordnung sichtbar sind.
 4. Pruefen, dass das Overlay im normalen Betriebsmodus `Raw`, `Match` und `Action` getrennt anzeigen kann.
 
 ## Persistenz- und Profilchecks
@@ -80,17 +81,26 @@ Pruefen, dass alle Eingabepfade nur ueber den gemeinsamen `InputOrchestrator` se
 
 ## Musical-Audio-Pfad
 
-1. Im Command-Settings-Flow ein vorhandenes Artefakt laden oder ein neues Artefakt anlegen.
-2. Mindestens mehrere Takes aufnehmen, freigeben und daraus ein Template ableiten.
-3. Artefakt als aktives Template markieren und speichern.
-4. Musical-Audio-Runtime starten.
-5. Das trainierte Pfeif- oder Melodiemuster ausfuehren.
+1. Im Bereich `Training` ein vorhandenes Artefakt laden oder ein neues Artefakt anlegen.
+2. Browser-Diagnostik pruefen.
+   - Browser-Geraeteliste ist sichtbar
+   - ein eventuell anderes Browser-Mikrofon als das Backend-Geraet ist klar erkennbar
+   - Kontextwarnungen wie eingebetteter Tab, fehlende Permissions oder keine Audioeingabe werden differenziert angezeigt
+3. Mindestens mehrere Takes aufnehmen, freigeben und daraus ein Template ableiten.
+4. Artefakt als aktives Runtime-Artefakt markieren und das Profil speichern.
+5. In den Bereich `Runtime` wechseln.
 6. Verifizieren:
+   - `status_code` ist vor dem Start plausibel, zum Beispiel `ready` oder `no_active_artifact`
+   - das angezeigte Backend-Geraet stammt aus dem aktiven Command-Profil
+   - `validated_device_index` und `validated_sample_rate` werden nach erfolgreichem Start nachvollziehbar angezeigt
+7. Musical-Audio-Runtime starten.
+8. Das trainierte Pfeif- oder Melodiemuster ausfuehren.
+9. Verifizieren:
    - `RawInputDetected` verwendet den konfigurierten `musical_audio.*`- oder `melody.*`-Identifier
    - `CommandMatchEvaluated` zeigt Score-Kontext in den Metadaten oder im Statuspfad nachvollziehbar
    - `UIActionRequested` wird nur fuer erfolgreiche Matches publiziert
-7. Danach ein deutlich anderes oder absichtlich falsches Muster ausfuehren.
-8. Verifizieren:
+10. Danach ein deutlich anderes oder absichtlich falsches Muster ausfuehren.
+11. Verifizieren:
    - kein akzeptiertes Match
    - keine fehlerhafte UI-Aktion
 
@@ -122,14 +132,17 @@ Pruefen, dass alle Eingabepfade nur ueber den gemeinsamen `InputOrchestrator` se
 ## Negative Betriebsfaelle
 
 1. Kamera oder Mikrofon vor dem Runtime-Start entziehen oder ein nicht verfuegbares Geraet waehlen.
-2. Verifizieren, dass Status und Fehlermeldung nachvollziehbar bleiben.
-3. Musical Audio mit fehlendem Live-Zugriff pruefen.
-4. Verifizieren, dass gespeicherte Artefakte und die Settings-Oberflaeche trotzdem benutzbar bleiben.
+2. Verifizieren, dass Backend-Status und Fehlermeldung nachvollziehbar bleiben, insbesondere `device_missing`, `invalid_sample_rate` oder `permission_blocked`.
+3. Im Browser-Training ein Permission-Problem oder einen eingebetteten Kontext simulieren.
+4. Verifizieren, dass dies als Trainingsproblem erscheint und nicht als allgemeiner Runtime-Startfehler.
+5. Musical Audio mit fehlendem Live-Zugriff pruefen.
+6. Verifizieren, dass gespeicherte Artefakte und die Settings-Oberflaeche trotzdem benutzbar bleiben.
 
 ## Abschlusskriterien
 
 - Alle drei Modalitaeten erreichen semantische UI-Aktionen nur ueber den gemeinsamen Orchestrator.
 - `RawInputDetected`, `CommandMatchEvaluated` und `UIActionRequested` sind im Frontend sichtbar und logisch getrennt.
 - Device-Praeferenzen und Mappings ueberleben Reloads.
+- Browser-Training und Backend-Live-Runtime sind in UI, Geraetelogik und Fehlerdarstellung klar getrennt.
 - Unterdrueckte, deaktivierte und ungemappte Eingaben fuehren nicht zu verdeckten UI-Aktionen.
 - Die UI bleibt bei Shop, ArrangeMode, Kalibrierung und Command Settings stabil.

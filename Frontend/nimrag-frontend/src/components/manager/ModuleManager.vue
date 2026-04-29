@@ -390,6 +390,18 @@ async function openCommandSettings(): Promise<void> {
   await loadCommandSettings()
 }
 
+async function refreshMusicalAudioSurface(profileId = commandProfilesConfig.value?.active_profile_id ?? 'default'): Promise<void> {
+  const [musicalAudioEnvelope, musicalAudioRuntimeStatus, musicalAudioArtifactList] = await Promise.all([
+    apiClient.getMusicalAudioConfig(),
+    apiClient.getMusicalAudioStatus(),
+    apiClient.listMusicalAudioArtifacts(profileId),
+  ])
+
+  musicalAudioConfig.value = musicalAudioEnvelope.config
+  musicalAudioStatus.value = musicalAudioRuntimeStatus
+  musicalAudioArtifacts.value = musicalAudioArtifactList.artifacts
+}
+
 function closeCommandSettings(): void {
   isCommandSettingsMode.value = false
 }
@@ -400,6 +412,7 @@ async function saveCommandProfiles(nextConfig: CommandProfilesConfig): Promise<v
   try {
     const response = await apiClient.saveCommandProfilesConfig(nextConfig)
     commandProfilesConfig.value = response.config
+    await refreshMusicalAudioSurface(response.config.active_profile_id)
   } catch (error) {
     commandSettingsError.value = `Command-Profil konnte nicht gespeichert werden: ${formatApiErrorMessage(error, 'Unbekannter Fehler')}`
   } finally {
@@ -413,6 +426,9 @@ async function saveMusicalAudioConfigDraft(nextConfig: MusicalAudioConfig): Prom
   try {
     const response = await apiClient.saveMusicalAudioConfig(nextConfig)
     musicalAudioConfig.value = response.config
+    const commandProfilesEnvelope = await apiClient.getCommandProfilesConfig()
+    commandProfilesConfig.value = commandProfilesEnvelope.config
+    await refreshMusicalAudioSurface(commandProfilesEnvelope.config.active_profile_id)
   } catch (error) {
     commandSettingsError.value = `Musical-Audio-Config konnte nicht gespeichert werden: ${formatApiErrorMessage(error, 'Unbekannter Fehler')}`
   } finally {
@@ -425,8 +441,7 @@ async function saveMusicalAudioArtifact(artifact: MusicalAudioTrainingArtifact):
   commandSettingsError.value = null
   try {
     await apiClient.saveMusicalAudioArtifact(artifact)
-    const response = await apiClient.listMusicalAudioArtifacts(artifact.profile_id)
-    musicalAudioArtifacts.value = response.artifacts
+    await refreshMusicalAudioSurface(artifact.profile_id)
   } catch (error) {
     commandSettingsError.value = `Musical-Audio-Artefakt konnte nicht gespeichert werden: ${formatApiErrorMessage(error, 'Unbekannter Fehler')}`
   } finally {
@@ -439,8 +454,7 @@ async function deleteMusicalAudioArtifact(payload: { artifactId: string; profile
   commandSettingsError.value = null
   try {
     await apiClient.deleteMusicalAudioArtifact(payload.artifactId, payload.profileId)
-    const response = await apiClient.listMusicalAudioArtifacts(payload.profileId)
-    musicalAudioArtifacts.value = response.artifacts
+    await refreshMusicalAudioSurface(payload.profileId)
   } catch (error) {
     commandSettingsError.value = `Musical-Audio-Artefakt konnte nicht geloescht werden: ${formatApiErrorMessage(error, 'Unbekannter Fehler')}`
   } finally {
@@ -449,6 +463,7 @@ async function deleteMusicalAudioArtifact(payload: { artifactId: string; profile
 }
 
 async function startMusicalAudioRuntime(deviceIndex: number): Promise<void> {
+  commandSettingsError.value = null
   try {
     musicalAudioStatus.value = await apiClient.startMusicalAudio(deviceIndex)
   } catch (error) {
@@ -457,6 +472,7 @@ async function startMusicalAudioRuntime(deviceIndex: number): Promise<void> {
 }
 
 async function stopMusicalAudioRuntime(): Promise<void> {
+  commandSettingsError.value = null
   try {
     musicalAudioStatus.value = await apiClient.stopMusicalAudio()
   } catch (error) {

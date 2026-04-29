@@ -12,11 +12,13 @@ from core.realtime import realtime_hub
 from main import websocket_endpoint
 from schemas.interactions import InputActionConfig, InputActionMapping
 from services.gestures import (
+    GestureDetectionResult,
     GestureObservation,
     GestureAdapterError,
     GestureConfig,
     GestureService,
     GestureServiceError,
+    analyze_runtime_gesture,
     TrackedHandObservation,
     build_hand_landmark_map,
     compute_hand_tracking_point,
@@ -25,6 +27,7 @@ from services.gestures import (
     detect_gesture_with_confidence,
     detect_gesture_from_trajectory,
     estimate_hand_size,
+    extract_hand_pose_features,
     extract_gesture_features,
     select_best_gesture_candidate,
 )
@@ -218,6 +221,98 @@ def make_push_observation(index_tip_depth: float, captured_at: float) -> Gesture
         tracking_source="palm_center",
         captured_at=captured_at,
     )
+
+
+def test_extract_hand_pose_features_builds_finger_scores_for_push_like_pose():
+    observation = make_push_observation(index_tip_depth=-0.16, captured_at=time.monotonic())
+
+    pose = extract_hand_pose_features(observation)
+
+    assert pose is not None
+    assert pose.push_depth == pytest.approx(0.16)
+    assert pose.center_distance == pytest.approx(0.0)
+    assert pose.index_extension_ratio > 1.4
+    assert pose.finger_states["index"].label == "extended"
+    assert pose.finger_states["middle"].label == "curled"
+    assert pose.finger_states["ring"].label == "curled"
+    assert pose.finger_states["pinky"].label == "curled"
+
+
+def test_extract_hand_pose_features_normalizes_missing_point_to_palm_center():
+    observation = GestureObservation(
+        point=None,
+        hand="right",
+        landmarks=build_push_landmarks(),
+        landmark_depths={"index_mcp": 0.0, "index_tip": 0.12},
+        hand_size=0.16,
+        tracking_source="palm_center",
+    )
+
+    pose = extract_hand_pose_features(observation)
+
+    assert pose is not None
+    assert pose.point == pytest.approx((0.566, 0.616), abs=0.01)
+    assert pose.center_distance > 0.0
+
+
+def test_analyze_runtime_gesture_resolves_push_spec_with_phase_and_primitives():
+    observation = make_push_observation(index_tip_depth=-0.16, captured_at=0.28)
+    pose = extract_hand_pose_features(observation)
+    detection = GestureDetectionResult(
+        gesture="push_click_short",
+        confidence=0.81,
+        tracking_source="index_push",
+        metrics={"duration_seconds": 0.18, "frame_count": 4},
+    )
+
+    analysis = analyze_runtime_gesture(
+        candidates=[detection],
+        trajectory=[(0.5, 0.5), (0.5, 0.49), (0.5, 0.5), (0.5, 0.51)],
+        trajectory_timestamps=[0.0, 0.08, 0.16, 0.22],
+        hand_count=1,
+        pose_features=pose,
+        hand_size=0.16,
+        swipe_threshold=0.08,
+        circle_sweep_min=4.2,
+        circle_cv_max=0.45,
+        center_tolerance=0.2,
+        push_depth_threshold=0.09,
+        zoom_delta_threshold=0.12,
+    )
+
+    assert analysis.detection is not None
+    assert analysis.detection.gesture == "push_click_short"
+    assert analysis.active_phase in {"holding", "releasing", "committing"}
+    assert analysis.spec_id == "gesture.push_click_short.v1"
+    assert analysis.primitive_hits["push_forward"] >= 1.0
+    assert analysis.primitive_hits["index_primary"] >= 0.6
+
+
+def test_analyze_runtime_gesture_rejects_swipe_on_phase_mismatch():
+    detection = GestureDetectionResult(
+        gesture="swipe_left",
+        confidence=0.84,
+        tracking_source="palm_center",
+    )
+
+    analysis = analyze_runtime_gesture(
+        candidates=[detection],
+        trajectory=[(0.5, 0.5), (0.505, 0.5), (0.507, 0.5), (0.508, 0.5)],
+        trajectory_timestamps=[0.0, 0.2, 0.4, 0.6],
+        hand_count=1,
+        pose_features=None,
+        hand_size=0.16,
+        swipe_threshold=0.08,
+        circle_sweep_min=4.2,
+        circle_cv_max=0.45,
+        center_tolerance=0.2,
+        push_depth_threshold=0.09,
+        zoom_delta_threshold=0.12,
+    )
+
+    assert analysis.detection is None
+    assert analysis.reject_reason == "phase_mismatch"
+    assert analysis.candidate_scores["swipe_left"] < 0.6
 
 
 def make_two_hand_observation(
@@ -1076,6 +1171,33 @@ def test_service_prefers_recent_runtime_motion_window_for_swipes():
 
     assert detection is not None
     assert detection.gesture == "swipe_right"
+
+
+def test_service_runtime_motion_window_keeps_slow_recent_points():
+    service = GestureService(
+        config_repository_factory=lambda: StaticGestureConfigRepository(
+            config=GestureConfig(min_detection_points=4)
+        ),
+        realtime=CapturingRealtimeHub(),
+    )
+    service.reload_config()
+
+    trajectory = [
+        (0.50, 0.70),
+        (0.50, 0.64),
+        (0.50, 0.56),
+        (0.50, 0.46),
+        (0.50, 0.34),
+    ]
+    timestamps = [0.00, 0.40, 0.80, 1.20, 1.60]
+
+    recent_window = service._select_runtime_single_hand_trajectory(
+        trajectory=trajectory,
+        trajectory_timestamps=timestamps,
+        observed_at=timestamps[-1],
+    )
+
+    assert recent_window == trajectory[1:]
 
 
 def test_service_rejects_upward_centering_motion_before_true_swipe_up():

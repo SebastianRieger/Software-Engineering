@@ -335,38 +335,23 @@ class ConfigRepository:
         return self._select_active_command_profile(self.get_command_profiles_config())
 
     def get_musical_audio_config(self) -> MusicalAudioConfig:
-        config_key = self._musical_audio_key()
-        with get_db_connection() as connection:
-            row = connection.execute(
-                "SELECT payload FROM app_config WHERE config_key = ?",
-                (config_key,),
-            ).fetchone()
-
+        config = self._load_persisted_musical_audio_config()
         active_profile = self.get_active_command_profile()
-        modality = active_profile.modality_settings.get("musical_audio", CommandModalitySettings(enabled=False))
-        device_index = active_profile.device_preferences.musical_audio_device_index
-
-        if row is None:
-            return MusicalAudioConfig(
-                enabled=modality.enabled,
-                device_index=device_index if device_index is not None else -1,
-                active_artifact_id=modality.active_training_artifact_id,
-            )
-
-        config = MusicalAudioConfig.model_validate_json(row["payload"])
-        return config.model_copy(
-            update={
-                "enabled": modality.enabled,
-                "device_index": device_index if device_index is not None else config.device_index,
-                "active_artifact_id": modality.active_training_artifact_id
-                if modality.active_training_artifact_id is not None
-                else config.active_artifact_id,
-            }
-        )
+        return self._compose_musical_audio_config(config, active_profile)
 
     def save_musical_audio_config(self, config: MusicalAudioConfig) -> MusicalAudioConfig:
         timestamp = datetime.now(timezone.utc)
-        updated_config = config.model_copy(update={"updated_at": timestamp})
+        updated_config = MusicalAudioConfig(
+            sample_rate=config.sample_rate,
+            block_size=config.block_size,
+            queue_max_chunks=config.queue_max_chunks,
+            silence_threshold=config.silence_threshold,
+            pitch_confidence_threshold=config.pitch_confidence_threshold,
+            command_cooldown_seconds=config.command_cooldown_seconds,
+            min_pattern_notes=config.min_pattern_notes,
+            max_pattern_window_seconds=config.max_pattern_window_seconds,
+            updated_at=timestamp,
+        )
         config_key = self._musical_audio_key()
 
         with get_db_connection() as connection:
@@ -390,7 +375,7 @@ class ConfigRepository:
         updated_profile = active_profile.model_copy(
             update={
                 "device_preferences": active_profile.device_preferences.model_copy(
-                    update={"musical_audio_device_index": updated_config.device_index}
+                    update={"musical_audio_device_index": config.device_index}
                 ),
                 "modality_settings": {
                     **active_profile.modality_settings,
@@ -399,8 +384,8 @@ class ConfigRepository:
                         CommandModalitySettings(enabled=False),
                     ).model_copy(
                         update={
-                            "enabled": updated_config.enabled,
-                            "active_training_artifact_id": updated_config.active_artifact_id,
+                            "enabled": config.enabled,
+                            "active_training_artifact_id": config.active_artifact_id,
                         }
                     ),
                 },
@@ -419,7 +404,7 @@ class ConfigRepository:
             )
         )
 
-        return updated_config
+        return self.get_musical_audio_config()
 
     def list_musical_audio_training_artifacts(self, profile_id: str = "default") -> list[MusicalAudioTrainingArtifact]:
         like_pattern = self._musical_audio_artifact_prefix(profile_id)
@@ -677,6 +662,26 @@ class ConfigRepository:
         active_profile = self._select_active_command_profile(
             CommandProfilesConfig.model_validate_json(command_profiles_row["payload"])
         )
+        return self._compose_musical_audio_config(config, active_profile)
+
+    def _load_persisted_musical_audio_config(self) -> MusicalAudioConfig:
+        config_key = self._musical_audio_key()
+        with get_db_connection() as connection:
+            row = connection.execute(
+                "SELECT payload FROM app_config WHERE config_key = ?",
+                (config_key,),
+            ).fetchone()
+
+        if row is None:
+            return MusicalAudioConfig()
+
+        return MusicalAudioConfig.model_validate_json(row["payload"])
+
+    @staticmethod
+    def _compose_musical_audio_config(
+        config: MusicalAudioConfig,
+        active_profile: CommandProfile,
+    ) -> MusicalAudioConfig:
         musical_settings = active_profile.modality_settings.get(
             "musical_audio",
             CommandModalitySettings(enabled=config.enabled),
@@ -686,11 +691,7 @@ class ConfigRepository:
             update={
                 "enabled": musical_settings.enabled,
                 "device_index": device_index if device_index is not None else config.device_index,
-                "active_artifact_id": (
-                    musical_settings.active_training_artifact_id
-                    if musical_settings.active_training_artifact_id is not None
-                    else config.active_artifact_id
-                ),
+                "active_artifact_id": musical_settings.active_training_artifact_id,
             }
         )
 

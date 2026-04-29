@@ -30,6 +30,7 @@ GestureName = str
 GesturePoint = tuple[float, float]
 GestureLandmarks = dict[str, GesturePoint]
 GestureDepthMap = dict[str, float]
+FingerName = str
 
 
 HAND_LANDMARK_NAMES = {
@@ -53,6 +54,22 @@ PALM_CENTER_LANDMARKS = (
     "pinky_mcp",
 )
 
+FINGER_CHAINS: dict[FingerName, tuple[str, str]] = {
+    "thumb": ("thumb_tip", "wrist"),
+    "index": ("index_tip", "index_mcp"),
+    "middle": ("middle_tip", "middle_mcp"),
+    "ring": ("ring_tip", "ring_mcp"),
+    "pinky": ("pinky_tip", "pinky_mcp"),
+}
+
+FINGER_SPREAD_NEIGHBORS: dict[FingerName, tuple[str, str] | None] = {
+    "thumb": ("thumb_tip", "index_tip"),
+    "index": ("index_tip", "middle_tip"),
+    "middle": ("middle_tip", "ring_tip"),
+    "ring": ("ring_tip", "pinky_tip"),
+    "pinky": None,
+}
+
 
 @dataclass(slots=True)
 class GestureObservation:
@@ -75,6 +92,45 @@ class TrackedHandObservation:
     landmarks: GestureLandmarks | None = None
     landmark_depths: GestureDepthMap | None = None
     hand_size: float | None = None
+    tracking_source: str | None = None
+
+
+@dataclass(slots=True)
+class NormalizedHandObservation:
+    point: GesturePoint | None
+    hand: str | None = None
+    landmarks: GestureLandmarks | None = None
+    landmark_depths: GestureDepthMap | None = None
+    hand_size: float | None = None
+    tracking_source: str | None = None
+    palm_center: GesturePoint | None = None
+    normalized_landmarks: GestureLandmarks | None = None
+    palm_span: float | None = None
+
+
+@dataclass(slots=True)
+class FingerState:
+    name: FingerName
+    extended_score: float
+    curled_score: float
+    spread_score: float
+    tip_depth_relative: float | None
+    tip_to_palm_distance: float | None
+    label: str
+
+
+@dataclass(slots=True)
+class HandPoseFeatures:
+    hand: str | None
+    point: GesturePoint | None
+    palm_center: GesturePoint | None
+    hand_size: float | None
+    palm_span: float | None
+    center_distance: float
+    hand_openness: float
+    index_extension_ratio: float
+    push_depth: float
+    finger_states: dict[FingerName, FingerState]
     tracking_source: str | None = None
 
 
@@ -194,6 +250,162 @@ def estimate_hand_size(landmarks: GestureLandmarks) -> float | None:
         return None
 
     return math.hypot(wrist[0] - tracking_point[0], wrist[1] - tracking_point[1])
+
+
+def normalize_tracked_hand_observation(
+    hand: TrackedHandObservation,
+) -> NormalizedHandObservation:
+    landmarks = hand.landmarks
+    if landmarks is None:
+        return NormalizedHandObservation(
+            point=hand.point,
+            hand=hand.hand,
+            landmarks=None,
+            landmark_depths=hand.landmark_depths,
+            hand_size=hand.hand_size,
+            tracking_source=hand.tracking_source,
+        )
+
+    palm_center = compute_hand_tracking_point(landmarks)
+    hand_size = hand.hand_size if hand.hand_size is not None else estimate_hand_size(landmarks)
+    if palm_center is None or hand_size is None or hand_size <= 0:
+        return NormalizedHandObservation(
+            point=hand.point,
+            hand=hand.hand,
+            landmarks=landmarks,
+            landmark_depths=hand.landmark_depths,
+            hand_size=hand_size,
+            tracking_source=hand.tracking_source,
+            palm_center=palm_center,
+            normalized_landmarks=None,
+            palm_span=hand_size,
+        )
+
+    normalized_landmarks = {
+        name: ((point[0] - palm_center[0]) / hand_size, (point[1] - palm_center[1]) / hand_size)
+        for name, point in landmarks.items()
+    }
+    return NormalizedHandObservation(
+        point=hand.point,
+        hand=hand.hand,
+        landmarks=landmarks,
+        landmark_depths=hand.landmark_depths,
+        hand_size=hand_size,
+        tracking_source=hand.tracking_source,
+        palm_center=palm_center,
+        normalized_landmarks=normalized_landmarks,
+        palm_span=hand_size,
+    )
+
+
+def build_normalized_hand_observation(
+    observation: GestureObservation | TrackedHandObservation,
+) -> NormalizedHandObservation:
+    if isinstance(observation, TrackedHandObservation):
+        return normalize_tracked_hand_observation(observation)
+
+    return normalize_tracked_hand_observation(
+        TrackedHandObservation(
+            point=observation.point,
+            hand=observation.hand,
+            landmarks=observation.landmarks,
+            landmark_depths=observation.landmark_depths,
+            hand_size=observation.hand_size,
+            tracking_source=observation.tracking_source,
+        )
+    )
+
+
+def extract_hand_pose_features(
+    observation: GestureObservation | TrackedHandObservation | NormalizedHandObservation,
+) -> HandPoseFeatures | None:
+    normalized = (
+        observation
+        if isinstance(observation, NormalizedHandObservation)
+        else build_normalized_hand_observation(observation)
+    )
+    if normalized.landmarks is None:
+        return None
+
+    wrist = normalized.landmarks.get("wrist")
+    palm_center = normalized.palm_center
+    finger_states: dict[FingerName, FingerState] = {}
+    openness_scores: list[float] = []
+    index_extension_ratio = 0.0
+    if wrist is None:
+        return None
+
+    for finger_name, (tip_name, anchor_name) in FINGER_CHAINS.items():
+        tip = normalized.landmarks.get(tip_name)
+        anchor = normalized.landmarks.get(anchor_name)
+        if tip is None or anchor is None or palm_center is None:
+            continue
+
+        tip_distance = math.hypot(tip[0] - wrist[0], tip[1] - wrist[1])
+        anchor_distance = math.hypot(anchor[0] - wrist[0], anchor[1] - wrist[1])
+        extension_ratio = tip_distance / max(anchor_distance, 1e-6)
+        extended_score = max(0.0, min(1.0, (extension_ratio - 1.0) / 0.55))
+        curled_score = max(0.0, min(1.0, (1.12 - extension_ratio) / 0.42))
+        spread_score = 0.0
+
+        spread_pair = FINGER_SPREAD_NEIGHBORS.get(finger_name)
+        if spread_pair is not None:
+            left_point = normalized.landmarks.get(spread_pair[0])
+            right_point = normalized.landmarks.get(spread_pair[1])
+            if left_point is not None and right_point is not None:
+                spread_distance = math.hypot(left_point[0] - right_point[0], left_point[1] - right_point[1])
+                spread_score = max(0.0, min(1.0, spread_distance / max(normalized.palm_span or 1.0, 1e-6)))
+
+        tip_depth_relative = None
+        if normalized.landmark_depths is not None:
+            tip_depth = normalized.landmark_depths.get(tip_name)
+            anchor_depth = normalized.landmark_depths.get(anchor_name)
+            if tip_depth is not None and anchor_depth is not None:
+                tip_depth_relative = anchor_depth - tip_depth
+
+        tip_to_palm_distance = math.hypot(tip[0] - palm_center[0], tip[1] - palm_center[1])
+        label = "neutral"
+        if extended_score >= 0.6:
+            label = "extended"
+        elif curled_score >= 0.55:
+            label = "curled"
+
+        finger_states[finger_name] = FingerState(
+            name=finger_name,
+            extended_score=extended_score,
+            curled_score=curled_score,
+            spread_score=spread_score,
+            tip_depth_relative=tip_depth_relative,
+            tip_to_palm_distance=tip_to_palm_distance,
+            label=label,
+        )
+        openness_scores.append(extended_score)
+        if finger_name == "index":
+            index_extension_ratio = extension_ratio
+
+    point = normalized.point if normalized.point is not None else palm_center
+    center_distance = float("inf")
+    if point is not None:
+        center_distance = math.hypot(point[0] - 0.5, point[1] - 0.5)
+
+    push_depth = 0.0
+    index_state = finger_states.get("index")
+    if index_state is not None and index_state.tip_depth_relative is not None:
+        push_depth = max(0.0, index_state.tip_depth_relative)
+
+    return HandPoseFeatures(
+        hand=normalized.hand,
+        point=point,
+        palm_center=palm_center,
+        hand_size=normalized.hand_size,
+        palm_span=normalized.palm_span,
+        center_distance=center_distance,
+        hand_openness=mean(openness_scores) if openness_scores else 0.0,
+        index_extension_ratio=index_extension_ratio,
+        push_depth=push_depth,
+        finger_states=finger_states,
+        tracking_source=normalized.tracking_source,
+    )
 
 
 def smooth_point(

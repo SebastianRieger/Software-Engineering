@@ -3,9 +3,10 @@ from __future__ import annotations
 import math
 from dataclasses import dataclass, field
 from statistics import mean, pstdev
+from typing import Literal
 
 from core.config import settings
-from services.gestures_tracking import GestureName, compute_hand_size_scale
+from services.gestures_tracking import GestureName, HandPoseFeatures, compute_hand_size_scale
 
 
 @dataclass(slots=True)
@@ -32,7 +33,68 @@ class GestureDetectionResult:
     gesture: GestureName
     confidence: float
     tracking_source: str | None = None
+    active_phase: "GesturePhase" | None = None
+    spec_id: str | None = None
+    reject_reason: str | None = None
+    tracking_quality: float | None = None
+    dominant_hand_pose: str | None = None
+    primitive_hits: dict[str, float] = field(default_factory=dict)
+    candidate_scores: dict[str, float] = field(default_factory=dict)
     metrics: dict[str, float | int | bool | str | None] = field(default_factory=dict)
+
+
+GesturePhase = Literal["idle", "preparing", "holding", "committing", "releasing", "cooldown"]
+
+
+@dataclass(slots=True)
+class TemporalGestureWindow:
+    frame_count: int
+    duration_seconds: float
+    avg_velocity_x: float
+    avg_velocity_y: float
+    peak_speed: float
+    direction_stability: float
+    hold_stability: float
+    jitter: float
+    phase: GesturePhase
+    hand_count: int = 1
+    start_distance: float | None = None
+    end_distance: float | None = None
+    delta_distance: float | None = None
+
+
+@dataclass(slots=True)
+class PrimitiveDetection:
+    name: str
+    score: float
+    passed: bool
+    reject_reason: str | None = None
+
+
+@dataclass(slots=True)
+class GestureSpecification:
+    spec_id: str
+    gesture: GestureName
+    required_primitives: tuple[str, ...]
+    optional_primitives: tuple[str, ...] = ()
+    forbidden_primitives: tuple[str, ...] = ()
+    allowed_phases: tuple[GesturePhase, ...] = ()
+    min_hand_count: int = 1
+    max_hand_count: int = 1
+    score_threshold: float = 0.45
+    priority: int = 0
+
+
+@dataclass(slots=True)
+class GestureRuntimeAnalysis:
+    detection: GestureDetectionResult | None
+    active_phase: GesturePhase
+    tracking_quality: float
+    candidate_scores: dict[str, float]
+    reject_reason: str | None
+    spec_id: str | None
+    dominant_hand_pose: str | None
+    primitive_hits: dict[str, float]
 
 
 def detect_gesture_from_trajectory(
@@ -130,6 +192,362 @@ def extract_gesture_features(
         total_sweep=total_sweep,
         hand_size=hand_size,
         hand_size_scale=hand_size_scale,
+    )
+
+
+def extract_temporal_gesture_window(
+    trajectory: list[tuple[float, float]],
+    trajectory_timestamps: list[float],
+    *,
+    hand_count: int = 1,
+    pose_features: HandPoseFeatures | None = None,
+    hand_size: float | None = None,
+    cooldown_active: bool = False,
+    distance_window: list[tuple[float, float]] | None = None,
+) -> TemporalGestureWindow:
+    frame_count = min(len(trajectory), len(trajectory_timestamps))
+    if frame_count < 2:
+        return TemporalGestureWindow(
+            frame_count=frame_count,
+            duration_seconds=0.0,
+            avg_velocity_x=0.0,
+            avg_velocity_y=0.0,
+            peak_speed=0.0,
+            direction_stability=0.0,
+            hold_stability=1.0,
+            jitter=0.0,
+            phase="cooldown" if cooldown_active else "idle",
+            hand_count=hand_count,
+        )
+
+    duration_seconds = max(trajectory_timestamps[frame_count - 1] - trajectory_timestamps[0], 1e-6)
+    dx_total = trajectory[frame_count - 1][0] - trajectory[0][0]
+    dy_total = trajectory[frame_count - 1][1] - trajectory[0][1]
+    avg_velocity_x = dx_total / duration_seconds
+    avg_velocity_y = dy_total / duration_seconds
+
+    speeds: list[float] = []
+    dx_components: list[float] = []
+    dy_components: list[float] = []
+    total_distance = 0.0
+    for index in range(frame_count - 1):
+        dt = max(trajectory_timestamps[index + 1] - trajectory_timestamps[index], 1e-6)
+        dx = trajectory[index + 1][0] - trajectory[index][0]
+        dy = trajectory[index + 1][1] - trajectory[index][1]
+        distance = math.hypot(dx, dy)
+        total_distance += distance
+        speeds.append(distance / dt)
+        dx_components.append(dx)
+        dy_components.append(dy)
+
+    peak_speed = max(speeds, default=0.0)
+    net_displacement = math.hypot(dx_total, dy_total)
+    jitter = max(0.0, 1.0 - (net_displacement / max(total_distance, 1e-6)))
+    horizontal_stability = abs(sum(dx_components)) / max(sum(abs(value) for value in dx_components), 1e-6)
+    vertical_stability = abs(sum(dy_components)) / max(sum(abs(value) for value in dy_components), 1e-6)
+    direction_stability = max(horizontal_stability, vertical_stability)
+
+    span_x = max(point[0] for point in trajectory[:frame_count]) - min(point[0] for point in trajectory[:frame_count])
+    span_y = max(point[1] for point in trajectory[:frame_count]) - min(point[1] for point in trajectory[:frame_count])
+    normalized_span_reference = max(hand_size or 0.16, 1e-6)
+    span_score = max(span_x, span_y) / normalized_span_reference
+    hold_stability = max(0.0, min(1.0, 1.0 - (span_score / 1.4)))
+
+    recent_speed = speeds[-1] if speeds else 0.0
+    if cooldown_active:
+        phase: GesturePhase = "cooldown"
+    elif peak_speed <= 0.08 and hold_stability >= 0.68:
+        phase = "holding" if pose_features is not None else "idle"
+    elif duration_seconds <= 0.14:
+        phase = "preparing"
+    elif recent_speed <= max(0.025, peak_speed * 0.35):
+        phase = "releasing"
+    else:
+        phase = "committing"
+
+    start_distance = None
+    end_distance = None
+    delta_distance = None
+    if distance_window and len(distance_window) >= 2:
+        start_distance = distance_window[0][1]
+        end_distance = distance_window[-1][1]
+        delta_distance = end_distance - start_distance
+        if phase in {"idle", "holding", "preparing"} and abs(delta_distance) >= 0.02:
+            phase = "committing"
+
+    return TemporalGestureWindow(
+        frame_count=frame_count,
+        duration_seconds=duration_seconds,
+        avg_velocity_x=avg_velocity_x,
+        avg_velocity_y=avg_velocity_y,
+        peak_speed=peak_speed,
+        direction_stability=direction_stability,
+        hold_stability=hold_stability,
+        jitter=jitter,
+        phase=phase,
+        hand_count=hand_count,
+        start_distance=start_distance,
+        end_distance=end_distance,
+        delta_distance=delta_distance,
+    )
+
+
+def detect_gesture_primitives(
+    *,
+    trajectory: list[tuple[float, float]],
+    pose_features: HandPoseFeatures | None,
+    temporal_window: TemporalGestureWindow,
+    swipe_threshold: float,
+    circle_sweep_min: float,
+    circle_cv_max: float,
+    center_tolerance: float,
+    push_depth_threshold: float,
+    zoom_delta_threshold: float,
+    hand_size: float | None = None,
+) -> dict[str, PrimitiveDetection]:
+    features = extract_gesture_features(trajectory=trajectory, min_detection_points=2, hand_size=hand_size)
+    primitives: dict[str, PrimitiveDetection] = {}
+
+    def add(name: str, score: float, threshold: float = 0.55, reject_reason: str | None = None) -> None:
+        clamped = max(0.0, min(1.0, score))
+        primitives[name] = PrimitiveDetection(
+            name=name,
+            score=clamped,
+            passed=clamped >= threshold,
+            reject_reason=None if clamped >= threshold else reject_reason,
+        )
+
+    if pose_features is not None:
+        index_state = pose_features.finger_states.get("index")
+        other_curled = [
+            pose_features.finger_states[name].curled_score
+            for name in ("middle", "ring", "pinky")
+            if name in pose_features.finger_states
+        ]
+        all_extended = [state.extended_score for state in pose_features.finger_states.values()]
+        all_curled = [state.curled_score for state in pose_features.finger_states.values() if state.name != "thumb"]
+        add("hand_centered", 1.0 - (pose_features.center_distance / max(center_tolerance, 1e-6)), 0.5, "hand_not_centered")
+        add("stable_hold", temporal_window.hold_stability, 0.62, "hand_not_stable")
+        add(
+            "index_primary",
+            mean([index_state.extended_score if index_state is not None else 0.0, *other_curled]) if other_curled else 0.0,
+            0.62,
+            "index_not_primary",
+        )
+        add("all_fingers_open", mean(all_extended) if all_extended else 0.0, 0.6, "hand_not_open")
+        add("fist_like", mean(all_curled) if all_curled else 0.0, 0.6, "hand_not_closed")
+        add("push_forward", pose_features.push_depth / max(push_depth_threshold, 1e-6), 0.55, "push_depth_too_small")
+        add("palm_visible", 0.78 if pose_features.palm_center is not None else 0.0, 0.5, "palm_not_visible")
+    else:
+        add("hand_centered", 0.0, 0.5, "pose_unavailable")
+        add("stable_hold", temporal_window.hold_stability, 0.62, "hand_not_stable")
+
+    if features is not None:
+        normalized_dx = features.dx_total / max(features.hand_size_scale, 1e-6)
+        normalized_dy = features.dy_total / max(features.hand_size_scale, 1e-6)
+        directional_base = temporal_window.direction_stability * max(0.0, 1.0 - temporal_window.jitter * 0.5)
+        add("swipe_vector_left", (normalized_dx / max(swipe_threshold, 1e-6)) * directional_base if normalized_dx > 0 else 0.0, reject_reason="left_commit_missing")
+        add("swipe_vector_right", ((-normalized_dx) / max(swipe_threshold, 1e-6)) * directional_base if normalized_dx < 0 else 0.0, reject_reason="right_commit_missing")
+        add("swipe_vector_up", ((-normalized_dy) / max(swipe_threshold, 1e-6)) * directional_base if normalized_dy < 0 else 0.0, reject_reason="up_commit_missing")
+        add("swipe_vector_down", (normalized_dy / max(swipe_threshold, 1e-6)) * directional_base if normalized_dy > 0 else 0.0, reject_reason="down_commit_missing")
+        circle_score = 0.0
+        if features.total_sweep is not None and features.radius_cv is not None:
+            sweep_score = abs(features.total_sweep) / max(circle_sweep_min, 1e-6)
+            cv_score = circle_cv_max / max(features.radius_cv, 1e-6)
+            circle_score = min(1.0, (sweep_score + cv_score) / 2)
+        add("circular_motion", circle_score, 0.58, "circle_commit_missing")
+    else:
+        add("swipe_vector_left", 0.0, reject_reason="trajectory_missing")
+        add("swipe_vector_right", 0.0, reject_reason="trajectory_missing")
+        add("swipe_vector_up", 0.0, reject_reason="trajectory_missing")
+        add("swipe_vector_down", 0.0, reject_reason="trajectory_missing")
+        add("circular_motion", 0.0, 0.58, "trajectory_missing")
+
+    delta_distance = temporal_window.delta_distance or 0.0
+    two_hand_score = abs(delta_distance) / max(zoom_delta_threshold, 1e-6) if temporal_window.hand_count >= 2 else 0.0
+    add("two_hand_expand", two_hand_score if delta_distance > 0 else 0.0, 0.55, "two_hand_expand_missing")
+    add("two_hand_contract", two_hand_score if delta_distance < 0 else 0.0, 0.55, "two_hand_contract_missing")
+    return primitives
+
+
+def default_gesture_specs() -> dict[GestureName, GestureSpecification]:
+    specs = [
+        GestureSpecification("gesture.swipe_left.v1", "swipe_left", ("swipe_vector_left",), allowed_phases=("preparing", "committing", "releasing"), score_threshold=0.4, priority=40),
+        GestureSpecification("gesture.swipe_right.v1", "swipe_right", ("swipe_vector_right",), allowed_phases=("preparing", "committing", "releasing"), score_threshold=0.4, priority=40),
+        GestureSpecification("gesture.swipe_up.v1", "swipe_up", ("swipe_vector_up",), allowed_phases=("preparing", "committing", "releasing"), score_threshold=0.4, priority=38),
+        GestureSpecification("gesture.swipe_down.v1", "swipe_down", ("swipe_vector_down",), allowed_phases=("preparing", "committing", "releasing"), score_threshold=0.4, priority=38),
+        GestureSpecification("gesture.circle.v1", "circle", ("circular_motion",), allowed_phases=("preparing", "committing", "releasing"), score_threshold=0.52, priority=45),
+        GestureSpecification("gesture.push_click_short.v1", "push_click_short", ("index_primary", "push_forward", "hand_centered"), forbidden_primitives=("all_fingers_open",), allowed_phases=("idle", "preparing", "releasing", "committing", "holding"), score_threshold=0.56, priority=55),
+        GestureSpecification("gesture.push_click_long.v1", "push_click_long", ("index_primary", "push_forward", "stable_hold", "hand_centered"), forbidden_primitives=("all_fingers_open",), allowed_phases=("idle", "preparing", "holding", "releasing", "committing"), score_threshold=0.58, priority=60),
+        GestureSpecification("gesture.zoom_out_hands.v1", "zoom_out_hands", ("two_hand_expand",), allowed_phases=("preparing", "committing", "releasing"), min_hand_count=2, max_hand_count=2, score_threshold=0.54, priority=50),
+        GestureSpecification("gesture.zoom_in_hands.v1", "zoom_in_hands", ("two_hand_contract",), allowed_phases=("preparing", "committing", "releasing"), min_hand_count=2, max_hand_count=2, score_threshold=0.54, priority=50),
+    ]
+    return {spec.gesture: spec for spec in specs}
+
+
+def analyze_runtime_gesture(
+    *,
+    candidates: list[GestureDetectionResult],
+    trajectory: list[tuple[float, float]],
+    trajectory_timestamps: list[float],
+    hand_count: int,
+    pose_features: HandPoseFeatures | None,
+    hand_size: float | None,
+    swipe_threshold: float,
+    circle_sweep_min: float,
+    circle_cv_max: float,
+    center_tolerance: float,
+    push_depth_threshold: float,
+    zoom_delta_threshold: float,
+    cooldown_active: bool = False,
+    distance_window: list[tuple[float, float]] | None = None,
+) -> GestureRuntimeAnalysis:
+    temporal_window = extract_temporal_gesture_window(
+        trajectory=trajectory,
+        trajectory_timestamps=trajectory_timestamps,
+        hand_count=hand_count,
+        pose_features=pose_features,
+        hand_size=hand_size,
+        cooldown_active=cooldown_active,
+        distance_window=distance_window,
+    )
+    primitives = detect_gesture_primitives(
+        trajectory=trajectory,
+        pose_features=pose_features,
+        temporal_window=temporal_window,
+        swipe_threshold=swipe_threshold,
+        circle_sweep_min=circle_sweep_min,
+        circle_cv_max=circle_cv_max,
+        center_tolerance=center_tolerance,
+        push_depth_threshold=push_depth_threshold,
+        zoom_delta_threshold=zoom_delta_threshold,
+        hand_size=hand_size,
+    )
+    tracking_quality = max(0.0, min(1.0, (0.45 if trajectory else 0.0) + (0.35 if pose_features is not None else 0.0) + (0.20 if hand_count >= 1 else 0.0)))
+    dominant_hand_pose = None
+    if primitives.get("index_primary", PrimitiveDetection("index_primary", 0.0, False)).passed:
+        dominant_hand_pose = "index_primary"
+    elif primitives.get("all_fingers_open", PrimitiveDetection("all_fingers_open", 0.0, False)).passed:
+        dominant_hand_pose = "open_hand"
+    elif primitives.get("fist_like", PrimitiveDetection("fist_like", 0.0, False)).passed:
+        dominant_hand_pose = "fist_like"
+    elif pose_features is not None:
+        dominant_hand_pose = "neutral"
+
+    specs = default_gesture_specs()
+    best_detection: GestureDetectionResult | None = None
+    best_priority = -1
+    best_score = -1.0
+    best_reject_reason: str | None = None
+    best_reject_score = -1.0
+    best_reject_spec_id: str | None = None
+    best_primitive_hits: dict[str, float] = {}
+    candidate_scores: dict[str, float] = {}
+
+    for candidate in candidates:
+        spec = specs.get(candidate.gesture)
+        if spec is None:
+            candidate_scores[candidate.gesture] = round(candidate.confidence, 4)
+            continue
+
+        phase = temporal_window.phase
+        candidate_primitive_hits: dict[str, float] = {}
+        for name in spec.required_primitives:
+            primitive_score = primitives.get(name, PrimitiveDetection(name, 0.0, False)).score
+            if name == "push_forward":
+                forward_depth = candidate.metrics.get("forward_depth")
+                if isinstance(forward_depth, (int, float)):
+                    primitive_score = max(primitive_score, float(forward_depth) / max(push_depth_threshold, 1e-6))
+            elif name == "stable_hold" and candidate.gesture == "push_click_long":
+                primitive_score = 1.0
+            elif (
+                name.startswith("swipe_vector_")
+                and candidate.gesture == name.removeprefix("swipe_vector_").join(("swipe_", ""))
+                and phase in spec.allowed_phases
+            ):
+                primitive_score = max(primitive_score, candidate.confidence)
+            elif name in {"two_hand_expand", "two_hand_contract"}:
+                delta_distance = candidate.metrics.get("delta_distance")
+                if isinstance(delta_distance, (int, float)):
+                    primitive_score = max(primitive_score, abs(float(delta_distance)) / max(zoom_delta_threshold, 1e-6))
+            candidate_primitive_hits[name] = round(max(0.0, min(1.0, primitive_score)), 4)
+
+        primitive_scores = list(candidate_primitive_hits.values())
+        combined_primitive_score = mean(primitive_scores) if primitive_scores else candidate.confidence
+        phase_score = 1.0 if not spec.allowed_phases or phase in spec.allowed_phases else 0.0
+        hand_score = 1.0 if spec.min_hand_count <= hand_count <= spec.max_hand_count else 0.0
+        total_score = min(1.0, candidate.confidence * 0.55 + combined_primitive_score * 0.35 + phase_score * hand_score * 0.10)
+        candidate_scores[candidate.gesture] = round(total_score, 4)
+
+        reject_reason = None
+        if not (spec.min_hand_count <= hand_count <= spec.max_hand_count):
+            reject_reason = "hand_count_mismatch"
+        elif spec.allowed_phases and phase not in spec.allowed_phases:
+            reject_reason = "phase_mismatch"
+        else:
+            for primitive_name in spec.required_primitives:
+                if candidate_primitive_hits.get(primitive_name, 0.0) < 0.45:
+                    primitive = primitives.get(primitive_name)
+                    reject_reason = primitive.reject_reason if primitive is not None else f"{primitive_name}_missing"
+                    break
+            if reject_reason is None:
+                for primitive_name in spec.forbidden_primitives:
+                    primitive = primitives.get(primitive_name)
+                    if primitive is not None and primitive.passed:
+                        reject_reason = f"{primitive_name}_forbidden"
+                        break
+            if reject_reason is None and total_score < spec.score_threshold:
+                reject_reason = "score_below_threshold"
+
+        primitive_hits = dict(candidate_primitive_hits)
+        if reject_reason is None:
+            if spec.priority > best_priority or (spec.priority == best_priority and total_score > best_score):
+                candidate.active_phase = phase
+                candidate.spec_id = spec.spec_id
+                candidate.tracking_quality = tracking_quality
+                candidate.dominant_hand_pose = dominant_hand_pose
+                candidate.primitive_hits = primitive_hits
+                best_detection = candidate
+                best_priority = spec.priority
+                best_score = total_score
+                best_primitive_hits = primitive_hits
+        elif total_score > best_reject_score:
+            best_reject_score = total_score
+            best_reject_reason = reject_reason
+            best_reject_spec_id = spec.spec_id
+            best_primitive_hits = primitive_hits
+
+    if best_detection is not None:
+        best_detection.candidate_scores = dict(candidate_scores)
+        best_detection.metrics.update(
+            {
+                "tracking_quality": round(tracking_quality, 4),
+                "candidate_score": round(best_score, 4),
+                "active_phase": temporal_window.phase,
+                "spec_id": best_detection.spec_id,
+                "dominant_hand_pose": dominant_hand_pose,
+            }
+        )
+        return GestureRuntimeAnalysis(
+            detection=best_detection,
+            active_phase=temporal_window.phase,
+            tracking_quality=tracking_quality,
+            candidate_scores=candidate_scores,
+            reject_reason=None,
+            spec_id=best_detection.spec_id,
+            dominant_hand_pose=dominant_hand_pose,
+            primitive_hits=best_primitive_hits,
+        )
+
+    return GestureRuntimeAnalysis(
+        detection=None,
+        active_phase=temporal_window.phase,
+        tracking_quality=tracking_quality,
+        candidate_scores=candidate_scores,
+        reject_reason=best_reject_reason,
+        spec_id=best_reject_spec_id,
+        dominant_hand_pose=dominant_hand_pose,
+        primitive_hits=best_primitive_hits,
     )
 
 

@@ -13,8 +13,8 @@ Die Codebasis ist jetzt ein belastbarer Kernprototyp mit echter Backend-Persiste
 - fetch-basierter API-Client fuer Layout-, System-, Hardware- und jetzt auch Kalibrierungsendpunkte
 - gemeinsamer WebSocket-Client fuer `GestureDetected`, `RawInputDetected`, `CommandMatchEvaluated`, `UIActionRequested`, `VoiceCommandDetected` und Kalibrierungs-Lifecycle-Events
 - eigener Kalibrierungswizard im laufenden UI-Flow mit Profilauswahl, Zielauswahl, Fortschrittsanzeige, Analyse-Review, Apply und Discard
-- dediziertes Command-Settings-Panel fuer aktive Command-Profile, modality-weite Mappings, Geraete-Praeferenzen und Musical-Audio-Artefakte
-- browserbasierter Trainingsassistent fuer Musical Audio mit Take-Aufnahme, Konturvorschau, Accept/Reject und Template-Ableitung aus freigegebenen Takes
+- dedizierter fullscreen Command-Settings-Flow mit getrennten Arbeitsbereichen fuer `Profiles`, `Mappings`, `Runtime` und `Training`
+- browserbasierter Trainingsassistent fuer Musical Audio mit expliziter Browser-Diagnostik, separater Browser-Geraetewahl, Take-Aufnahme, Konturvorschau, Accept/Reject und Template-Ableitung aus freigegebenen Takes
 - explizite Sperre normaler Fokus-, Shop- und ArrangeMode-Interaktionen waehrend aktiver Kalibrierung
 - Hardware-Widget mit direkten Start/Stop-Kontrollen, dessen Kamera- und Mikrofonwahl jetzt aus dem aktiven Command-Profil statt aus widget-lokalen Settings kommt
 
@@ -35,7 +35,7 @@ Die Codebasis ist jetzt ein belastbarer Kernprototyp mit echter Backend-Persiste
 - Gestenruntime, die waehrend aktiver Kalibrierung erkannte Samples an den Kalibrierungsdienst weiterleitet und normale UI-Aktionen unterdrueckt
 - Realtime-Kanal fuer rohe Gestenerkennung, modality-generic `RawInputDetected`, `CommandMatchEvaluated`, semantische UI-Aktionen und Kalibrierungs-Events wie Start, Target-Arming, Sample-Accept, Analyse-Ready und Apply oder Rollback
 - gemeinsamer `InputOrchestrator` im Backend, der modality-generic Input-Mappings aus `InputActionConfig` aufloest, Suppression-/Disable-Entscheidungen sichtbar macht und `UIActionRequested` fuer Gesten, Voice und Musical Audio publiziert
-- dedizierter `MusicalAudioService`, der fuer Live-Erkennung zwingend `aubio` fuer Pitch/Onset und `DTAIDistance` fuer DTW-Matching nutzt und Training-Artifact-Ladung aus der Konfigurationspersistenz bezieht
+- dedizierter `MusicalAudioService`, der fuer Live-Erkennung zwingend `aubio` fuer Pitch/Onset und `DTAIDistance` fuer DTW-Matching nutzt, einen synchronen Runtime-Preflight ausfuehrt und Statuscodes wie `configuration_disabled`, `no_active_artifact`, `device_missing` oder `invalid_sample_rate` explizit meldet
 - gruene Backend-Testbasis fuer Persistenz, API-Lifecycle, Rollback, Konfliktverhalten, WebSocket-Ereignisse und Runtime-Gating
 - Device-Endpunkte fuer reale Kamera- und Audio-Input-Erkennung, damit mehrere angeschlossene Geraete im aktiven Command-Profil hinterlegt und von dort aus runtimeseitig verwendet werden koennen
 
@@ -60,9 +60,16 @@ Die Codebasis ist jetzt ein belastbarer Kernprototyp mit echter Backend-Persiste
 ## Command- und Training-Stand
 
 - `GET/PUT /api/v1/config/command-profiles` verwaltet modality-weite Enablement-, Mapping- und Device-Ownership pro aktivem Profil
-- `GET/PUT /api/v1/config/musical-audio` und die zugehoerigen Artefakt-Endpunkte verwalten Runtime-Defaults und kompakte Few-Shot-Templates
+- `GET/PUT /api/v1/config/musical-audio` und die zugehoerigen Artefakt-Endpunkte verwalten Runtime-Tuning und kompakte Few-Shot-Templates; `enabled`, `device_index` und `active_artifact_id` werden als Runtime-Sicht aus dem aktiven Command-Profil abgeleitet
 - das Frontend kann mehrere browserseitig aufgenommene Takes analysieren, freigeben oder verwerfen und daraus ein neues Artefakt-Template ableiten
-- das aktive Musical-Audio-Artefakt wird explizit im Command-Profil und in der Runtime-Konfiguration markiert, statt nur implizit ueber manuelle Notenedits zu existieren
+- das aktive Musical-Audio-Artefakt und die Backend-Geraeteauswahl werden explizit im aktiven Command-Profil gehalten; die Runtime-Konfiguration beschreibt nur noch Tuning und validierte Startparameter
+
+## Musical-Audio-Betriebsmodell
+
+- Browser-Training und Backend-Live-Runtime sind absichtlich getrennte Betriebsarten mit unterschiedlicher Geraete- und Fehlerlogik
+- Browser-Training nutzt `getUserMedia` und Web Audio, zeigt Preflight-Diagnostik fuer Kontext, Permissions und Browser-Geraete und kann ein anderes Mikrofon verwenden als die Backend-Runtime
+- Backend-Live-Runtime nutzt `sounddevice`, fuehrt vor dem Thread-Start einen Geraete-/Sample-Rate-Preflight aus und exponiert validierte Kombinationen ueber `validated_device_index` und `validated_sample_rate`
+- der Command-Settings-Flow macht die Ownership sichtbar: Aktivierung, aktives Runtime-Artefakt und Backend-Geraet kommen aus `CommandProfile`, Sample-Rate und Matching-Tuning aus `MusicalAudioConfig`
 
 ## Kalibrierungsstand
 

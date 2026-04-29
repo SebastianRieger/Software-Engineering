@@ -43,6 +43,13 @@ class GestureStatusResponse(BaseModel):
     last_gesture_at: datetime | None = None
     last_confidence: float | None = Field(default=None, ge=0, le=1)
     last_tracking_source: str | None = None
+    tracking_quality: float | None = Field(default=None, ge=0, le=1)
+    active_phase: Literal["idle", "preparing", "holding", "committing", "releasing", "cooldown"] | None = None
+    candidate_scores: dict[str, float] = Field(default_factory=dict)
+    reject_reason: str | None = None
+    spec_id: str | None = None
+    dominant_hand_pose: str | None = None
+    primitive_hits: dict[str, float] = Field(default_factory=dict)
     debug_frame_available: bool = False
     last_error: str | None = None
 
@@ -58,6 +65,13 @@ class GestureEventPayload(BaseModel):
     hand: str | None = None
     confidence: float | None = Field(default=None, ge=0, le=1)
     tracking_source: str | None = None
+    tracking_quality: float | None = Field(default=None, ge=0, le=1)
+    active_phase: Literal["idle", "preparing", "holding", "committing", "releasing", "cooldown"] | None = None
+    candidate_scores: dict[str, float] = Field(default_factory=dict)
+    reject_reason: str | None = None
+    spec_id: str | None = None
+    dominant_hand_pose: str | None = None
+    primitive_hits: dict[str, float] = Field(default_factory=dict)
 
 
 class GestureEventEnvelope(BaseModel):

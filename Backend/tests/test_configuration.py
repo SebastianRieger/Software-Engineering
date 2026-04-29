@@ -408,7 +408,16 @@ async def test_get_and_save_musical_audio_config(client):
     reload_response = await client.get("/api/v1/config/musical-audio")
     assert reload_response.status_code == 200
     loaded = reload_response.json()
+    assert loaded["config"]["enabled"] is True
+    assert loaded["config"]["device_index"] == 4
     assert loaded["config"]["active_artifact_id"] == "whistle-main"
+
+    profiles_response = await client.get("/api/v1/config/command-profiles")
+    assert profiles_response.status_code == 200
+    profile = profiles_response.json()["config"]["profiles"][0]
+    assert profile["modality_settings"]["musical_audio"]["enabled"] is True
+    assert profile["modality_settings"]["musical_audio"]["active_training_artifact_id"] == "whistle-main"
+    assert profile["device_preferences"]["musical_audio_device_index"] == 4
 
 
 @pytest.mark.asyncio

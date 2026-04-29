@@ -96,6 +96,37 @@ class GestureZoomSampleMetrics(BaseModel):
     frame_count: int = Field(ge=0)
 
 
+class GestureFingerStateSnapshot(BaseModel):
+    extended_score: float = Field(ge=0, le=1)
+    curled_score: float = Field(ge=0, le=1)
+    spread_score: float = Field(ge=0, le=1)
+    tip_depth_relative: float | None = None
+    tip_to_palm_distance: float | None = Field(default=None, ge=0)
+    label: str
+
+
+class GesturePoseSnapshot(BaseModel):
+    center_distance: float = Field(ge=0)
+    hand_openness: float = Field(ge=0, le=1)
+    index_extension_ratio: float = Field(ge=0)
+    push_depth: float = Field(ge=0)
+    dominant_hand_pose: str | None = None
+    finger_states: dict[str, GestureFingerStateSnapshot] = Field(default_factory=dict)
+
+
+class GestureTemporalWindowSummary(BaseModel):
+    duration_seconds: float = Field(ge=0)
+    frame_count: int = Field(ge=0)
+    avg_velocity_x: float
+    avg_velocity_y: float
+    peak_speed: float = Field(ge=0)
+    direction_stability: float = Field(ge=0, le=1)
+    hold_stability: float = Field(ge=0, le=1)
+    jitter: float = Field(ge=0, le=1)
+    active_phase: str
+    delta_distance: float | None = None
+
+
 class GestureCalibrationSamplePayload(BaseModel):
     gesture: GestureType
     confidence: float = Field(ge=0, le=1)
@@ -107,6 +138,8 @@ class GestureCalibrationSamplePayload(BaseModel):
     trajectory: GestureTrajectorySummary | None = None
     push: GesturePushSampleMetrics | None = None
     zoom: GestureZoomSampleMetrics | None = None
+    pose: GesturePoseSnapshot | None = None
+    temporal: GestureTemporalWindowSummary | None = None
     feature_windows: dict[str, Any] = Field(default_factory=dict)
 
 
