@@ -103,15 +103,19 @@ flowchart LR
 - Hand, Handgelenk und palmnahe Punkte bilden den Standardpfad; Ellenbogen- oder Armkontext bleibt optional fuer spaetere Erweiterungen
 - Gestenparameter sollen als persistierbare Backend-Konfiguration gepflegt werden und nicht nur als starre ENV-Werte existieren
 - ueber den Basiskandidaten liegt jetzt eine additive Runtime-Schicht aus Temporal-Window, Primitive-Bewertung und deklarativen Gesture-Specs, damit bestehende Swipes, Pushes und Zooms erklaerbar aufgeloest werden koennen
+- dieselben Runtime-Specs sollen an explizite, dokumentierte Gesture-Contracts fuer Startpose, Bewegungsprofil und Endpose gekoppelt bleiben, damit neue Trainings- und Tuning-Videos dieselbe Definition wie die Nutzerdokumentation verwenden
 - Gestenereignisse und Statusantworten sollen neben dem Gestentyp auch Confidence, Tracking-Herkunft, Phase, Candidate-Scores, Reject-Reason, Spec-ID und Primitive-Hits transportieren koennen
 - Laufzeitfehler der Kamera- oder Adapterpfade muessen im Statusmodell sichtbar bleiben und bei transienten Lesefehlern kontrolliert abgefangen werden
 - semantische UI-Aktionsauflosung soll nicht in einem modality-spezifischen Runtime-Service verankert bleiben, sondern ueber eine gemeinsame Input-Orchestrierung fuer Gesten, Voice und spaetere weitere Quellen laufen
 
 ### Gesture Runtime Slice
 
-- `gestures_tracking.py` liefert normalisierte Beobachtungen und Pose-Merkmale pro Hand, ohne den MediaPipe-Hands-Tracker selbst auszutauschen
-- `gestures_detection.py` kapselt reine Runtime-Analyse als Temporal-Window, Primitive-Detektion, Gesture-Specs und Resolver ueber bestehende Kandidatenpfade
-- `gestures.py` orchestriert nur noch Tracking, Cooldown, Event-Publishing und Kalibrierungs-Snapshots; die eigentliche Begruendung einer Erkennung bleibt in der Detection-Schicht
+- `services/gesture/tracking.py` liefert normalisierte Beobachtungen und Pose-Merkmale pro Hand, ohne den MediaPipe-Hands-Tracker selbst auszutauschen
+- `services/gesture/detection.py` kapselt reine Runtime-Analyse als Temporal-Window, Primitive-Detektion, Gesture-Specs und Resolver ueber bestehende Kandidatenpfade
+- `services/gesture/contracts.py` beschreibt die kanonische Gestenausfuehrung fuer Tuning, Demo und Nutzerdokumentation an einer Stelle
+- `services/gesture/push_runtime.py` kapselt den Push-Klick-Zustandsautomaten getrennt von allgemeiner Gesture-Arbitration
+- `services/gesture/runtime.py` orchestriert Tracking, Cooldown, Event-Publishing und Kalibrierungs-Snapshots; die eigentliche Begruendung einer Erkennung bleibt in Detection- und Push-Runtime-Schicht
+- `services/gesture/offline/` haelt Swipe- und Push-Zyklusanalysen fuer Video-Tuning, Benchmarking und Validierungslaeufe getrennt von der Live-Runtime
 - Kalibrierungssamples enthalten jetzt neben Trajectory-, Push- und Zoom-Metriken auch Pose-Snapshots und echte Temporal-Window-Werte fuer spaetere Schwellwertanalyse
 
 ### Konfigurationsdomänen

@@ -19,7 +19,7 @@ from schemas.musical_audio import (
     MusicalAudioStatusCode,
     MusicalAudioTrainingArtifact,
 )
-from services.interactions import InputOrchestrator
+from services.input.orchestrator import InputOrchestrator
 
 try:
     import sounddevice as sd

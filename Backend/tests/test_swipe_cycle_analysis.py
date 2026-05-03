@@ -1,4 +1,4 @@
-from services.swipe_cycle_analysis import (
+from services.gesture.offline.swipe_cycle_analysis import (
     SwipeFrameSample,
     profile_swipe_cycles,
     segment_swipe_cycles,
@@ -24,7 +24,7 @@ def test_segment_swipe_cycles_splits_repeated_horizontal_cycles():
 
     cycles = segment_swipe_cycles(
         samples,
-        expected_gesture="swipe_left",
+        expected_gesture="swipe_right",
         motion_step_threshold=0.03,
         edge_speed_threshold=0.02,
         min_cycle_displacement=0.12,
@@ -74,15 +74,15 @@ def test_segment_swipe_cycles_keeps_horizontal_cycle_with_opposite_observed_dire
 
     cycles = segment_swipe_cycles(
         samples,
-        expected_gesture="swipe_left",
+        expected_gesture="swipe_right",
         motion_step_threshold=0.03,
         edge_speed_threshold=0.02,
         min_cycle_displacement=0.18,
     )
 
     assert len(cycles) == 1
-    assert cycles[0].gesture == "swipe_left"
-    assert cycles[0].observed_gesture == "swipe_right"
+    assert cycles[0].gesture == "swipe_right"
+    assert cycles[0].observed_gesture == "swipe_left"
 
 
 def test_summarize_swipe_profiles_returns_cycle_statistics():
@@ -101,7 +101,7 @@ def test_summarize_swipe_profiles_returns_cycle_statistics():
 
     cycles = segment_swipe_cycles(
         samples,
-        expected_gesture="swipe_left",
+        expected_gesture="swipe_right",
         motion_step_threshold=0.03,
         edge_speed_threshold=0.02,
         min_cycle_displacement=0.14,

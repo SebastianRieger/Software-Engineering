@@ -317,6 +317,7 @@ async function ensureCalibrationDefinitions(): Promise<void> {
     if (calibrationSelectedTargets.value.length === 0) {
       calibrationSelectedTargets.value = definitions.targets
         .filter((target) => target.modality === 'gesture' && target.supported)
+        .slice(0, 1)
         .map((target) => target.id)
     }
   } catch (error) {
@@ -496,7 +497,7 @@ async function startCalibrationSession(): Promise<void> {
 
   const payload: CalibrationSessionCreateRequest = {
     modality: 'gesture',
-    selected_targets: calibrationSelectedTargets.value,
+    selected_targets: calibrationSelectedTargets.value.slice(0, 1),
     target_repetitions: calibrationTargetRepetitions.value,
     profile: calibrationProfileName.value.trim() || 'default',
     camera_index: calibrationCameraIndex.value,

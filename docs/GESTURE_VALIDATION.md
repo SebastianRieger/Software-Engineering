@@ -13,6 +13,7 @@ Pruefen, dass die Anwendung auf echter Kamera- oder Raspberry-Pi-Hardware stabil
 - Kamera anschliessen und vom Betriebssystem verifizieren.
 - Einen Browser mit geoeffneter Anwendung bereithalten.
 - Optional einen WebSocket-Monitor fuer `/ws` oeffnen.
+- Vor der Session die kanonischen Ausfuehrungen in `docs/GESTURE_DEFINITIONS.md` lesen und die Testperson darauf festlegen.
 - Testgesten bereitlegen: `swipe_left`, `swipe_right`, `swipe_up`, `swipe_down`, `circle`, `push_click_short`, `push_click_long`, `zoom_out_hands`, `zoom_in_hands`.
 
 ## Pflichtchecks Normale Gestensteuerung
@@ -27,11 +28,14 @@ Pruefen, dass die Anwendung auf echter Kamera- oder Raspberry-Pi-Hardware stabil
 
 3. Rohe Basisgesten
    - `swipe_left`, `swipe_right`, `swipe_up`, `swipe_down` und `circle` jeweils mehrfach ausfuehren.
+   - fuer Swipes immer mit offener Handflaeche in der mittleren Startzone beginnen und die Endpose in Wischrichtung halten.
+   - fuer `circle` immer mit Faust in der Mitte starten und erst nach geschlossenem Kreis wieder oeffnen.
    - Verifizieren, dass `GestureDetected` fachlich plausibel ist und im Idle-Zustand kein Event-Spam auftritt.
    - Im WebSocket oder Statusmodell pruefen, dass `active_phase`, `spec_id`, `candidate_scores` und `primitive_hits` zu einer erkannten Geste passen.
 
 4. Push-Klicks und Zwei-Hand-Zoom
    - kurzen und langen Push-Klick pruefen
+   - sicherstellen, dass der kurze Klick sichtbar schneller committed als der lange Klick und nicht nur kuerzer gehalten wird
    - `zoom_out_hands` und `zoom_in_hands` pruefen
    - verifizieren, dass Push und Zoom nicht mehrfach oder in Idle-Rauschen feuern
    - bei bewusst falsch ausgefuehrten Versuchen auf `reject_reason` achten, damit Ablehnungen nachvollziehbar bleiben
@@ -45,7 +49,7 @@ Pruefen, dass die Anwendung auf echter Kamera- oder Raspberry-Pi-Hardware stabil
 1. Wizard-Start
    - Kalibrierungswizard oeffnen.
    - Profilname setzen oder `default` verwenden.
-   - alle Gesten oder eine Teilmenge auswaehlen.
+   - genau eine Geste fuer die Sitzung auswaehlen.
    - Wiederholungszahl zwischen 10 und 20 pruefen.
 
 2. Interaktionssperre

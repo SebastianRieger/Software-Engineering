@@ -40,7 +40,7 @@ from schemas.musical_audio import (
 from schemas.system import SystemStatusResponse
 from schemas.voice import VoiceConfig, VoiceConfigEnvelope
 from services.calibration import CalibrationService, CalibrationServiceError, calibration_service
-from services.gestures import GestureService, GestureServiceError, gesture_service
+from services.gesture import GestureService, GestureServiceError, gesture_service
 from services.musical_audio import MusicalAudioService
 from services.voice import VoiceService
 

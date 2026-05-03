@@ -18,7 +18,7 @@ from main import app
 from repositories.config import ConfigRepository
 from repositories.weather import WeatherRepositoryError
 from services.calibration import CalibrationService
-from services.gestures import GestureServiceError
+from services.gesture import GestureServiceError
 from services.musical_audio import MusicalAudioServiceError
 from services.voice import VoiceServiceError
 

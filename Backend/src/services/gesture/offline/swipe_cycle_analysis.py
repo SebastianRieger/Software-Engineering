@@ -4,8 +4,8 @@ from dataclasses import dataclass
 from statistics import mean, median
 from typing import Literal
 
-from services.gestures_detection import extract_gesture_features, extract_temporal_gesture_window
-from services.gestures_tracking import GestureName
+from services.gesture.detection import extract_gesture_features, extract_temporal_gesture_window
+from services.gesture.tracking import GestureName
 
 
 AxisName = Literal["x", "y"]
@@ -86,9 +86,9 @@ def _percentile(values: list[float], probability: float) -> float | None:
 
 def swipe_axis_sign(gesture: GestureName) -> tuple[AxisName, float]:
     if gesture == "swipe_left":
-        return "x", 1.0
-    if gesture == "swipe_right":
         return "x", -1.0
+    if gesture == "swipe_right":
+        return "x", 1.0
     if gesture == "swipe_down":
         return "y", 1.0
     if gesture == "swipe_up":
@@ -98,7 +98,7 @@ def swipe_axis_sign(gesture: GestureName) -> tuple[AxisName, float]:
 
 def gesture_for_axis_sign(axis: AxisName, sign: float) -> GestureName:
     if axis == "x":
-        return "swipe_left" if sign >= 0 else "swipe_right"
+        return "swipe_left" if sign < 0 else "swipe_right"
     return "swipe_down" if sign >= 0 else "swipe_up"
 
 

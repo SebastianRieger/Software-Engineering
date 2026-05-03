@@ -16,14 +16,22 @@ if str(SRC_ROOT) not in sys.path:
     sys.path.insert(0, str(SRC_ROOT))
 
 from schemas.gestures import GestureConfig, GestureType
-from services.gestures import GestureService
-from services.gestures_detection import (
+from services.gesture import GestureService
+from services.gesture.contracts import default_gesture_contracts, get_gesture_contract
+from services.gesture.detection import (
     detect_gesture_with_confidence,
-    extract_temporal_gesture_window,
     extract_gesture_features,
+    extract_temporal_gesture_window,
 )
-from services.gestures_tracking import MediaPipeHandsAdapter, extract_hand_pose_features, smooth_point
-from services.swipe_cycle_analysis import (
+from services.gesture.offline.push_cycle_analysis import (
+    PushCycle,
+    PushCycleProfile,
+    PushFrameSample,
+    profile_push_cycles,
+    segment_push_cycles,
+    summarize_push_profiles,
+)
+from services.gesture.offline.swipe_cycle_analysis import (
     SwipeCycle,
     SwipeCycleProfile,
     SwipeFrameSample,
@@ -31,6 +39,7 @@ from services.swipe_cycle_analysis import (
     segment_swipe_cycles,
     summarize_swipe_profiles,
 )
+from services.gesture.tracking import MediaPipeHandsAdapter, extract_hand_pose_features, smooth_point
 
 
 VIDEO_LABELS: dict[str, GestureType] = {
@@ -51,6 +60,7 @@ VIDEO_LABELS: dict[str, GestureType] = {
 class VideoGestureSample:
     file_name: str
     label: str
+    contract_id: str
     detected_gesture: str | None
     best_candidate_score: float
     confidence: float | None
@@ -86,7 +96,11 @@ class VideoAnalysisResult:
     swipe_samples: list[SwipeFrameSample]
     swipe_cycles: list[SwipeCycle]
     swipe_profiles: list[SwipeCycleProfile]
+    push_samples: list[PushFrameSample]
+    push_cycles: list[PushCycle]
+    push_profiles: list[PushCycleProfile]
     swipe_summary: dict[str, float | int | None] | None = None
+    push_summary: dict[str, float | int | None] | None = None
 
 
 @dataclass(slots=True)
@@ -118,6 +132,31 @@ class NegativeSwipeVideoEvaluation:
     detected_gesture: str | None
     false_positive: bool
     confidence: float | None
+
+
+@dataclass(slots=True)
+class PushCycleEvaluation:
+    cycle_index: int
+    expected_gesture: str
+    detected_gesture: str | None
+    correct: bool
+    boundary_truncated: bool
+    duration_seconds: float
+    forward_depth: float
+    hold_duration_seconds: float
+    reason: str | None
+
+
+@dataclass(slots=True)
+class NegativePushEvaluation:
+    source_label: str
+    expected_push: str
+    observed_gesture: str
+    cycle_index: int
+    detected_gesture: str | None
+    false_positive: bool
+    duration_seconds: float
+    forward_depth: float
 
 
 @dataclass(slots=True)
@@ -167,6 +206,13 @@ def _capture_fps(capture) -> float:
     return float(capture.get(fps_property) or 30.0)
 
 
+def _seek_capture_frame(capture, frame_index: int) -> None:
+    if frame_index <= 0:
+        return
+    frame_property = getattr(cv2, "CAP_PROP_POS_FRAMES")
+    capture.set(frame_property, float(frame_index))
+
+
 def _set_runtime_config(service: GestureService, config: GestureConfig) -> None:
     setattr(service, "_active_config", config.model_copy(deep=True))
 
@@ -212,8 +258,11 @@ def _simulate_video(
     adapter: MediaPipeHandsAdapter,
     frame_stride: int,
     max_frames: int | None,
+    start_frame: int = 0,
+    end_frame: int | None = None,
 ) -> VideoGestureSample:
     capture = _open_video_capture(video_path)
+    _seek_capture_frame(capture, start_frame)
     fps = _capture_fps(capture)
     hands = _create_hands_tracker(adapter)
 
@@ -229,7 +278,8 @@ def _simulate_video(
 
     best_sample: VideoGestureSample | None = None
     swipe_samples: list[SwipeFrameSample] = []
-    frame_index = 0
+    push_samples: list[PushFrameSample] = []
+    frame_index = start_frame
     processed_frames = 0
 
     try:
@@ -240,6 +290,8 @@ def _simulate_video(
 
             current_frame_index = frame_index
             frame_index += 1
+            if end_frame is not None and current_frame_index > end_frame:
+                break
             if current_frame_index % frame_stride != 0:
                 continue
             if max_frames is not None and processed_frames >= max_frames:
@@ -281,6 +333,20 @@ def _simulate_video(
                 trajectory_timestamps=timestamp_snapshot,
                 hand_size=hand_size_snapshot,
             )
+            pose = extract_hand_pose_features(observation)
+            folded_fingers_count = 0
+            push_pose_valid = False
+            if pose is not None:
+                folded_fingers_count = sum(
+                    1
+                    for finger_name in ("middle", "ring", "pinky")
+                    if pose.finger_states.get(finger_name) is not None and pose.finger_states[finger_name].label == "curled"
+                )
+                push_pose_valid = (
+                    pose.center_distance <= config.center_tolerance
+                    and pose.index_extension_ratio > config.push_pose_extension_ratio
+                    and folded_fingers_count >= 2
+                )
             if label.startswith("swipe_"):
                 swipe_samples.append(
                     SwipeFrameSample(
@@ -292,6 +358,19 @@ def _simulate_video(
                         tracking_quality=analysis.tracking_quality,
                     )
                 )
+            push_samples.append(
+                PushFrameSample(
+                    timestamp=observed_at,
+                    push_depth=pose.push_depth if pose is not None else 0.0,
+                    pose_valid=push_pose_valid,
+                    hand_size=observation.hand_size,
+                    center_distance=pose.center_distance if pose is not None else None,
+                    index_extension_ratio=pose.index_extension_ratio if pose is not None else None,
+                    folded_fingers_count=folded_fingers_count,
+                    hand=observation.hand,
+                    tracking_quality=analysis.tracking_quality,
+                )
+            )
             label_score = analysis.candidate_scores.get(label, 0.0)
             best_any_score = max(analysis.candidate_scores.values(), default=0.0)
             detected = analysis.detection.gesture if analysis.detection is not None else None
@@ -303,7 +382,6 @@ def _simulate_video(
                 observed_at=observed_at,
             )
             selected_timestamps = timestamp_snapshot[-len(selected_trajectory):] if selected_trajectory else []
-            pose = extract_hand_pose_features(observation)
             hand_count = len(observation.hands) if observation.hands else 1
             temporal = extract_temporal_gesture_window(
                 trajectory=selected_trajectory,
@@ -326,6 +404,7 @@ def _simulate_video(
             sample = VideoGestureSample(
                 file_name=video_path.name,
                 label=label,
+                contract_id=get_gesture_contract(label).contract_id,
                 detected_gesture=detected,
                 best_candidate_score=label_score,
                 confidence=analysis.detection.confidence if analysis.detection is not None and analysis.detection.gesture == label else None,
@@ -371,7 +450,10 @@ def _simulate_video(
 
     swipe_cycles: list[SwipeCycle] = []
     swipe_profiles: list[SwipeCycleProfile] = []
+    push_cycles: list[PushCycle] = []
+    push_profiles: list[PushCycleProfile] = []
     swipe_summary: dict[str, float | int | None] | None = None
+    push_summary: dict[str, float | int | None] | None = None
     if label.startswith("swipe_"):
         swipe_cycles = segment_swipe_cycles(
             swipe_samples,
@@ -380,11 +462,24 @@ def _simulate_video(
         )
         swipe_profiles = profile_swipe_cycles(swipe_samples, swipe_cycles)
         swipe_summary = summarize_swipe_profiles(swipe_profiles)
+    if label.startswith("push_click"):
+        push_cycles = segment_push_cycles(
+            push_samples,
+            expected_gesture=label,
+            activation_depth_threshold=config.push_depth_threshold,
+            release_depth_threshold=config.push_release_threshold,
+            min_index_extension_ratio=config.push_pose_extension_ratio,
+            center_distance_max=config.center_tolerance,
+            long_click_seconds=config.long_click_seconds,
+        )
+        push_profiles = profile_push_cycles(push_samples, push_cycles)
+        push_summary = summarize_push_profiles(push_profiles)
 
     if best_sample is None:
         best_sample = VideoGestureSample(
             file_name=video_path.name,
             label=label,
+            contract_id=get_gesture_contract(label).contract_id,
             detected_gesture=None,
             best_candidate_score=0.0,
             confidence=None,
@@ -400,8 +495,84 @@ def _simulate_video(
         swipe_samples=swipe_samples,
         swipe_cycles=swipe_cycles,
         swipe_profiles=swipe_profiles,
+        push_samples=push_samples,
+        push_cycles=push_cycles,
+        push_profiles=push_profiles,
         swipe_summary=swipe_summary,
+        push_summary=push_summary,
     )
+
+
+def _evaluate_push_cycles(
+    profiles: list[PushCycleProfile],
+) -> list[PushCycleEvaluation]:
+    evaluations: list[PushCycleEvaluation] = []
+    for cycle_index, profile in enumerate(profiles):
+        detected_gesture = profile.observed_gesture
+        evaluations.append(
+            PushCycleEvaluation(
+                cycle_index=cycle_index,
+                expected_gesture=profile.gesture,
+                detected_gesture=detected_gesture,
+                correct=detected_gesture == profile.gesture,
+                boundary_truncated=profile.boundary_truncated,
+                duration_seconds=profile.duration_seconds,
+                forward_depth=profile.forward_depth,
+                hold_duration_seconds=profile.hold_duration_seconds,
+                reason=None,
+            )
+        )
+    return evaluations
+
+
+def _collect_negative_push_cycles(
+    push_samples: list[PushFrameSample],
+    config: GestureConfig,
+) -> list[PushCycle]:
+    candidate_cycles: list[PushCycle] = []
+    for expected_push in ("push_click_short", "push_click_long"):
+        candidate_cycles.extend(
+            segment_push_cycles(
+                push_samples,
+                expected_gesture=expected_push,
+                activation_depth_threshold=config.push_depth_threshold,
+                release_depth_threshold=config.push_release_threshold,
+                min_index_extension_ratio=config.push_pose_extension_ratio,
+                center_distance_max=config.center_tolerance,
+                long_click_seconds=config.long_click_seconds,
+            )
+        )
+
+    deduped: list[PushCycle] = []
+    seen_ranges: set[tuple[int, int, str]] = set()
+    for cycle in sorted(candidate_cycles, key=lambda item: (item.start_index, item.end_index, item.observed_gesture)):
+        key = (cycle.start_index, cycle.end_index, cycle.observed_gesture)
+        if key in seen_ranges:
+            continue
+        seen_ranges.add(key)
+        deduped.append(cycle)
+    return deduped
+
+
+def _evaluate_negative_push_cycles(
+    source_label: str,
+    profiles: list[PushCycleProfile],
+) -> list[NegativePushEvaluation]:
+    evaluations: list[NegativePushEvaluation] = []
+    for cycle_index, profile in enumerate(profiles):
+        evaluations.append(
+            NegativePushEvaluation(
+                source_label=source_label,
+                expected_push=profile.gesture,
+                observed_gesture=profile.observed_gesture,
+                cycle_index=cycle_index,
+                detected_gesture=profile.observed_gesture,
+                false_positive=True,
+                duration_seconds=profile.duration_seconds,
+                forward_depth=profile.forward_depth,
+            )
+        )
+    return evaluations
 
 
 def _evaluate_swipe_cycles(
@@ -612,6 +783,57 @@ def _summarize_negative_swipe_videos(
         "false_positive_videos": false_positive_videos,
         "false_positive_rate": false_positive_videos / float(len(evaluations)),
         "clean_videos": clean_videos,
+    }
+
+
+def _summarize_push_evaluations(
+    evaluations: list[PushCycleEvaluation],
+) -> dict[str, float | int | None]:
+    if not evaluations:
+        return {
+            "cycle_count": 0,
+            "correct_cycles": 0,
+            "accuracy": None,
+            "wrong_label_cycles": 0,
+            "complete_cycle_count": 0,
+            "complete_accuracy": None,
+            "complete_wrong_label_cycles": 0,
+        }
+
+    correct_cycles = sum(1 for evaluation in evaluations if evaluation.correct)
+    wrong_label_cycles = len(evaluations) - correct_cycles
+    complete_evaluations = [evaluation for evaluation in evaluations if not evaluation.boundary_truncated]
+    complete_correct_cycles = sum(1 for evaluation in complete_evaluations if evaluation.correct)
+    complete_wrong_label_cycles = len(complete_evaluations) - complete_correct_cycles
+    return {
+        "cycle_count": len(evaluations),
+        "correct_cycles": correct_cycles,
+        "accuracy": correct_cycles / float(len(evaluations)),
+        "wrong_label_cycles": wrong_label_cycles,
+        "complete_cycle_count": len(complete_evaluations),
+        "complete_accuracy": (complete_correct_cycles / float(len(complete_evaluations))) if complete_evaluations else None,
+        "complete_wrong_label_cycles": complete_wrong_label_cycles,
+    }
+
+
+def _summarize_negative_push_evaluations(
+    evaluations: list[NegativePushEvaluation],
+) -> dict[str, float | int | None]:
+    if not evaluations:
+        return {
+            "cycle_count": 0,
+            "false_positive_cycles": 0,
+            "false_positive_rate": None,
+            "clean_cycles": 0,
+        }
+
+    false_positive_cycles = sum(1 for evaluation in evaluations if evaluation.false_positive)
+    clean_cycles = len(evaluations) - false_positive_cycles
+    return {
+        "cycle_count": len(evaluations),
+        "false_positive_cycles": false_positive_cycles,
+        "false_positive_rate": false_positive_cycles / float(len(evaluations)),
+        "clean_cycles": clean_cycles,
     }
 
 
@@ -838,6 +1060,9 @@ def main() -> int:
     parser.add_argument("--video", action="append", default=[])
     parser.add_argument("--frame-stride", type=int, default=2)
     parser.add_argument("--max-frames", type=int)
+    parser.add_argument("--start-frame", type=int, default=0)
+    parser.add_argument("--end-frame", type=int)
+    parser.add_argument("--output", type=Path)
     args = parser.parse_args()
 
     config = GestureConfig()
@@ -856,6 +1081,8 @@ def main() -> int:
             adapter=adapter,
             frame_stride=_effective_frame_stride(label, args.frame_stride),
             max_frames=args.max_frames,
+            start_frame=max(0, args.start_frame),
+            end_frame=args.end_frame,
         )
         for file_name, label in selected_videos
     ]
@@ -880,6 +1107,19 @@ def main() -> int:
             result.sample.file_name: _evaluate_negative_swipe_video(result.sample)
             for result in results
             if not result.sample.label.startswith("swipe_")
+        }
+        push_evaluations_by_file = {
+            result.sample.file_name: _evaluate_push_cycles(result.push_profiles)
+            for result in results
+            if result.sample.label.startswith("push_click")
+        }
+        negative_push_evaluations_by_file = {
+            result.sample.file_name: _evaluate_negative_push_cycles(
+                result.sample.label,
+                profile_push_cycles(result.push_samples, _collect_negative_push_cycles(result.push_samples, config)),
+            )
+            for result in results
+            if not result.sample.label.startswith("push_click")
         }
         positive_cycles = [cycle for result in results for cycle in result.swipe_cycles]
         negative_cycle_evaluations = [evaluation for evaluations in negative_evaluations_by_file.values() for evaluation in evaluations]
@@ -955,7 +1195,45 @@ def main() -> int:
             }
             for label in sorted({result.sample.label for result in results if not result.sample.label.startswith("swipe_")})
         }
+        push_cycle_reports = [
+            {
+                "file_name": result.sample.file_name,
+                "label": result.sample.label,
+                "cycle_summary": result.push_summary,
+                "evaluation_summary": _summarize_push_evaluations(push_evaluations_by_file[result.sample.file_name]),
+                "evaluations": [asdict(evaluation) for evaluation in push_evaluations_by_file[result.sample.file_name]],
+                "cycles": [asdict(profile) for profile in result.push_profiles],
+            }
+            for result in results
+            if result.sample.label.startswith("push_click")
+        ]
+        push_models = {
+            gesture: summarize_push_profiles([profile for profile in [push_profile for result in results for push_profile in result.push_profiles] if profile.gesture == gesture])
+            for gesture in sorted({profile.gesture for result in results for profile in result.push_profiles})
+        }
+        negative_push_reports = [
+            {
+                "file_name": result.sample.file_name,
+                "label": result.sample.label,
+                "evaluation_summary": _summarize_negative_push_evaluations(negative_push_evaluations_by_file[result.sample.file_name]),
+                "evaluations": [asdict(evaluation) for evaluation in negative_push_evaluations_by_file[result.sample.file_name]],
+            }
+            for result in results
+            if not result.sample.label.startswith("push_click")
+        ]
+        negative_push_summary = {
+            label: _summarize_negative_push_evaluations(
+                [
+                    evaluation
+                    for result in results
+                    if result.sample.label == label
+                    for evaluation in negative_push_evaluations_by_file.get(result.sample.file_name, [])
+                ]
+            )
+            for label in sorted({result.sample.label for result in results if not result.sample.label.startswith("push_click")})
+        }
         payload: dict[str, Any] = {
+            "gesture_contracts": {gesture: asdict(contract) for gesture, contract in default_gesture_contracts().items()},
             "samples": [asdict(sample) for sample in samples],
             "swipe_cycle_reports": swipe_cycle_reports,
             "swipe_models": swipe_models,
@@ -964,10 +1242,18 @@ def main() -> int:
             "negative_swipe_reports": negative_swipe_reports,
             "negative_swipe_summary": negative_swipe_summary,
             "negative_swipe_confusion": negative_swipe_confusion,
+            "push_cycle_reports": push_cycle_reports,
+            "push_models": push_models,
+            "negative_push_reports": negative_push_reports,
+            "negative_push_summary": negative_push_summary,
             "swipe_tuning_result": asdict(swipe_tuning_result) if swipe_tuning_result is not None else None,
             "recommendations": _recommendations(samples, config, swipe_profiles=swipe_profiles, swipe_tuning_result=swipe_tuning_result),
         }
-        print(json.dumps(payload, indent=2, sort_keys=True))
+        output_text = json.dumps(payload, indent=2, sort_keys=True)
+        if args.output is not None:
+            args.output.write_text(output_text, encoding="utf-8")
+        else:
+            print(output_text)
         return 0
     finally:
         pass

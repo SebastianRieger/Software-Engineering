@@ -12,7 +12,7 @@ from core.config import settings
 from core.realtime import RealtimeHub, realtime_hub
 from repositories.config import ConfigRepository
 from schemas.voice import VoiceConfig
-from services.interactions import InputOrchestrator
+from services.input.orchestrator import InputOrchestrator
 
 try:
     import sounddevice as sd

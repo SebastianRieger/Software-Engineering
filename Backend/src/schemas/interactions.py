@@ -39,8 +39,8 @@ def build_default_input_action_mappings() -> list[InputActionMapping]:
         InputActionMapping(input_source="gesture", raw_input="circle", action="toggle_shop"),
         InputActionMapping(input_source="gesture", raw_input="push_click_short", action="primary_click"),
         InputActionMapping(input_source="gesture", raw_input="push_click_long", action="secondary_select"),
-        InputActionMapping(input_source="gesture", raw_input="zoom_out_hands", action="resize_expand"),
-        InputActionMapping(input_source="gesture", raw_input="zoom_in_hands", action="resize_shrink"),
+        InputActionMapping(input_source="gesture", raw_input="zoom_out_hands", action="resize_shrink"),
+        InputActionMapping(input_source="gesture", raw_input="zoom_in_hands", action="resize_expand"),
     ]
 
 

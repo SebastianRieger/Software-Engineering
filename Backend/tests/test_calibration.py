@@ -206,6 +206,49 @@ def test_config_repository_round_trips_calibration_profiles_and_snapshots(tmp_pa
     assert loaded_snapshot.original_snapshot.gesture_config.swipe_threshold == 0.18
 
 
+def test_calibration_startup_cancels_stale_collecting_sessions(tmp_path):
+    repo = build_calibration_repo(tmp_path)
+    captured_at = datetime(2026, 4, 28, 12, 0, tzinfo=timezone.utc)
+    session = CalibrationSessionRecord(
+        session_id="stale-gesture-session",
+        modality="gesture",
+        profile="default",
+        status="collecting",
+        target_repetitions=10,
+        selected_targets=["push_click_short"],
+        active_target_id="push_click_short",
+        created_at=captured_at,
+        updated_at=captured_at,
+        original_snapshot=CalibrationConfigSnapshot(
+            modality="gesture",
+            profile="default",
+            captured_at=captured_at,
+            gesture_config=GestureConfig(),
+        ),
+        progress=[
+            CalibrationTargetProgress(
+                target_id="push_click_short",
+                target_repetitions=10,
+            )
+        ],
+    )
+    repo.save_calibration_session(session)
+
+    service = CalibrationService(
+        realtime=realtime_hub,
+        config_repository_factory=ConfigRepository,
+    )
+    service.startup()
+
+    recovered = repo.get_calibration_session("stale-gesture-session")
+
+    assert recovered is not None
+    assert recovered.status == "cancelled"
+    assert recovered.cancelled_at is not None
+    assert recovered.active_target_id is None
+    assert service.has_active_session("gesture") is False
+
+
 def test_calibration_service_completes_applies_and_rolls_back(tmp_path):
     repo = build_calibration_repo(tmp_path)
     baseline = repo.save_gesture_config(GestureConfig(swipe_threshold=0.2, swipe_min_span=0.12))
@@ -260,6 +303,22 @@ def test_calibration_service_ignores_non_target_gestures_during_positive_collect
     assert updated.progress[0].collected_samples == 0
     assert updated.progress[0].rejected_samples == 0
     assert updated.progress[0].last_feedback == "Erwartet swipe_left, erkannt wurde swipe_right. Bewegung wird ignoriert."
+
+
+def test_calibration_service_rejects_multi_target_sessions_in_single_target_mode(tmp_path):
+    service = build_calibration_service(tmp_path)
+
+    with pytest.raises(Exception) as exc_info:
+        service.start_session(
+            CalibrationSessionCreateRequest(
+                modality="gesture",
+                selected_targets=["swipe_left", "swipe_right"],
+                target_repetitions=2,
+                profile="default",
+            )
+        )
+
+    assert "genau ein Ziel" in str(exc_info.value)
 
 
 @pytest.mark.asyncio

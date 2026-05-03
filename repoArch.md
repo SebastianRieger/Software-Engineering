@@ -19,11 +19,11 @@
 
 | File | Lines | Why it matters |
 | --- | ---: | --- |
-| `Backend/src/services/gestures.py` | 685 | Gesture runtime facade, semantic action publication and orchestration entry point |
+| `Backend/src/services/gesture/runtime.py` | 1200+ | Live gesture orchestration, semantic action publication and calibration snapshot capture |
 | `Frontend/nimrag-frontend/src/components/manager/ModuleManager.vue` | 465 | Central UI-action controller for focus, shop and ArrangeMode |
 | `Backend/src/services/voice.py` | 449 | Largest non-gesture backend service, still an integration hotspot |
 | `Frontend/nimrag-frontend/src/utils/layout.ts` | 363 | Placement-based layout normalization, focus and move or resize rules |
-| `Backend/src/services/gestures_tracking.py` | 335 | MediaPipe tracking, depth-bearing observations and multi-hand capture |
+| `Backend/src/services/gesture/tracking.py` | 1100+ | MediaPipe tracking, depth-bearing observations, pose features and camera capture integration |
 
 ## Root Structure Mapping
 

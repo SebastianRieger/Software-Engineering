@@ -45,19 +45,8 @@ const allTargetsCompleted = computed(() => props.session?.progress.every((entry)
 
 const analysisTargets = computed(() => props.session?.analysis?.targets ?? [])
 
-function toggleTarget(targetId: string): void {
-  const nextTargets = props.selectedTargets.includes(targetId)
-    ? props.selectedTargets.filter((entry) => entry !== targetId)
-    : [...props.selectedTargets, targetId]
-  emit('update:selectedTargets', nextTargets)
-}
-
-function selectAllTargets(): void {
-  emit('update:selectedTargets', gestureTargets.value.map((target) => target.id))
-}
-
-function clearTargets(): void {
-  emit('update:selectedTargets', [])
+function selectTarget(targetId: string): void {
+  emit('update:selectedTargets', [targetId])
 }
 
 function updateProfileName(event: Event): void {
@@ -139,17 +128,13 @@ function recommendationKey(analysis: CalibrationTargetAnalysis, parameter: strin
 
             <label class="field-label" for="target-repetitions">Wiederholungen pro Geste</label>
             <input id="target-repetitions" class="field-input" type="number" min="10" max="20" :value="targetRepetitions" @input="updateTargetRepetitions" />
-
-            <div class="button-row compact">
-              <button class="ghost-button" type="button" @click="selectAllTargets">Alle</button>
-              <button class="ghost-button" type="button" @click="clearTargets">Keine</button>
-            </div>
+            <p class="subcopy">Jede Sitzung kalibriert genau eine Geste und erzeugt danach sofort die Analyse fuer dieses Ziel.</p>
           </section>
 
           <section class="wizard-card target-card">
-            <p class="field-label">Gesten-Auswahl</p>
+            <p class="field-label">Geste auswaehlen</p>
             <label v-for="target in gestureTargets" :key="target.id" class="target-option">
-              <input type="checkbox" :checked="selectedTargets.includes(target.id)" @change="toggleTarget(target.id)" />
+              <input type="radio" name="calibration-target" :checked="selectedTargets[0] === target.id" @change="selectTarget(target.id)" />
               <span>
                 <strong>{{ target.display_name }}</strong>
                 <small>{{ target.description }}</small>
@@ -160,7 +145,7 @@ function recommendationKey(analysis: CalibrationTargetAnalysis, parameter: strin
 
         <footer class="button-row">
           <button class="ghost-button" type="button" @click="emit('close')">Abbrechen</button>
-          <button class="primary-button" type="button" :disabled="busy || selectedTargets.length === 0" @click="emit('start')">
+          <button class="primary-button" type="button" :disabled="busy || selectedTargets.length !== 1" @click="emit('start')">
             {{ busy ? 'Startet...' : 'Kalibrierung starten' }}
           </button>
         </footer>

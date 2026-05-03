@@ -120,13 +120,13 @@ class CalibrationService:
             id="zoom_out_hands",
             modality="gesture",
             display_name="Zoom Out Hands",
-            description="Kalibriert Zwei-Hand-Zoom nach aussen.",
+            description="Kalibriert Zwei-Hand-Zoom nach innen.",
         ),
         CalibrationTargetDefinition(
             id="zoom_in_hands",
             modality="gesture",
             display_name="Zoom In Hands",
-            description="Kalibriert Zwei-Hand-Zoom nach innen.",
+            description="Kalibriert Zwei-Hand-Zoom nach aussen.",
         ),
     ]
 
@@ -146,14 +146,18 @@ class CalibrationService:
     def startup(self) -> None:
         repository = self.config_repository_factory()
         gesture_sessions = repository.list_calibration_sessions(modality="gesture")
-        collecting_session = next(
-            (session for session in gesture_sessions if session.status == "collecting"),
-            None,
-        )
-        with self._lock:
-            self._active_sessions_by_modality["gesture"] = (
-                collecting_session.session_id if collecting_session is not None else None
+        for session in gesture_sessions:
+            if session.status != "collecting":
+                continue
+            session.status = "cancelled"
+            session.cancelled_at = _utc_now()
+            session.active_target_id = None
+            session.notes.append(
+                "Kalibrierung beim Service-Start als stale collecting session beendet."
             )
+            repository.save_calibration_session(session)
+        with self._lock:
+            self._active_sessions_by_modality["gesture"] = None
 
     def shutdown(self) -> None:
         return None
@@ -201,6 +205,12 @@ class CalibrationService:
     def start_session(self, request: CalibrationSessionCreateRequest) -> CalibrationSessionRecord:
         if request.modality != "gesture":
             raise CalibrationServiceError("Nur Gesten-Kalibrierung ist derzeit verfuegbar.", status_code=422)
+
+        if len(request.selected_targets) != 1:
+            raise CalibrationServiceError(
+                "Die aktuelle Gesten-Kalibrierung unterstuetzt genau ein Ziel pro Sitzung.",
+                status_code=422,
+            )
 
         target_ids = {definition.id for definition in self._gesture_target_definitions}
         invalid_targets = [target for target in request.selected_targets if target not in target_ids]
@@ -796,9 +806,9 @@ class CalibrationService:
             original_frames = candidate_config.two_hand_min_frames
 
             candidate_config.zoom_distance_delta_threshold = _clamp((_percentile(deltas, 0.10) or candidate_config.zoom_distance_delta_threshold) * 0.85, 0.03, 0.6)
-            if target_id == "zoom_out_hands":
-                candidate_config.zoom_start_near_distance = _clamp((_percentile(start_distances, 0.90) or candidate_config.zoom_start_near_distance) * 1.05, 0.05, 0.8)
             if target_id == "zoom_in_hands":
+                candidate_config.zoom_start_near_distance = _clamp((_percentile(start_distances, 0.90) or candidate_config.zoom_start_near_distance) * 1.05, 0.05, 0.8)
+            if target_id == "zoom_out_hands":
                 candidate_config.zoom_start_far_distance = _clamp((_percentile(start_distances, 0.10) or candidate_config.zoom_start_far_distance) * 0.95, 0.12, 1.5)
             candidate_config.two_hand_min_frames = int(_clamp(round((_percentile(frame_counts, 0.10) or float(candidate_config.two_hand_min_frames)) - 1), 2, 32))
 

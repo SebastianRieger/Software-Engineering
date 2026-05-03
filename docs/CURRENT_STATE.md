@@ -51,6 +51,7 @@ Die Codebasis ist jetzt ein belastbarer Kernprototyp mit echter Backend-Persiste
 
 - die Gestenerkennung basiert auf handzentriertem Tracking mit Handgroessen-Normalisierung
 - unterstuetzt werden `swipe_left`, `swipe_right`, `swipe_up`, `swipe_down`, `circle`, `push_click_short`, `push_click_long`, `zoom_out_hands` und `zoom_in_hands`
+- die kanonische Ausfuehrung dieser Gesten ist in `docs/GESTURE_DEFINITIONS.md` festgelegt und wird im Backend als zentrale Gesture-Contracts fuer Runtime-Specs und Video-Tuner gespiegelt
 - erkannte Gesten werden ueber einen gemeinsamen Input-Orchestrator semantisch auf UI-Aktionen gemappt
 - erkannte Voice-Kommandos werden zu normalisierten `voice.*`-Raw-Inputs transformiert und ueber dieselbe Orchestrierung auf UI-Aktionen gemappt
 - erkannte melodische Muster werden zu `musical_audio.*`-Raw-Inputs normalisiert und ueber dieselbe Orchestrierung auf UI-Aktionen gemappt
@@ -74,7 +75,7 @@ Die Codebasis ist jetzt ein belastbarer Kernprototyp mit echter Backend-Persiste
 ## Kalibrierungsstand
 
 - `GET /api/v1/calibration/definitions` liefert aktuell die vordefinierten Gestenziele
-- `POST /api/v1/calibration/sessions` startet eine Gesten-Kalibrierung mit Profilname, Zielmenge und Wiederholungszahl
+- `POST /api/v1/calibration/sessions` startet eine Gesten-Kalibrierung mit Profilname, genau einem Ziel und Wiederholungszahl
 - `GET /api/v1/calibration/sessions/{id}` liefert Fortschritt und Analysezustand
 - `POST /complete`, `POST /apply`, `POST /rollback` und `POST /cancel` bilden den vollen Lifecycle fuer Review, Apply, Restore und Discard ab
 - die Persistenz speichert Sitzungen, Profile und deterministische Vorher-Nachher-Snapshots fuer Rollback

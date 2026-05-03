@@ -13,7 +13,7 @@ from core.database import init_db
 from core.logging import configure_logging
 from core.realtime import realtime_hub
 from services.calibration import calibration_service
-from services.gestures import gesture_service
+from services.gesture import gesture_service
 from services.led import led_service
 from services.musical_audio import musical_audio_service
 from services.voice import voice_service
