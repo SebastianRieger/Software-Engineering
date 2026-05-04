@@ -165,6 +165,7 @@ def test_input_orchestrator_blocks_disabled_modality_from_active_command_profile
                 "outcome": "disabled",
                 "action": None,
                 "reason": "modality_disabled",
+                "action_args": {},
                 "metadata": {},
             },
         }
@@ -189,3 +190,42 @@ def test_input_orchestrator_emits_unmapped_decision_for_unknown_raw_input():
     assert hub.messages[0]["eventType"] == "CommandMatchEvaluated"
     assert hub.messages[0]["payload"]["outcome"] == "unmapped"
     assert hub.messages[0]["payload"]["reason"] == "no_mapping"
+
+
+def test_input_orchestrator_merges_structured_action_arguments_into_ui_action_payload():
+    hub = CapturingRealtimeHub()
+    repository = StaticInteractionConfigRepository(
+        InputActionConfig(
+            mappings=[
+                InputActionMapping(
+                    input_source="voice",
+                    raw_input="voice.feld",
+                    action="focus_grid_cell",
+                    action_args={"cell_index": 3, "mode": "grid"},
+                )
+            ]
+        )
+    )
+    orchestrator = InputOrchestrator(
+        realtime=hub,
+        config_repository_factory=lambda: repository,
+    )
+
+    orchestrator.reload_config()
+
+    assert orchestrator.publish_ui_action_requested(
+        input_source="voice",
+        raw_input="voice.feld",
+        timestamp=datetime.now(timezone.utc),
+        action_args={"cell_index": 4},
+        metadata={"transcript": "feld vier"},
+    ) is True
+
+    command_match_payload = hub.messages[0]["payload"]
+    ui_action_payload = hub.messages[1]["payload"]
+
+    assert command_match_payload["action"] == "focus_grid_cell"
+    assert command_match_payload["action_args"] == {"cell_index": 4, "mode": "grid"}
+    assert ui_action_payload["action"] == "focus_grid_cell"
+    assert ui_action_payload["action_args"] == {"cell_index": 4, "mode": "grid"}
+    assert ui_action_payload["metadata"] == {"transcript": "feld vier"}

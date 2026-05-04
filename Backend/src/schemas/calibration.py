@@ -17,9 +17,15 @@ CalibrationSessionStatus = Literal[
     "rolled_back",
     "cancelled",
 ]
+CalibrationTakeStatus = Literal["prepared", "recording", "pending_review"]
 CalibrationEventType = Literal[
     "CalibrationSessionStarted",
     "CalibrationTargetArmed",
+    "CalibrationTakePrepared",
+    "CalibrationRecordingStarted",
+    "CalibrationRecordingStopped",
+    "CalibrationTakeAccepted",
+    "CalibrationTakeDiscarded",
     "CalibrationSampleAccepted",
     "CalibrationSampleRejected",
     "CalibrationTargetCompleted",
@@ -152,6 +158,27 @@ class CalibrationCollectedSample(BaseModel):
     gesture_payload: GestureCalibrationSamplePayload | None = None
 
 
+class CalibrationAdvisoryRecognition(BaseModel):
+    recognized_target_id: str | None = None
+    confidence: float | None = Field(default=None, ge=0, le=1)
+    tracking_source: str | None = None
+
+
+class CalibrationTakeRecord(BaseModel):
+    take_id: str = Field(min_length=1)
+    target_id: str = Field(min_length=1)
+    status: CalibrationTakeStatus
+    prepared_at: datetime
+    countdown_seconds: int = Field(default=3, ge=0, le=30)
+    ready_at: datetime | None = None
+    recording_started_at: datetime | None = None
+    recording_stopped_at: datetime | None = None
+    trimmed_tail_ms: int = Field(default=750, ge=0, le=5000)
+    sample: CalibrationCollectedSample | None = None
+    advisory_recognition: CalibrationAdvisoryRecognition | None = None
+    notes: list[str] = Field(default_factory=list)
+
+
 class CalibrationTargetProgress(BaseModel):
     target_id: str = Field(min_length=1)
     collected_samples: int = Field(default=0, ge=0)
@@ -171,12 +198,28 @@ class CalibrationTargetAnalysis(BaseModel):
     notes: list[str] = Field(default_factory=list)
 
 
+class CalibrationConfigPatchOperation(BaseModel):
+    parameter: str = Field(min_length=1)
+    path: str = Field(min_length=1)
+    current_value: Any = None
+    new_value: Any = None
+    rationale: str | None = None
+    source_targets: list[str] = Field(default_factory=list)
+
+
+class CalibrationConfigPatch(BaseModel):
+    modality: CalibrationModality
+    operations: list[CalibrationConfigPatchOperation] = Field(default_factory=list)
+    summary: str | None = None
+
+
 class CalibrationAnalysisResult(BaseModel):
     modality: CalibrationModality
     generated_at: datetime
     targets: list[CalibrationTargetAnalysis] = Field(default_factory=list)
     candidate_gesture_config: GestureConfig | None = None
     candidate_voice_config: VoiceConfig | None = None
+    gesture_config_patch: CalibrationConfigPatch | None = None
     summary: str | None = None
 
 
@@ -206,6 +249,8 @@ class CalibrationSessionRecord(BaseModel):
     original_snapshot: CalibrationConfigSnapshot
     candidate_snapshot: CalibrationConfigSnapshot | None = None
     applied_snapshot: CalibrationConfigSnapshot | None = None
+    active_take: CalibrationTakeRecord | None = None
+    pending_take: CalibrationTakeRecord | None = None
     samples: list[CalibrationCollectedSample] = Field(default_factory=list)
     progress: list[CalibrationTargetProgress] = Field(default_factory=list)
     analysis: CalibrationAnalysisResult | None = None
@@ -258,6 +303,7 @@ class CalibrationEventPayload(BaseModel):
     modality: CalibrationModality
     status: CalibrationSessionStatus | None = None
     target_id: str | None = None
+    take_id: str | None = None
     sample_id: str | None = None
     collected_samples: int | None = Field(default=None, ge=0)
     target_repetitions: int | None = Field(default=None, ge=0)

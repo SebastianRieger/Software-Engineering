@@ -215,6 +215,36 @@ export const apiClient = {
     return requestJson<CalibrationSessionResponse>(`/calibration/sessions/${sessionId}`)
   },
 
+  prepareCalibrationTake(sessionId: string): Promise<CalibrationSessionResponse> {
+    return requestJson<CalibrationSessionResponse>(`/calibration/sessions/${sessionId}/takes/prepare`, {
+      method: 'POST',
+    })
+  },
+
+  startCalibrationTake(sessionId: string): Promise<CalibrationSessionResponse> {
+    return requestJson<CalibrationSessionResponse>(`/calibration/sessions/${sessionId}/takes/start`, {
+      method: 'POST',
+    })
+  },
+
+  stopCalibrationTake(sessionId: string): Promise<CalibrationSessionResponse> {
+    return requestJson<CalibrationSessionResponse>(`/calibration/sessions/${sessionId}/takes/stop`, {
+      method: 'POST',
+    })
+  },
+
+  acceptCalibrationTake(sessionId: string): Promise<CalibrationSessionResponse> {
+    return requestJson<CalibrationSessionResponse>(`/calibration/sessions/${sessionId}/takes/accept`, {
+      method: 'POST',
+    })
+  },
+
+  discardCalibrationTake(sessionId: string): Promise<CalibrationSessionResponse> {
+    return requestJson<CalibrationSessionResponse>(`/calibration/sessions/${sessionId}/takes/discard`, {
+      method: 'POST',
+    })
+  },
+
   completeCalibrationSession(sessionId: string): Promise<CalibrationSessionResponse> {
     return requestJson<CalibrationSessionResponse>(`/calibration/sessions/${sessionId}/complete`, {
       method: 'POST',

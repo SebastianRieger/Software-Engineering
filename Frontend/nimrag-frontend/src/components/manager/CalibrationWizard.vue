@@ -6,7 +6,7 @@ import type {
   CalibrationSessionRecord,
   CalibrationTargetAnalysis,
 } from '../../types/calibration'
-import type { GestureCameraDevice } from '../../types/hardware'
+import type { GestureCameraDevice, GestureStatusResponse } from '../../types/hardware'
 
 const props = defineProps<{
   definitions: CalibrationDefinitionsResponse | null
@@ -16,6 +16,11 @@ const props = defineProps<{
   error: string | null
   profileName: string
   gestureDevices: GestureCameraDevice[]
+  gestureStatus: GestureStatusResponse | null
+  previewImage: string | null
+  previewState: 'warming_up' | 'live' | 'stale' | 'unavailable' | 'error'
+  previewMessage: string | null
+  countdownSeconds: number | null
   cameraIndex: number
   selectedTargets: string[]
   targetRepetitions: number
@@ -28,6 +33,11 @@ const emit = defineEmits<{
   (event: 'update:selectedTargets', value: string[]): void
   (event: 'update:targetRepetitions', value: number): void
   (event: 'start'): void
+  (event: 'prepare-take'): void
+  (event: 'start-take'): void
+  (event: 'stop-take'): void
+  (event: 'accept-take'): void
+  (event: 'discard-take'): void
   (event: 'complete'): void
   (event: 'apply'): void
   (event: 'rollback'): void
@@ -36,17 +46,27 @@ const emit = defineEmits<{
 }>()
 
 const gestureTargets = computed(() => props.definitions?.targets.filter((target) => target.modality === 'gesture' && target.supported) ?? [])
-
-const currentTargetId = computed(() => props.session?.active_target_id ?? null)
-
+const activeTake = computed(() => props.session?.active_take ?? null)
+const pendingTake = computed(() => props.session?.pending_take ?? null)
+const currentTargetId = computed(() => activeTake.value?.target_id ?? pendingTake.value?.target_id ?? props.session?.active_target_id ?? null)
 const currentTarget = computed(() => gestureTargets.value.find((target) => target.id === currentTargetId.value) ?? null)
-
 const allTargetsCompleted = computed(() => props.session?.progress.every((entry) => entry.completed) ?? false)
-
 const analysisTargets = computed(() => props.session?.analysis?.targets ?? [])
 
-function selectTarget(targetId: string): void {
-  emit('update:selectedTargets', [targetId])
+function toggleTarget(targetId: string): void {
+  const nextTargets = new Set(props.selectedTargets)
+  if (nextTargets.has(targetId)) {
+    nextTargets.delete(targetId)
+  } else {
+    nextTargets.add(targetId)
+  }
+
+  emit(
+    'update:selectedTargets',
+    gestureTargets.value
+      .map((target) => target.id)
+      .filter((candidateId) => nextTargets.has(candidateId)),
+  )
 }
 
 function updateProfileName(event: Event): void {
@@ -73,24 +93,28 @@ function formatTargetTitle(targetId: string): string {
 }
 
 function statusLabel(status: CalibrationSessionRecord['status']): string {
-  if (status === 'collecting') {
-    return 'Sammelt Samples'
-  }
-  if (status === 'analysis_ready') {
-    return 'Analyse bereit'
-  }
-  if (status === 'applied') {
-    return 'Profil angewendet'
-  }
-  if (status === 'rolled_back') {
-    return 'Rueckgaengig gemacht'
-  }
+  if (status === 'collecting') return 'Guided Collection'
+  if (status === 'analysis_ready') return 'Analyse bereit'
+  if (status === 'applied') return 'Profil angewendet'
+  if (status === 'rolled_back') return 'Rueckgaengig gemacht'
   return 'Verworfen'
+}
+
+function previewStateLabel(state: typeof props.previewState): string {
+  if (state === 'live') return 'Live'
+  if (state === 'stale') return 'Stale'
+  if (state === 'unavailable') return 'Unavailable'
+  if (state === 'error') return 'Error'
+  return 'Warming up'
 }
 
 function recommendationKey(analysis: CalibrationTargetAnalysis, parameter: string): string {
   return `${analysis.target_id}-${parameter}`
 }
+
+const canManuallyStartTake = computed(() => {
+  return activeTake.value?.status === 'prepared' && (props.countdownSeconds ?? activeTake.value.countdown_seconds) <= 0
+})
 </script>
 
 <template>
@@ -99,8 +123,8 @@ function recommendationKey(analysis: CalibrationTargetAnalysis, parameter: strin
       <header class="calibration-header">
         <div>
           <p class="eyebrow">In-App Calibration</p>
-          <h2>Gestenprofil kalibrieren</h2>
-          <p class="subcopy">Die Kalibrierung sammelt nur korrekte Live-Wiederholungen und erzeugt daraus ein anwendbares Schwellenprofil.</p>
+          <h2>Guided Source-of-Truth Kalibrierung</h2>
+          <p class="subcopy">Prompt, Countdown, Recording, Review. Die Nutzerauswahl ist die Source of Truth, nicht das alte Erkennungslabel.</p>
         </div>
         <button class="ghost-button" type="button" @click="emit('close')">Schliessen</button>
       </header>
@@ -113,7 +137,7 @@ function recommendationKey(analysis: CalibrationTargetAnalysis, parameter: strin
       </div>
 
       <template v-else-if="!session">
-        <div class="wizard-grid">
+        <div class="wizard-grid setup-grid">
           <section class="wizard-card">
             <label class="field-label" for="profile-name">Profilname</label>
             <input id="profile-name" class="field-input" :value="profileName" @input="updateProfileName" />
@@ -127,42 +151,107 @@ function recommendationKey(analysis: CalibrationTargetAnalysis, parameter: strin
             </select>
 
             <label class="field-label" for="target-repetitions">Wiederholungen pro Geste</label>
-            <input id="target-repetitions" class="field-input" type="number" min="10" max="20" :value="targetRepetitions" @input="updateTargetRepetitions" />
-            <p class="subcopy">Jede Sitzung kalibriert genau eine Geste und erzeugt danach sofort die Analyse fuer dieses Ziel.</p>
+            <input id="target-repetitions" class="field-input" type="number" min="4" max="20" :value="targetRepetitions" @input="updateTargetRepetitions" />
+            <p class="subcopy">Mehrere Gesten pro Sitzung sind erlaubt. Ein neuer Take startet aber nur mit frischer Vorschau.</p>
           </section>
 
           <section class="wizard-card target-card">
-            <p class="field-label">Geste auswaehlen</p>
+            <p class="field-label">Gesten auswaehlen</p>
             <label v-for="target in gestureTargets" :key="target.id" class="target-option">
-              <input type="radio" name="calibration-target" :checked="selectedTargets[0] === target.id" @change="selectTarget(target.id)" />
+              <input type="checkbox" :checked="selectedTargets.includes(target.id)" @change="toggleTarget(target.id)" />
               <span>
                 <strong>{{ target.display_name }}</strong>
                 <small>{{ target.description }}</small>
               </span>
             </label>
           </section>
+
+          <section class="wizard-card preview-card">
+            <div class="preview-card-header">
+              <div>
+                <p class="field-label">Live-Vorschau</p>
+                <strong>{{ gestureStatus?.camera_name ?? 'Kamera wird vorbereitet' }}</strong>
+              </div>
+              <span class="preview-pill" :class="`preview-pill--${previewState}`">{{ previewStateLabel(previewState) }}</span>
+            </div>
+            <div class="preview-frame">
+              <img v-if="previewImage" :src="previewImage" alt="Kalibrierungs-Vorschau" />
+              <div v-else class="preview-empty">Noch kein frischer Kameraframe.</div>
+            </div>
+            <p class="subcopy">{{ previewMessage ?? 'Pruefe hier, ob die Kamera wirklich ein brauchbares Bild liefert und nicht nur als Linux-Device auftaucht.' }}</p>
+          </section>
         </div>
 
         <footer class="button-row">
           <button class="ghost-button" type="button" @click="emit('close')">Abbrechen</button>
-          <button class="primary-button" type="button" :disabled="busy || selectedTargets.length !== 1" @click="emit('start')">
+          <button class="primary-button" type="button" :disabled="busy || selectedTargets.length === 0 || previewState !== 'live'" @click="emit('start')">
             {{ busy ? 'Startet...' : 'Kalibrierung starten' }}
           </button>
         </footer>
       </template>
 
       <template v-else>
-        <section class="session-summary">
+        <section class="summary-grid">
           <div>
             <p class="eyebrow">Status</p>
             <strong>{{ statusLabel(session.status) }}</strong>
-            <p class="subcopy">Profil {{ session.profile }} · {{ session.target_repetitions }} Wiederholungen pro Ziel</p>
+            <p class="subcopy">Profil {{ session.profile }} · {{ session.target_repetitions }} akzeptierte Takes pro Ziel</p>
           </div>
           <div>
-            <p class="eyebrow">Aktuelles Ziel</p>
-            <strong>{{ currentTarget?.display_name ?? 'Keines' }}</strong>
-            <p class="subcopy">{{ currentTarget?.description ?? 'Sitzung wartet auf eine Folgeaktion.' }}</p>
+            <p class="eyebrow">Aktueller Prompt</p>
+            <strong>{{ currentTarget?.display_name ?? 'Kein aktiver Prompt' }}</strong>
+            <p class="subcopy">{{ currentTarget?.description ?? 'Sitzung wartet auf den naechsten Take.' }}</p>
           </div>
+          <div>
+            <p class="eyebrow">Preview</p>
+            <strong>{{ previewStateLabel(previewState) }}</strong>
+            <p class="subcopy">{{ previewMessage ?? 'Vorschau ist live.' }}</p>
+          </div>
+        </section>
+
+        <section class="wizard-grid live-grid">
+          <section class="wizard-card take-card">
+            <p class="field-label">Take-Steuerung</p>
+            <strong class="prompt-title">{{ currentTarget?.display_name ?? 'Noch kein Ziel vorbereitet' }}</strong>
+            <p class="subcopy" v-if="activeTake?.status === 'prepared'">Countdown laeuft lokal. Recording startet automatisch bei 0.</p>
+            <p class="subcopy" v-else-if="activeTake?.status === 'recording'">Recording ist aktiv. Fuehre die Geste aus und stoppe manuell.</p>
+            <p class="subcopy" v-else-if="pendingTake">Review den letzten Take und akzeptiere oder verwerfe ihn.</p>
+            <p class="subcopy" v-else>Bereite den naechsten Take vor, sobald die Vorschau live ist.</p>
+
+            <div v-if="activeTake?.status === 'prepared'" class="countdown-box">
+              <span class="countdown-label">Countdown</span>
+              <strong>{{ countdownSeconds ?? activeTake.countdown_seconds }}</strong>
+            </div>
+
+            <div v-if="activeTake?.status === 'recording'" class="recording-indicator">
+              <span class="recording-dot"></span>
+              Recording aktiv
+            </div>
+
+            <div v-if="pendingTake" class="review-box">
+              <p class="field-label">Review</p>
+              <strong>{{ formatTargetTitle(pendingTake.target_id) }}</strong>
+              <small>
+                Advisory recognition:
+                {{ pendingTake.advisory_recognition?.recognized_target_id ? formatTargetTitle(pendingTake.advisory_recognition.recognized_target_id) : 'keine Erkennung' }}
+              </small>
+            </div>
+          </section>
+
+          <section class="wizard-card preview-card">
+            <div class="preview-card-header">
+              <div>
+                <p class="field-label">Kamerafenster</p>
+                <strong>{{ gestureStatus?.camera_name ?? 'Kamera unbekannt' }}</strong>
+              </div>
+              <span class="preview-pill" :class="`preview-pill--${previewState}`">{{ previewStateLabel(previewState) }}</span>
+            </div>
+            <div class="preview-frame preview-frame--large">
+              <img v-if="previewImage" :src="previewImage" alt="Kalibrierungs-Vorschau" />
+              <div v-else class="preview-empty">Noch kein Kamerabild verfuegbar.</div>
+            </div>
+            <p class="subcopy">{{ previewMessage ?? 'Das Live-Bild ist die direkte Sichtkontrolle fuer Schwarzbild-, Treiber- und Frischeprobleme.' }}</p>
+          </section>
         </section>
 
         <section class="progress-grid">
@@ -174,7 +263,7 @@ function recommendationKey(analysis: CalibrationTargetAnalysis, parameter: strin
           >
             <p class="field-label">{{ formatTargetTitle(progress.target_id) }}</p>
             <strong>{{ progress.collected_samples }} / {{ progress.target_repetitions }}</strong>
-            <p class="progress-copy">{{ progress.last_feedback ?? 'Wartet auf Samples.' }}</p>
+            <p class="progress-copy">{{ progress.last_feedback ?? 'Wartet auf akzeptierte Takes.' }}</p>
             <small>Rejects: {{ progress.rejected_samples }} · Mittelwert Konfidenz: {{ (progress.quality_metrics.mean_confidence ?? 0).toFixed(2) }}</small>
           </article>
         </section>
@@ -206,11 +295,26 @@ function recommendationKey(analysis: CalibrationTargetAnalysis, parameter: strin
           </article>
         </section>
 
-        <footer class="button-row">
-          <button v-if="session.status === 'collecting' || session.status === 'analysis_ready'" class="ghost-button" type="button" :disabled="busy" @click="emit('discard')">
-            Verwerfen
+        <footer class="button-row button-row--stacked">
+          <button v-if="session.status === 'collecting' && !activeTake && !pendingTake" class="primary-button" type="button" :disabled="busy || previewState !== 'live'" @click="emit('prepare-take')">
+            {{ busy ? 'Bereitet vor...' : 'Naechsten Take vorbereiten' }}
           </button>
-          <button v-if="session.status === 'collecting'" class="primary-button" type="button" :disabled="busy || !allTargetsCompleted" @click="emit('complete')">
+          <button v-if="canManuallyStartTake" class="primary-button" type="button" :disabled="busy || previewState !== 'live'" @click="emit('start-take')">
+            {{ busy ? 'Startet...' : 'Recording jetzt starten' }}
+          </button>
+          <button v-if="activeTake?.status === 'recording'" class="primary-button" type="button" :disabled="busy" @click="emit('stop-take')">
+            {{ busy ? 'Stoppt...' : 'Recording stoppen' }}
+          </button>
+          <button v-if="pendingTake" class="ghost-button" type="button" :disabled="busy" @click="emit('discard-take')">
+            Take verwerfen
+          </button>
+          <button v-if="pendingTake" class="primary-button" type="button" :disabled="busy" @click="emit('accept-take')">
+            Take akzeptieren
+          </button>
+          <button v-if="session.status === 'collecting' || session.status === 'analysis_ready'" class="ghost-button" type="button" :disabled="busy" @click="emit('discard')">
+            Sitzung verwerfen
+          </button>
+          <button v-if="session.status === 'collecting'" class="primary-button" type="button" :disabled="busy || !allTargetsCompleted || !!activeTake || !!pendingTake" @click="emit('complete')">
             {{ busy ? 'Analysiert...' : 'Analyse erzeugen' }}
           </button>
           <button v-if="session.status === 'analysis_ready'" class="ghost-button" type="button" :disabled="busy" @click="emit('apply')">
@@ -245,7 +349,7 @@ function recommendationKey(analysis: CalibrationTargetAnalysis, parameter: strin
 }
 
 .calibration-modal {
-  width: min(1040px, 100%);
+  width: min(1120px, 100%);
   max-height: calc(100vh - 48px);
   overflow: auto;
   padding: 28px;
@@ -257,25 +361,34 @@ function recommendationKey(analysis: CalibrationTargetAnalysis, parameter: strin
 }
 
 .calibration-header,
-.session-summary,
-.button-row,
 .wizard-grid,
+.button-row,
 .progress-grid,
-.metric-grid {
+.metric-grid,
+.summary-grid {
   display: grid;
   gap: 16px;
 }
 
 .calibration-header,
-.session-summary,
 .button-row {
   grid-template-columns: repeat(2, minmax(0, 1fr));
   align-items: start;
 }
 
-.wizard-grid {
-  grid-template-columns: 0.9fr 1.1fr;
+.setup-grid {
+  grid-template-columns: 0.8fr 1fr 1fr;
   margin: 24px 0;
+}
+
+.live-grid {
+  grid-template-columns: 0.85fr 1.15fr;
+  margin: 24px 0;
+}
+
+.summary-grid {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  margin-top: 24px;
 }
 
 .progress-grid {
@@ -293,11 +406,114 @@ function recommendationKey(analysis: CalibrationTargetAnalysis, parameter: strin
 .analysis-card,
 .metric-card,
 .recommendation-card,
-.session-summary > div {
+.summary-grid > div {
   padding: 18px;
   border-radius: 18px;
   background: rgba(15, 23, 42, 0.7);
   border: 1px solid rgba(148, 163, 184, 0.18);
+}
+
+.preview-card,
+.take-card,
+.target-card {
+  display: grid;
+  gap: 12px;
+}
+
+.preview-card-header {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  align-items: flex-start;
+}
+
+.preview-frame {
+  min-height: 210px;
+  border-radius: 18px;
+  overflow: hidden;
+  background: rgba(2, 6, 23, 0.78);
+  border: 1px solid rgba(148, 163, 184, 0.16);
+}
+
+.preview-frame--large {
+  min-height: 320px;
+}
+
+.preview-frame img {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.preview-empty {
+  display: grid;
+  place-items: center;
+  min-height: inherit;
+  color: rgba(226, 232, 240, 0.72);
+  text-align: center;
+  padding: 20px;
+}
+
+.preview-pill {
+  padding: 6px 10px;
+  border-radius: 999px;
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.preview-pill--live {
+  background: rgba(16, 185, 129, 0.16);
+  color: #6ee7b7;
+}
+
+.preview-pill--warming_up,
+.preview-pill--stale {
+  background: rgba(251, 191, 36, 0.16);
+  color: #fcd34d;
+}
+
+.preview-pill--unavailable,
+.preview-pill--error {
+  background: rgba(248, 113, 113, 0.16);
+  color: #fca5a5;
+}
+
+.countdown-box,
+.review-box,
+.recording-indicator {
+  padding: 14px;
+  border-radius: 16px;
+  background: rgba(2, 6, 23, 0.6);
+  border: 1px solid rgba(148, 163, 184, 0.16);
+}
+
+.countdown-box strong {
+  display: block;
+  font-size: 40px;
+  line-height: 1;
+  margin-top: 6px;
+}
+
+.recording-indicator {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  color: #fca5a5;
+}
+
+.recording-dot {
+  width: 12px;
+  height: 12px;
+  border-radius: 999px;
+  background: #ef4444;
+  box-shadow: 0 0 0 6px rgba(239, 68, 68, 0.16);
+}
+
+.prompt-title {
+  font-size: 24px;
 }
 
 .progress-card.active {
@@ -317,117 +533,114 @@ function recommendationKey(analysis: CalibrationTargetAnalysis, parameter: strin
   margin-top: 16px;
 }
 
-.target-card {
-  display: grid;
-  gap: 12px;
-}
-
 .target-option {
   display: grid;
   grid-template-columns: auto 1fr;
   gap: 10px;
   align-items: start;
-}
-
-.target-option small,
-.progress-copy,
-.subcopy,
-.event-banner,
-.error-banner,
-.recommendation-card small,
-.metric-card small {
-  color: rgba(226, 232, 240, 0.78);
+  padding: 12px 14px;
+  border-radius: 16px;
+  background: rgba(2, 6, 23, 0.42);
+  border: 1px solid rgba(148, 163, 184, 0.14);
 }
 
 .field-label,
-.eyebrow {
-  margin: 0 0 6px;
-  font-size: 0.78rem;
+.eyebrow,
+.countdown-label {
+  display: block;
+  margin-bottom: 8px;
+  font-size: 12px;
   letter-spacing: 0.08em;
   text-transform: uppercase;
-  color: rgba(148, 163, 184, 0.9);
+  color: rgba(226, 232, 240, 0.72);
+}
+
+.subcopy,
+.progress-copy,
+.target-option small,
+.recommendation-card small,
+.analysis-card small,
+.review-box small {
+  color: rgba(226, 232, 240, 0.72);
 }
 
 .field-input {
   width: 100%;
-  margin-bottom: 14px;
-  padding: 11px 12px;
-  border-radius: 12px;
+  padding: 12px 14px;
+  border-radius: 14px;
   border: 1px solid rgba(148, 163, 184, 0.24);
-  background: rgba(15, 23, 42, 0.92);
-  color: #f8fafc;
+  background: rgba(2, 6, 23, 0.62);
+  color: inherit;
+  margin-bottom: 14px;
 }
 
 .button-row {
   margin-top: 24px;
 }
 
-.button-row.compact {
-  display: flex;
-  gap: 10px;
+.button-row--stacked {
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
 }
 
 .primary-button,
 .ghost-button {
-  border-radius: 999px;
-  padding: 11px 18px;
-  border: 1px solid transparent;
-  font-weight: 600;
+  border: none;
+  border-radius: 14px;
+  padding: 14px 18px;
+  font-weight: 700;
   cursor: pointer;
 }
 
 .primary-button {
-  justify-self: end;
   background: linear-gradient(135deg, #f59e0b, #f97316);
-  color: #111827;
-}
-
-.ghost-button {
-  justify-self: start;
-  background: rgba(51, 65, 85, 0.55);
-  border-color: rgba(148, 163, 184, 0.18);
-  color: #f8fafc;
+  color: #1f2937;
 }
 
 .primary-button:disabled,
 .ghost-button:disabled {
-  opacity: 0.6;
+  opacity: 0.55;
   cursor: not-allowed;
 }
 
-.empty-state,
-.event-banner,
-.error-banner {
+.ghost-button {
+  background: rgba(148, 163, 184, 0.14);
+  color: #f8fafc;
+}
+
+.error-banner,
+.event-banner {
+  margin-top: 18px;
   padding: 14px 16px;
   border-radius: 16px;
-  margin-top: 18px;
+}
+
+.error-banner {
+  background: rgba(248, 113, 113, 0.14);
+  border: 1px solid rgba(248, 113, 113, 0.28);
 }
 
 .event-banner {
-  background: rgba(15, 118, 110, 0.24);
+  background: rgba(59, 130, 246, 0.16);
+  border: 1px solid rgba(96, 165, 250, 0.24);
 }
 
-.error-banner {
-  background: rgba(153, 27, 27, 0.34);
-}
-
-.recommendation-list {
+.empty-state {
   display: grid;
-  gap: 10px;
-  margin-top: 14px;
+  place-items: center;
+  min-height: 240px;
+  text-align: center;
 }
 
 @media (max-width: 900px) {
-  .calibration-header,
-  .session-summary,
-  .wizard-grid,
+  .setup-grid,
+  .live-grid,
+  .summary-grid,
   .button-row {
     grid-template-columns: 1fr;
   }
 
-  .primary-button,
-  .ghost-button {
-    justify-self: stretch;
+  .calibration-modal {
+    padding: 20px;
   }
 }
 </style>

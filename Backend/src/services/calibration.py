@@ -2,17 +2,21 @@ from __future__ import annotations
 
 import threading
 import uuid
+import random
 from collections.abc import Callable
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from statistics import mean, median
 from typing import Any
 
 from core.realtime import RealtimeHub, realtime_hub
 from repositories.config import ConfigRepository
 from schemas.calibration import (
+    CalibrationAdvisoryRecognition,
     CalibrationAnalysisResult,
     CalibrationAppliedSnapshot,
     CalibrationCollectedSample,
+    CalibrationConfigPatch,
+    CalibrationConfigPatchOperation,
     CalibrationConfigSnapshot,
     CalibrationDefinitionsResponse,
     CalibrationEventPayload,
@@ -23,6 +27,7 @@ from schemas.calibration import (
     CalibrationRecommendation,
     CalibrationSessionCreateRequest,
     CalibrationSessionRecord,
+    CalibrationTakeRecord,
     CalibrationTargetAnalysis,
     CalibrationTargetDefinition,
     CalibrationTargetProgress,
@@ -70,6 +75,69 @@ def _metric_summary(name: str, values: list[float]) -> CalibrationMetricSummary:
         p90_value=_percentile(values, 0.90),
         sample_count=len(values),
     )
+
+
+def _build_gesture_config_patch(
+    *,
+    base_config: GestureConfig,
+    candidate_config: GestureConfig,
+    target_analyses: list[CalibrationTargetAnalysis],
+) -> CalibrationConfigPatch | None:
+    recommendation_metadata: dict[str, dict[str, list[str]]] = {}
+    for analysis in target_analyses:
+        for recommendation in analysis.recommendations:
+            metadata = recommendation_metadata.setdefault(
+                recommendation.parameter,
+                {"source_targets": [], "rationales": []},
+            )
+            if analysis.target_id not in metadata["source_targets"]:
+                metadata["source_targets"].append(analysis.target_id)
+            if recommendation.rationale and recommendation.rationale not in metadata["rationales"]:
+                metadata["rationales"].append(recommendation.rationale)
+
+    base_values = base_config.model_dump()
+    candidate_values = candidate_config.model_dump()
+    operations: list[CalibrationConfigPatchOperation] = []
+    for parameter in sorted(candidate_values):
+        current_value = base_values.get(parameter)
+        new_value = candidate_values.get(parameter)
+        if current_value == new_value:
+            continue
+        metadata = recommendation_metadata.get(parameter, {"source_targets": [], "rationales": []})
+        operations.append(
+            CalibrationConfigPatchOperation(
+                parameter=parameter,
+                path=f"gesture_config.{parameter}",
+                current_value=current_value,
+                new_value=new_value,
+                rationale=" ".join(metadata["rationales"]) if metadata["rationales"] else None,
+                source_targets=metadata["source_targets"],
+            )
+        )
+
+    if not operations:
+        return None
+
+    return CalibrationConfigPatch(
+        modality="gesture",
+        operations=operations,
+        summary=f"{len(operations)} Gesten-Parameter wurden aus der Kalibrierung abgeleitet.",
+    )
+
+
+def _apply_gesture_config_patch(
+    base_config: GestureConfig,
+    patch: CalibrationConfigPatch | None,
+) -> GestureConfig:
+    patched_config = base_config.model_copy(deep=True)
+    if patch is None:
+        return patched_config
+
+    for operation in patch.operations:
+        if not hasattr(patched_config, operation.parameter):
+            continue
+        setattr(patched_config, operation.parameter, operation.new_value)
+    return patched_config
 
 
 class CalibrationService:
@@ -206,12 +274,6 @@ class CalibrationService:
         if request.modality != "gesture":
             raise CalibrationServiceError("Nur Gesten-Kalibrierung ist derzeit verfuegbar.", status_code=422)
 
-        if len(request.selected_targets) != 1:
-            raise CalibrationServiceError(
-                "Die aktuelle Gesten-Kalibrierung unterstuetzt genau ein Ziel pro Sitzung.",
-                status_code=422,
-            )
-
         target_ids = {definition.id for definition in self._gesture_target_definitions}
         invalid_targets = [target for target in request.selected_targets if target not in target_ids]
         if invalid_targets:
@@ -236,7 +298,7 @@ class CalibrationService:
             status="collecting",
             target_repetitions=request.target_repetitions,
             selected_targets=list(request.selected_targets),
-            active_target_id=request.selected_targets[0],
+            active_target_id=self._select_next_target_id(request.selected_targets),
             created_at=now,
             updated_at=now,
             original_snapshot=CalibrationConfigSnapshot(
@@ -252,6 +314,8 @@ class CalibrationService:
                 )
                 for target_id in request.selected_targets
             ],
+            active_take=None,
+            pending_take=None,
         )
         repository.save_calibration_session(session)
 
@@ -273,73 +337,183 @@ class CalibrationService:
             )
         return session
 
-    def capture_gesture_sample(self, sample: CalibrationCollectedSample) -> CalibrationSessionRecord | None:
-        session = self.get_active_session("gesture")
-        if session is None:
-            return None
-
-        current_progress = self._get_current_progress(session)
-        if current_progress is None:
-            return session
-
-        if sample.target_id != current_progress.target_id:
-            current_progress.last_feedback = (
-                f"Erwartet {current_progress.target_id}, erkannt wurde {sample.target_id}. Bewegung wird ignoriert."
-            )
-            repository = self.config_repository_factory()
-            repository.save_calibration_session(self._refresh_session_quality(session))
-            self._publish_event(
-                "CalibrationSampleRejected",
-                session,
-                target_id=current_progress.target_id,
-                message=current_progress.last_feedback,
-                metadata={"received_target": sample.target_id, "ignored": True},
-                confidence=(sample.gesture_payload.confidence if sample.gesture_payload is not None else None),
-            )
-            return session
-
-        session.samples.append(sample)
-        current_progress.collected_samples += 1
-        current_progress.last_feedback = f"Sample {current_progress.collected_samples}/{current_progress.target_repetitions} akzeptiert."
-        self._refresh_session_quality(session)
+    def prepare_take(self, session_id: str, countdown_seconds: int = 3) -> CalibrationSessionRecord:
         repository = self.config_repository_factory()
+        session = self.get_session(session_id)
+        if session.status != "collecting":
+            raise CalibrationServiceError("Sitzung sammelt keine Samples mehr.", status_code=409)
+        if session.pending_take is not None:
+            raise CalibrationServiceError("Es wartet noch ein Take auf Review.", status_code=409)
+        if session.active_take is not None:
+            raise CalibrationServiceError("Es ist bereits ein Take vorbereitet oder aktiv.", status_code=409)
+
+        open_target_ids = [progress.target_id for progress in session.progress if not progress.completed]
+        if not open_target_ids:
+            raise CalibrationServiceError("Alle Ziele sind bereits vollstaendig. Bitte Analyse erzeugen.", status_code=409)
+
+        target_id = session.active_target_id if session.active_target_id in open_target_ids else self._select_next_target_id(open_target_ids)
+        if target_id is None:
+            raise CalibrationServiceError("Kein weiteres Kalibrierungsziel verfuegbar.", status_code=409)
+
+        now = _utc_now()
+        session.active_target_id = target_id
+        session.active_take = CalibrationTakeRecord(
+            take_id=str(uuid.uuid4()),
+            target_id=target_id,
+            status="prepared",
+            prepared_at=now,
+            countdown_seconds=countdown_seconds,
+            ready_at=now + timedelta(seconds=countdown_seconds),
+            trimmed_tail_ms=750,
+        )
         repository.save_calibration_session(session)
         self._publish_event(
-            "CalibrationSampleAccepted",
+            "CalibrationTakePrepared",
             session,
-            target_id=sample.target_id,
-            message=current_progress.last_feedback,
-            confidence=(sample.gesture_payload.confidence if sample.gesture_payload is not None else None),
-            metadata={"hand": sample.gesture_payload.hand if sample.gesture_payload is not None else None},
+            target_id=target_id,
+            take_id=session.active_take.take_id,
+            message="Take vorbereitet. Countdown kann starten.",
+        )
+        return session
+
+    def start_take_recording(self, session_id: str) -> CalibrationSessionRecord:
+        repository = self.config_repository_factory()
+        session = self.get_session(session_id)
+        if session.status != "collecting":
+            raise CalibrationServiceError("Sitzung sammelt keine Samples mehr.", status_code=409)
+        if session.pending_take is not None:
+            raise CalibrationServiceError("Es wartet noch ein Take auf Review.", status_code=409)
+        if session.active_take is None or session.active_take.status != "prepared":
+            raise CalibrationServiceError("Es ist kein vorbereiteter Take vorhanden.", status_code=409)
+
+        session.active_take = session.active_take.model_copy(
+            update={
+                "status": "recording",
+                "recording_started_at": _utc_now(),
+            }
+        )
+        repository.save_calibration_session(session)
+        self._publish_event(
+            "CalibrationRecordingStarted",
+            session,
+            target_id=session.active_take.target_id,
+            take_id=session.active_take.take_id,
+            message="Recording gestartet.",
+        )
+        return session
+
+    def finish_take_recording(
+        self,
+        session_id: str,
+        sample: CalibrationCollectedSample,
+        advisory_recognition: CalibrationAdvisoryRecognition | None = None,
+    ) -> CalibrationSessionRecord:
+        repository = self.config_repository_factory()
+        session = self.get_session(session_id)
+        if session.status != "collecting":
+            raise CalibrationServiceError("Sitzung sammelt keine Samples mehr.", status_code=409)
+        if session.active_take is None or session.active_take.status != "recording":
+            raise CalibrationServiceError("Es laeuft aktuell kein Recording-Take.", status_code=409)
+
+        stopped_take = session.active_take.model_copy(
+            update={
+                "status": "pending_review",
+                "recording_stopped_at": _utc_now(),
+                "sample": sample,
+                "advisory_recognition": advisory_recognition,
+            }
+        )
+        session.active_take = None
+        session.pending_take = stopped_take
+        repository.save_calibration_session(session)
+        self._publish_event(
+            "CalibrationRecordingStopped",
+            session,
+            target_id=stopped_take.target_id,
+            take_id=stopped_take.take_id,
+            message="Recording gestoppt. Review erforderlich.",
+            confidence=advisory_recognition.confidence if advisory_recognition is not None else None,
+            metadata=(
+                {
+                    "recognized_target": advisory_recognition.recognized_target_id,
+                    "tracking_source": advisory_recognition.tracking_source,
+                }
+                if advisory_recognition is not None
+                else {}
+            ),
+        )
+        return session
+
+    def accept_pending_take(self, session_id: str) -> CalibrationSessionRecord:
+        repository = self.config_repository_factory()
+        session = self.get_session(session_id)
+        pending_take = session.pending_take
+        if pending_take is None or pending_take.sample is None:
+            raise CalibrationServiceError("Es liegt kein reviewbarer Take vor.", status_code=409)
+
+        session.pending_take = None
+        repository.save_calibration_session(session)
+        return self._accept_source_of_truth_sample(
+            session,
+            pending_take.sample,
+            recognized_target_id=(
+                pending_take.advisory_recognition.recognized_target_id
+                if pending_take.advisory_recognition is not None
+                else None
+            ),
+            event_type="CalibrationTakeAccepted",
+            event_message_prefix="Take akzeptiert.",
+            extra_metadata={"take_id": pending_take.take_id},
         )
 
-        previous_target_id = session.active_target_id
-        if current_progress.collected_samples >= current_progress.target_repetitions:
-            current_progress.completed = True
-            self._publish_event(
-                "CalibrationTargetCompleted",
-                session,
-                target_id=current_progress.target_id,
-                message=f"Ziel {current_progress.target_id} abgeschlossen.",
-            )
+    def discard_pending_take(self, session_id: str) -> CalibrationSessionRecord:
+        repository = self.config_repository_factory()
+        session = self.get_session(session_id)
+        pending_take = session.pending_take
+        if pending_take is None:
+            raise CalibrationServiceError("Es liegt kein reviewbarer Take vor.", status_code=409)
 
-        next_progress = self._get_current_progress(session)
-        session.active_target_id = next_progress.target_id if next_progress is not None else None
+        session.pending_take = None
+        open_target_ids = [progress.target_id for progress in session.progress if not progress.completed]
+        session.active_target_id = pending_take.target_id if pending_take.target_id in open_target_ids else self._select_next_target_id(open_target_ids)
         repository.save_calibration_session(session)
-        if session.active_target_id is not None and session.active_target_id != previous_target_id:
+        self._publish_event(
+            "CalibrationTakeDiscarded",
+            session,
+            target_id=pending_take.target_id,
+            take_id=pending_take.take_id,
+            message="Take verworfen.",
+        )
+        if session.active_target_id is not None:
             self._publish_event(
                 "CalibrationTargetArmed",
                 session,
                 target_id=session.active_target_id,
-                message="Naechstes Ziel bereit.",
+                message="Ziel erneut bereit.",
             )
         return session
+
+    def capture_gesture_sample(self, sample: CalibrationCollectedSample) -> CalibrationSessionRecord | None:
+        session = self.get_active_session("gesture")
+        if session is None:
+            return None
+        return self._accept_source_of_truth_sample(
+            session,
+            sample,
+            recognized_target_id=sample.target_id,
+            event_type="CalibrationSampleAccepted",
+            event_message_prefix="Sample akzeptiert.",
+        )
 
     def complete_session(self, session_id: str) -> CalibrationSessionRecord:
         repository = self.config_repository_factory()
         session = self.get_session(session_id)
         if session.status != "collecting":
             raise CalibrationServiceError("Sitzung sammelt keine Samples mehr.", status_code=409)
+        if session.active_take is not None:
+            raise CalibrationServiceError("Es ist noch ein Take vorbereitet oder im Recording.", status_code=409)
+        if session.pending_take is not None:
+            raise CalibrationServiceError("Es wartet noch ein Take auf Review.", status_code=409)
 
         incomplete_targets = [progress.target_id for progress in session.progress if not progress.completed]
         if incomplete_targets:
@@ -381,9 +555,15 @@ class CalibrationService:
         if session.status != "analysis_ready" or session.candidate_snapshot is None:
             raise CalibrationServiceError("Kalibrierungsprofil ist noch nicht anwendbar.", status_code=409)
 
-        candidate_gesture_config = session.candidate_snapshot.gesture_config
+        gesture_patch = session.analysis.gesture_config_patch if session.analysis is not None else None
+        candidate_gesture_config = _apply_gesture_config_patch(
+            session.original_snapshot.gesture_config or GestureConfig(),
+            gesture_patch,
+        )
         if session.modality != "gesture" or candidate_gesture_config is None:
             raise CalibrationServiceError("Es liegt kein anwendbares Gestenprofil vor.", status_code=409)
+
+        session.candidate_snapshot.gesture_config = candidate_gesture_config
 
         snapshot = repository.save_last_applied_calibration_snapshot(
             CalibrationAppliedSnapshot(
@@ -449,10 +629,87 @@ class CalibrationService:
         session.status = "cancelled"
         session.cancelled_at = _utc_now()
         session.active_target_id = None
+        session.active_take = None
+        session.pending_take = None
         repository.save_calibration_session(session)
         with self._lock:
             if self._active_sessions_by_modality.get(session.modality) == session.session_id:
                 self._active_sessions_by_modality[session.modality] = None
+        return session
+
+    def _accept_source_of_truth_sample(
+        self,
+        session: CalibrationSessionRecord,
+        sample: CalibrationCollectedSample,
+        *,
+        recognized_target_id: str | None,
+        event_type: str,
+        event_message_prefix: str,
+        extra_metadata: dict[str, Any] | None = None,
+    ) -> CalibrationSessionRecord:
+        current_progress = self._get_current_progress(session)
+        if current_progress is None:
+            current_progress = next(
+                (progress for progress in session.progress if progress.target_id == sample.target_id and not progress.completed),
+                None,
+            )
+        if current_progress is None:
+            return session
+
+        accepted_sample = sample.model_copy(update={"target_id": current_progress.target_id})
+        session.samples.append(accepted_sample)
+        current_progress.collected_samples += 1
+        if recognized_target_id is not None and recognized_target_id != current_progress.target_id:
+            current_progress.last_feedback = (
+                f"{event_message_prefix} {current_progress.collected_samples}/{current_progress.target_repetitions} "
+                f"fuer {current_progress.target_id}, erkannt wurde {recognized_target_id}."
+            )
+        else:
+            current_progress.last_feedback = (
+                f"{event_message_prefix} {current_progress.collected_samples}/{current_progress.target_repetitions} "
+                f"fuer {current_progress.target_id}."
+            )
+
+        self._refresh_session_quality(session)
+        repository = self.config_repository_factory()
+        repository.save_calibration_session(session)
+        event_metadata = {
+            "hand": accepted_sample.gesture_payload.hand if accepted_sample.gesture_payload is not None else None,
+            "recognized_target": recognized_target_id,
+            "source_of_truth_target": current_progress.target_id,
+        }
+        if extra_metadata:
+            event_metadata.update(extra_metadata)
+        self._publish_event(
+            event_type,
+            session,
+            target_id=current_progress.target_id,
+            sample_id=accepted_sample.sample_id,
+            message=current_progress.last_feedback,
+            confidence=(accepted_sample.gesture_payload.confidence if accepted_sample.gesture_payload is not None else None),
+            metadata=event_metadata,
+        )
+
+        previous_target_id = session.active_target_id
+        if current_progress.collected_samples >= current_progress.target_repetitions:
+            current_progress.completed = True
+            self._publish_event(
+                "CalibrationTargetCompleted",
+                session,
+                target_id=current_progress.target_id,
+                message=f"Ziel {current_progress.target_id} abgeschlossen.",
+            )
+
+        remaining_target_ids = [progress.target_id for progress in session.progress if not progress.completed]
+        session.active_target_id = self._select_next_target_id(remaining_target_ids)
+        repository.save_calibration_session(session)
+        if session.active_target_id is not None and session.active_target_id != previous_target_id:
+            self._publish_event(
+                "CalibrationTargetArmed",
+                session,
+                target_id=session.active_target_id,
+                message="Naechstes Ziel bereit.",
+            )
         return session
 
     def _refresh_session_quality(self, session: CalibrationSessionRecord) -> CalibrationSessionRecord:
@@ -475,7 +732,23 @@ class CalibrationService:
         return session
 
     def _get_current_progress(self, session: CalibrationSessionRecord) -> CalibrationTargetProgress | None:
+        if session.active_target_id is not None:
+            progress = next(
+                (
+                    progress
+                    for progress in session.progress
+                    if progress.target_id == session.active_target_id and not progress.completed
+                ),
+                None,
+            )
+            if progress is not None:
+                return progress
         return next((progress for progress in session.progress if not progress.completed), None)
+
+    def _select_next_target_id(self, target_ids: list[str]) -> str | None:
+        if not target_ids:
+            return None
+        return random.choice(target_ids)
 
     def _analyze_session(self, session: CalibrationSessionRecord) -> CalibrationAnalysisResult:
         if session.modality != "gesture":
@@ -501,12 +774,20 @@ class CalibrationService:
         if zoom_analyses:
             target_analyses.extend(zoom_analyses)
 
+        gesture_config_patch = _build_gesture_config_patch(
+            base_config=base_config,
+            candidate_config=candidate_config,
+            target_analyses=target_analyses,
+        )
+        patched_candidate_config = _apply_gesture_config_patch(base_config, gesture_config_patch)
+
         return CalibrationAnalysisResult(
             modality="gesture",
             generated_at=_utc_now(),
             targets=target_analyses,
-            candidate_gesture_config=candidate_config,
+            candidate_gesture_config=patched_candidate_config,
             summary=f"Empfehlungen fuer {len(target_analyses)} Kalibrierungsziele berechnet.",
+            gesture_config_patch=gesture_config_patch,
         )
 
     def _analyze_swipes(
@@ -866,6 +1147,8 @@ class CalibrationService:
         event_type: str,
         session: CalibrationSessionRecord,
         target_id: str | None = None,
+        take_id: str | None = None,
+        sample_id: str | None = None,
         message: str | None = None,
         confidence: float | None = None,
         metadata: dict[str, Any] | None = None,
@@ -875,6 +1158,8 @@ class CalibrationService:
             modality=session.modality,
             status=session.status,
             target_id=target_id,
+            take_id=take_id,
+            sample_id=sample_id,
             collected_samples=(next((progress.collected_samples for progress in session.progress if progress.target_id == target_id), None) if target_id is not None else None),
             target_repetitions=(next((progress.target_repetitions for progress in session.progress if progress.target_id == target_id), None) if target_id is not None else None),
             message=message,

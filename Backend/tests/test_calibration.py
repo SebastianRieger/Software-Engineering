@@ -9,6 +9,7 @@ from core.realtime import realtime_hub
 from main import websocket_endpoint
 from repositories.config import ConfigRepository
 from schemas.calibration import (
+    CalibrationAdvisoryRecognition,
     CalibrationSessionCreateRequest,
     CalibrationAppliedSnapshot,
     CalibrationConfigSnapshot,
@@ -284,10 +285,71 @@ def test_calibration_service_completes_applies_and_rolls_back(tmp_path):
     assert restored_config.swipe_threshold == baseline.swipe_threshold
 
 
-def test_calibration_service_ignores_non_target_gestures_during_positive_collection(tmp_path):
+def test_calibration_service_analysis_produces_reviewable_gesture_patch(tmp_path):
     service = build_calibration_service(tmp_path)
 
-    service.start_session(
+    session = service.start_session(
+        CalibrationSessionCreateRequest(
+            modality="gesture",
+            selected_targets=["swipe_right"],
+            target_repetitions=2,
+            profile="demo-user",
+        )
+    )
+    service.capture_gesture_sample(make_swipe_sample("swipe_right", confidence=0.91))
+    service.capture_gesture_sample(make_swipe_sample("swipe_right", confidence=0.95))
+
+    completed = service.complete_session(session.session_id)
+
+    assert completed.analysis is not None
+    assert completed.analysis.gesture_config_patch is not None
+    assert completed.analysis.gesture_config_patch.operations
+    assert any(
+        operation.parameter == "swipe_threshold"
+        for operation in completed.analysis.gesture_config_patch.operations
+    )
+    assert completed.candidate_snapshot is not None
+    assert completed.candidate_snapshot.gesture_config == completed.analysis.candidate_gesture_config
+
+
+def test_calibration_service_apply_session_uses_analysis_patch(tmp_path):
+    repo = build_calibration_repo(tmp_path)
+    baseline = repo.save_gesture_config(GestureConfig(swipe_threshold=0.2, swipe_min_span=0.12))
+    service = build_calibration_service(tmp_path)
+
+    session = service.start_session(
+        CalibrationSessionCreateRequest(
+            modality="gesture",
+            selected_targets=["swipe_right"],
+            target_repetitions=2,
+            profile="demo-user",
+        )
+    )
+    service.capture_gesture_sample(make_swipe_sample("swipe_right", confidence=0.91))
+    service.capture_gesture_sample(make_swipe_sample("swipe_right", confidence=0.95))
+
+    completed = service.complete_session(session.session_id)
+    assert completed.analysis is not None
+    assert completed.analysis.gesture_config_patch is not None
+    completed.candidate_snapshot = CalibrationConfigSnapshot(
+        modality="gesture",
+        profile=completed.profile,
+        captured_at=completed.candidate_snapshot.captured_at if completed.candidate_snapshot is not None else completed.analysis.generated_at,
+        gesture_config=baseline,
+    )
+    repo.save_calibration_session(completed)
+
+    applied_session, _profile = service.apply_session(session.session_id)
+    applied_config = repo.get_gesture_config()
+
+    assert applied_session.status == "applied"
+    assert applied_config.swipe_threshold != baseline.swipe_threshold
+
+
+def test_calibration_service_accepts_misrecognized_gesture_for_active_target(tmp_path):
+    service = build_calibration_service(tmp_path)
+
+    session = service.start_session(
         CalibrationSessionCreateRequest(
             modality="gesture",
             selected_targets=["swipe_left"],
@@ -300,30 +362,100 @@ def test_calibration_service_ignores_non_target_gestures_during_positive_collect
     updated = service.capture_gesture_sample(mismatched)
 
     assert updated is not None
-    assert updated.progress[0].collected_samples == 0
+    assert updated.progress[0].collected_samples == 1
     assert updated.progress[0].rejected_samples == 0
-    assert updated.progress[0].last_feedback == "Erwartet swipe_left, erkannt wurde swipe_right. Bewegung wird ignoriert."
+    assert updated.progress[0].last_feedback == "Sample akzeptiert. 1/2 fuer swipe_left, erkannt wurde swipe_right."
+    assert updated.samples[0].target_id == session.active_target_id
+    assert updated.samples[0].gesture_payload is not None
+    assert updated.samples[0].gesture_payload.gesture == "swipe_right"
 
 
-def test_calibration_service_rejects_multi_target_sessions_in_single_target_mode(tmp_path):
+def test_calibration_service_allows_multi_target_sessions_and_rotates_targets(tmp_path):
     service = build_calibration_service(tmp_path)
 
-    with pytest.raises(Exception) as exc_info:
-        service.start_session(
-            CalibrationSessionCreateRequest(
-                modality="gesture",
-                selected_targets=["swipe_left", "swipe_right"],
-                target_repetitions=2,
-                profile="default",
-            )
+    session = service.start_session(
+        CalibrationSessionCreateRequest(
+            modality="gesture",
+            selected_targets=["swipe_left", "swipe_right"],
+            target_repetitions=1,
+            profile="default",
         )
+    )
 
-    assert "genau ein Ziel" in str(exc_info.value)
+    assert session.active_target_id in {"swipe_left", "swipe_right"}
+
+    first_target = session.active_target_id
+    updated = service.capture_gesture_sample(make_swipe_sample("swipe_right"))
+
+    assert updated is not None
+    assert next(progress for progress in updated.progress if progress.target_id == first_target).completed is True
+    assert updated.active_target_id in ({"swipe_left", "swipe_right"} - {first_target})
+
+
+def test_calibration_service_guided_take_accepts_pending_review_sample(tmp_path):
+    service = build_calibration_service(tmp_path)
+
+    session = service.start_session(
+        CalibrationSessionCreateRequest(
+            modality="gesture",
+            selected_targets=["swipe_left"],
+            target_repetitions=1,
+            profile="default",
+        )
+    )
+
+    prepared = service.prepare_take(session.session_id)
+    assert prepared.active_take is not None
+    started = service.start_take_recording(session.session_id)
+    assert started.active_take is not None
+    assert started.active_take.status == "recording"
+
+    stopped = service.finish_take_recording(
+        session.session_id,
+        make_swipe_sample("swipe_left", confidence=0.0),
+        CalibrationAdvisoryRecognition(
+            recognized_target_id=None,
+            confidence=None,
+            tracking_source="mock-runtime",
+        ),
+    )
+
+    assert stopped.pending_take is not None
+    assert stopped.active_take is None
+
+    accepted = service.accept_pending_take(session.session_id)
+
+    assert accepted.pending_take is None
+    assert accepted.progress[0].collected_samples == 1
+    assert accepted.progress[0].completed is True
+    assert accepted.samples[0].target_id == "swipe_left"
+
+
+def test_calibration_service_rejects_complete_with_pending_take(tmp_path):
+    service = build_calibration_service(tmp_path)
+
+    session = service.start_session(
+        CalibrationSessionCreateRequest(
+            modality="gesture",
+            selected_targets=["swipe_left"],
+            target_repetitions=1,
+            profile="default",
+        )
+    )
+
+    service.prepare_take(session.session_id)
+    service.start_take_recording(session.session_id)
+    service.finish_take_recording(session.session_id, make_swipe_sample("swipe_left"))
+
+    with pytest.raises(Exception) as exc_info:
+        service.complete_session(session.session_id)
+
+    assert "Review" in str(exc_info.value)
 
 
 @pytest.mark.asyncio
 async def test_calibration_api_session_lifecycle(client, override_calibration_dependency, override_gesture_dependency):
-    service = override_calibration_dependency
+    _ = override_calibration_dependency
     gesture_runtime = override_gesture_dependency
 
     definitions_response = await client.get("/api/v1/calibration/definitions")
@@ -345,7 +477,19 @@ async def test_calibration_api_session_lifecycle(client, override_calibration_de
     assert gesture_runtime.running is True
     assert gesture_runtime.camera_index == 1
 
-    service.capture_gesture_sample(make_swipe_sample("swipe_right"))
+    prepare_take_response = await client.post(f"/api/v1/calibration/sessions/{session_id}/takes/prepare")
+    assert prepare_take_response.status_code == 200
+
+    start_take_response = await client.post(f"/api/v1/calibration/sessions/{session_id}/takes/start")
+    assert start_take_response.status_code == 200
+    assert gesture_runtime.active_take is not None
+
+    stop_take_response = await client.post(f"/api/v1/calibration/sessions/{session_id}/takes/stop")
+    assert stop_take_response.status_code == 200
+    assert stop_take_response.json()["session"]["pending_take"] is not None
+
+    accept_take_response = await client.post(f"/api/v1/calibration/sessions/{session_id}/takes/accept")
+    assert accept_take_response.status_code == 200
 
     session_response = await client.get(f"/api/v1/calibration/sessions/{session_id}")
     assert session_response.status_code == 200

@@ -402,10 +402,12 @@ async def stop_gesture_detection(
 async def get_preview_frame(
     service: GestureService = Depends(get_gesture_service),
 ):
-    image = service.get_frame()
-    if image is None:
+    frame = service.get_frame()
+    if frame is None:
         raise HTTPException(status_code=404, detail="Kein Vorschaubild verfuegbar.")
-    return {"image": image}
+    if isinstance(frame, str):
+        return {"image": frame, "captured_at": None, "frame_age_ms": None}
+    return frame
 
 
 @gesture_router.post("/dev/process-video", response_model=GestureVideoProcessingResponse)
@@ -473,6 +475,88 @@ async def get_calibration_session(
     return CalibrationSessionResponse(session=session)
 
 
+@calibration_router.post("/sessions/{session_id}/takes/prepare", response_model=CalibrationSessionResponse)
+async def prepare_calibration_take(
+    session_id: str,
+    service: CalibrationService = Depends(get_calibration_service),
+):
+    try:
+        session = service.prepare_take(session_id)
+    except CalibrationServiceError as exc:
+        raise HTTPException(status_code=exc.status_code, detail=str(exc)) from exc
+    return CalibrationSessionResponse(session=session)
+
+
+@calibration_router.post("/sessions/{session_id}/takes/start", response_model=CalibrationSessionResponse)
+async def start_calibration_take(
+    session_id: str,
+    service: CalibrationService = Depends(get_calibration_service),
+    gesture_runtime: GestureService = Depends(get_gesture_service),
+):
+    try:
+        session = service.start_take_recording(session_id)
+        if session.active_take is None:
+            raise HTTPException(status_code=409, detail="Kein aktiver Take vorhanden.")
+        gesture_runtime.begin_calibration_take_capture(
+            session_id=session.session_id,
+            take_id=session.active_take.take_id,
+            target_id=session.active_take.target_id,
+            trimmed_tail_ms=session.active_take.trimmed_tail_ms,
+        )
+    except CalibrationServiceError as exc:
+        raise HTTPException(status_code=exc.status_code, detail=str(exc)) from exc
+    except GestureServiceError as exc:
+        raise HTTPException(status_code=exc.status_code, detail=str(exc)) from exc
+    return CalibrationSessionResponse(session=session)
+
+
+@calibration_router.post("/sessions/{session_id}/takes/stop", response_model=CalibrationSessionResponse)
+async def stop_calibration_take(
+    session_id: str,
+    service: CalibrationService = Depends(get_calibration_service),
+    gesture_runtime: GestureService = Depends(get_gesture_service),
+):
+    try:
+        session = service.get_session(session_id)
+        if session.active_take is None:
+            raise CalibrationServiceError("Es laeuft aktuell kein Recording-Take.", status_code=409)
+        sample, advisory_recognition = gesture_runtime.stop_calibration_take_capture(
+            session_id=session.session_id,
+            take_id=session.active_take.take_id,
+            target_id=session.active_take.target_id,
+        )
+        session = service.finish_take_recording(session_id, sample, advisory_recognition)
+    except CalibrationServiceError as exc:
+        raise HTTPException(status_code=exc.status_code, detail=str(exc)) from exc
+    except GestureServiceError as exc:
+        raise HTTPException(status_code=exc.status_code, detail=str(exc)) from exc
+    return CalibrationSessionResponse(session=session)
+
+
+@calibration_router.post("/sessions/{session_id}/takes/accept", response_model=CalibrationSessionResponse)
+async def accept_calibration_take(
+    session_id: str,
+    service: CalibrationService = Depends(get_calibration_service),
+):
+    try:
+        session = service.accept_pending_take(session_id)
+    except CalibrationServiceError as exc:
+        raise HTTPException(status_code=exc.status_code, detail=str(exc)) from exc
+    return CalibrationSessionResponse(session=session)
+
+
+@calibration_router.post("/sessions/{session_id}/takes/discard", response_model=CalibrationSessionResponse)
+async def discard_calibration_take(
+    session_id: str,
+    service: CalibrationService = Depends(get_calibration_service),
+):
+    try:
+        session = service.discard_pending_take(session_id)
+    except CalibrationServiceError as exc:
+        raise HTTPException(status_code=exc.status_code, detail=str(exc)) from exc
+    return CalibrationSessionResponse(session=session)
+
+
 @calibration_router.post("/sessions/{session_id}/complete", response_model=CalibrationSessionResponse)
 async def complete_calibration_session(
     session_id: str,
@@ -517,8 +601,10 @@ async def rollback_calibration_session(
 async def cancel_calibration_session(
     session_id: str,
     service: CalibrationService = Depends(get_calibration_service),
+    gesture_runtime: GestureService = Depends(get_gesture_service),
 ):
     try:
+        gesture_runtime.cancel_calibration_take_capture(session_id=session_id)
         session = service.cancel_session(session_id)
     except CalibrationServiceError as exc:
         raise HTTPException(status_code=exc.status_code, detail=str(exc)) from exc

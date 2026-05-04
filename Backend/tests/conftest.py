@@ -1,6 +1,7 @@
 import pytest
 import pytest_asyncio
 import sys
+from datetime import datetime, timezone
 from pathlib import Path
 import httpx
 
@@ -17,6 +18,7 @@ from core.database import init_db
 from main import app
 from repositories.config import ConfigRepository
 from repositories.weather import WeatherRepositoryError
+from schemas.calibration import CalibrationAdvisoryRecognition, CalibrationCollectedSample, GestureCalibrationSamplePayload
 from services.calibration import CalibrationService
 from services.gesture import GestureServiceError
 from services.musical_audio import MusicalAudioServiceError
@@ -322,6 +324,7 @@ def mock_gesture_service():
             self.last_gesture = None
             self.last_gesture_at = None
             self.frame = None
+            self.active_take = None
 
         def get_status(self):
             return {
@@ -361,6 +364,44 @@ def mock_gesture_service():
 
         def get_frame(self):
             return self.frame
+
+        def begin_calibration_take_capture(self, *, session_id: str, take_id: str, target_id: str, trimmed_tail_ms: int = 750):
+            self.active_take = {
+                "session_id": session_id,
+                "take_id": take_id,
+                "target_id": target_id,
+                "trimmed_tail_ms": trimmed_tail_ms,
+            }
+
+        def cancel_calibration_take_capture(self, session_id: str | None = None, take_id: str | None = None):
+            _ = session_id
+            _ = take_id
+            self.active_take = None
+
+        def stop_calibration_take_capture(self, *, session_id: str, take_id: str, target_id: str):
+            if self.active_take is None:
+                raise GestureServiceError("Kein aktiver Kalibrierungs-Take vorhanden.", status_code=409)
+            _ = session_id
+            _ = take_id
+            self.active_take = None
+            return (
+                CalibrationCollectedSample(
+                    sample_id=f"mock-take-{target_id}",
+                    modality="gesture",
+                    target_id=target_id,
+                    collected_at=datetime(2026, 5, 4, 12, 0, tzinfo=timezone.utc),
+                    gesture_payload=GestureCalibrationSamplePayload(
+                        gesture=target_id,
+                        confidence=0.0,
+                        tracking_source="mock-runtime",
+                    ),
+                ),
+                CalibrationAdvisoryRecognition(
+                    recognized_target_id=None,
+                    confidence=None,
+                    tracking_source="mock-runtime",
+                ),
+            )
 
         def process_video(self, video_path: str):
             _ = video_path

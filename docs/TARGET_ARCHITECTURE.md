@@ -96,6 +96,7 @@ flowchart LR
 
 ### Gestenarchitektur
 
+- die aktuelle Iteration ist eine Konsolidierung des bestehenden Gesture-Subsystems und keine neue Parallelarchitektur
 - der primäre Erkennungspfad basiert auf MediaPipe Hands und einer handzentrierten Repräsentation statt auf allgemeiner Body- oder Pose-Erkennung
 - Tracking und Klassifikation trennen Rohlandmarks, abgeleitete Bewegungsmerkmale, Kandidatenerzeugung und fachliche Gestenentscheidungen
 - Rohbeobachtungen werden zusaetzlich in normalisierte Hand- und Pose-Features ueberfuehrt; dazu gehoeren Palm-Center, Fingerzustand, Handoffenheit, Index-Extension und Push-Tiefe
@@ -103,20 +104,34 @@ flowchart LR
 - Hand, Handgelenk und palmnahe Punkte bilden den Standardpfad; Ellenbogen- oder Armkontext bleibt optional fuer spaetere Erweiterungen
 - Gestenparameter sollen als persistierbare Backend-Konfiguration gepflegt werden und nicht nur als starre ENV-Werte existieren
 - ueber den Basiskandidaten liegt jetzt eine additive Runtime-Schicht aus Temporal-Window, Primitive-Bewertung und deklarativen Gesture-Specs, damit bestehende Swipes, Pushes und Zooms erklaerbar aufgeloest werden koennen
+- dieselbe persistierte `GestureConfig` soll auch die verbleibenden Live- und Offline-Heuristiken tragen: Push-Pose-Checks, Offline-Zyklussegmentierung, Primitive-Schwellen, Resolver-Gewichte und Kandidaten-Geometriegates
 - dieselben Runtime-Specs sollen an explizite, dokumentierte Gesture-Contracts fuer Startpose, Bewegungsprofil und Endpose gekoppelt bleiben, damit neue Trainings- und Tuning-Videos dieselbe Definition wie die Nutzerdokumentation verwenden
 - Gestenereignisse und Statusantworten sollen neben dem Gestentyp auch Confidence, Tracking-Herkunft, Phase, Candidate-Scores, Reject-Reason, Spec-ID und Primitive-Hits transportieren koennen
 - Laufzeitfehler der Kamera- oder Adapterpfade muessen im Statusmodell sichtbar bleiben und bei transienten Lesefehlern kontrolliert abgefangen werden
 - semantische UI-Aktionsauflosung soll nicht in einem modality-spezifischen Runtime-Service verankert bleiben, sondern ueber eine gemeinsame Input-Orchestrierung fuer Gesten, Voice und spaetere weitere Quellen laufen
+- ENV-Werte liefern nur die Startdefaults; die persistierte `GestureConfig` bleibt die einzige aktive Laufzeitquelle fuer Gestenparameter
 
 ### Gesture Runtime Slice
 
 - `services/gesture/tracking.py` liefert normalisierte Beobachtungen und Pose-Merkmale pro Hand, ohne den MediaPipe-Hands-Tracker selbst auszutauschen
 - `services/gesture/detection.py` kapselt reine Runtime-Analyse als Temporal-Window, Primitive-Detektion, Gesture-Specs und Resolver ueber bestehende Kandidatenpfade
+- `services/gesture/detection.py` kapselt reine Runtime-Analyse als expliziten `DetectionContext`, contract-abgeleitete Runtime-Specs, Primitive-Detektion und Resolver ueber getrennte interne Kandidatenpfade
 - `services/gesture/contracts.py` beschreibt die kanonische Gestenausfuehrung fuer Tuning, Demo und Nutzerdokumentation an einer Stelle
 - `services/gesture/push_runtime.py` kapselt den Push-Klick-Zustandsautomaten getrennt von allgemeiner Gesture-Arbitration
 - `services/gesture/runtime.py` orchestriert Tracking, Cooldown, Event-Publishing und Kalibrierungs-Snapshots; die eigentliche Begruendung einer Erkennung bleibt in Detection- und Push-Runtime-Schicht
+- `services/gesture/runtime.py` orchestriert Tracking, Cooldown, Event-Publishing und Kalibrierungs-Snapshots; sein Bewegungs- und Two-Hand-Lifecycle liegt hinter einem eigenen internen Owner mit Post-Fire-Grace statt in frei mutierten Listen
 - `services/gesture/offline/` haelt Swipe- und Push-Zyklusanalysen fuer Video-Tuning, Benchmarking und Validierungslaeufe getrennt von der Live-Runtime
 - Kalibrierungssamples enthalten jetzt neben Trajectory-, Push- und Zoom-Metriken auch Pose-Snapshots und echte Temporal-Window-Werte fuer spaetere Schwellwertanalyse
+- die Kalibrierungsanalyse soll reviewbare Config-Patches erzeugen, aus denen Kandidaten-Snapshots, Apply und Rollback deterministisch abgeleitet werden koennen, statt nur ein mutiertes Kandidatenmodell weiterzureichen
+- Primitive-Detektion und Resolver duerfen nicht ueber getrennte versteckte Floors auseinanderlaufen; required primitives werden gegen primitive-spezifische Schwellen mit explizit konfigurierbarem globalem Mindestfloor bewertet
+
+### Nicht-Ziele Dieser Iteration
+
+- keine neue CV-Basis ausserhalb des aktuellen MediaPipe-Hands-Pfads
+- keine produktive Simultanerkennung mehrerer Gesten als primaeres Laufzeitverhalten
+- keine per-User aktive Live-Config fuer Gesten
+- kein externer Event-Broker oder Broker-zentrierter Umbau
+- kein automatisches Modelltraining oder selbsttaetiges Ueberschreiben der Live-Config
 
 ### Konfigurationsdomänen
 

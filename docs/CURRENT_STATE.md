@@ -52,11 +52,26 @@ Die Codebasis ist jetzt ein belastbarer Kernprototyp mit echter Backend-Persiste
 - die Gestenerkennung basiert auf handzentriertem Tracking mit Handgroessen-Normalisierung
 - unterstuetzt werden `swipe_left`, `swipe_right`, `swipe_up`, `swipe_down`, `circle`, `push_click_short`, `push_click_long`, `zoom_out_hands` und `zoom_in_hands`
 - die kanonische Ausfuehrung dieser Gesten ist in `docs/GESTURE_DEFINITIONS.md` festgelegt und wird im Backend als zentrale Gesture-Contracts fuer Runtime-Specs und Video-Tuner gespiegelt
+- `services/gesture/tracking.py` liefert Beobachtungen und Pose-Features, `services/gesture/detection.py` bewertet Kandidaten und loest Konflikte auf, `services/gesture/runtime.py` orchestriert nur den Live-Loop und `services/gesture/push_runtime.py` bleibt ein getrennter Spezialpfad fuer Push-Klicks
+- `services/gesture/runtime.py` haelt Bewegungsfenster, Two-Hand-History und Post-Fire-Grace inzwischen ueber einen internen Lifecycle-Owner konsistent statt ueber verstreute Listenfelder
+- `services/gesture/detection.py` baut einen expliziten `DetectionContext`, leitet Runtime-Specs direkt aus den Gesture-Contracts ab und trennt interne Horizontal-, Vertikal- und Kreis-Kandidatenpfade klarer
+- `GestureConfig` ist die aktive persistierte Laufzeitkonfiguration; ENV-Settings liefern nur Defaults vor dem Laden der Backend-Konfiguration
+- dieselbe `GestureConfig` steuert inzwischen auch Push-Pose-Heuristiken, Offline-Zyklussegmentierung, Primitive-Schwellen, Resolver-Gewichte und Kandidaten-Geometriegates; Live-Runtime und Video-Tuner laufen dadurch nicht mehr ueber versteckte getrennte Literal-Sets
 - erkannte Gesten werden ueber einen gemeinsamen Input-Orchestrator semantisch auf UI-Aktionen gemappt
 - erkannte Voice-Kommandos werden zu normalisierten `voice.*`-Raw-Inputs transformiert und ueber dieselbe Orchestrierung auf UI-Aktionen gemappt
 - erkannte melodische Muster werden zu `musical_audio.*`-Raw-Inputs normalisiert und ueber dieselbe Orchestrierung auf UI-Aktionen gemappt
 - dieselbe Runtime liefert jetzt zusaetzlich Kalibrierungsevidenz wie Konfidenz, Hand, Tracking-Quelle, Trajektorienzusammenfassung, Push-Tiefe, Zoom-Distanz und Dauer
 - Schwellwerte koennen aus positiven Live-Wiederholungen profilorientiert neu vorgeschlagen und explizit angewendet oder zurueckgesetzt werden
+- Kalibrierungsanalysen liefern jetzt neben Empfehlungen auch einen reviewbaren `gesture_config_patch`, aus dem der Kandidaten-Snapshot und spaeter das eigentliche Apply deterministisch abgeleitet werden
+- Primitive-Schwellen wirken jetzt auch tatsaechlich im Resolverpfad: erforderliche Primitives werden gegen ihre jeweilige konfigurierte Schwelle statt nur gegen einen losen globalen Score-Floor bewertet
+
+## Aktuelle Nicht-Ziele Der Gesture-Konsolidierung
+
+- keine zweite parallele Gestenarchitektur neben `services/gesture/`
+- keine globale Einheits-FSM fuer alle Gestenpfade
+- keine per-User Live-Gesture-Configs
+- kein Event-Broker als primaere Infrastruktur
+- kein automatisches Training oder automatisches Anwenden von Suggestions ohne Review
 
 ## Command- und Training-Stand
 
@@ -75,9 +90,10 @@ Die Codebasis ist jetzt ein belastbarer Kernprototyp mit echter Backend-Persiste
 ## Kalibrierungsstand
 
 - `GET /api/v1/calibration/definitions` liefert aktuell die vordefinierten Gestenziele
-- `POST /api/v1/calibration/sessions` startet eine Gesten-Kalibrierung mit Profilname, genau einem Ziel und Wiederholungszahl
+- `POST /api/v1/calibration/sessions` startet eine Gesten-Kalibrierung mit Profilname, einem oder mehreren Ziel-IDs und Wiederholungszahl
 - `GET /api/v1/calibration/sessions/{id}` liefert Fortschritt und Analysezustand
 - `POST /complete`, `POST /apply`, `POST /rollback` und `POST /cancel` bilden den vollen Lifecycle fuer Review, Apply, Restore und Discard ab
+- der Gestenpfad unterstuetzt vorbereitete Takes, Recording-Start/Stop, Review, Accept und Discard vor dem eigentlichen Apply auf die aktive Config
 - die Persistenz speichert Sitzungen, Profile und deterministische Vorher-Nachher-Snapshots fuer Rollback
 - normale Schreibzugriffe auf die Gesture-Config werden waehrend aktiver Kalibrierung gesperrt
 

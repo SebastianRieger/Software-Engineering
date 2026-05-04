@@ -1,4 +1,5 @@
 from array import array
+from dataclasses import dataclass
 from datetime import datetime, timezone
 import json
 import logging
@@ -7,6 +8,7 @@ import queue
 import re
 import threading
 import time
+from typing import Any
 
 from core.config import settings
 from core.realtime import RealtimeHub, realtime_hub
@@ -28,6 +30,32 @@ except ImportError:  # pragma: no cover - optional runtime dependency
 
 logger = logging.getLogger(__name__)
 PORTAUDIO_ERROR = getattr(sd, "PortAudioError", OSError) if sd is not None else OSError
+
+GERMAN_NUMBER_WORDS = {
+    1: ["eins"],
+    2: ["zwei"],
+    3: ["drei"],
+    4: ["vier"],
+    5: ["fuenf", "funf"],
+    6: ["sechs"],
+    7: ["sieben"],
+    8: ["acht"],
+    9: ["neun"],
+    10: ["zehn"],
+    11: ["elf"],
+    12: ["zwoelf", "zwolf"],
+    13: ["dreizehn"],
+    14: ["vierzehn"],
+    15: ["fuenfzehn", "funfzehn"],
+    16: ["sechzehn"],
+}
+
+
+@dataclass(frozen=True)
+class VoiceCommandMatch:
+    command: str
+    raw_input: str
+    action_args: dict[str, Any]
 
 
 class VoiceServiceError(Exception):
@@ -118,7 +146,11 @@ class VoiceService:
                 "sample_rate": self._active_config.sample_rate,
                 "block_size": self._active_config.block_size,
                 "queue_max_chunks": self._active_config.queue_max_chunks,
-                "commands": list(self._active_config.commands),
+                "commands": list(self._active_config.commands) or [
+                    phrase
+                    for signal in self._active_config.signals
+                    for phrase in signal.phrases
+                ],
                 "partial_results_enabled": self._active_config.partial_results_enabled,
                 "command_cooldown_seconds": self._active_config.command_cooldown_seconds,
                 "chunks_processed": self._chunks_processed,
@@ -349,30 +381,28 @@ class VoiceService:
             self._handle_transcript(transcript, partial=not is_final)
 
     def _handle_transcript(self, transcript: str, partial: bool) -> None:
-        command = self._match_command(transcript)
-        if command is None:
+        match = self._match_command(transcript)
+        if match is None:
             return
-
-        raw_input = self._normalize_command_identifier(command)
 
         now = time.monotonic()
         timestamp = datetime.now(timezone.utc)
         with self._lock:
             cooldown = self._active_config.command_cooldown_seconds
-            last_seen = self._last_command_time_by_name.get(command)
+            last_seen = self._last_command_time_by_name.get(match.command)
             if last_seen is not None and now - last_seen < cooldown:
                 return
 
-            self._last_command_time_by_name[command] = now
-            self._last_command = command
+            self._last_command_time_by_name[match.command] = now
+            self._last_command = match.command
             self._last_command_at = timestamp
             device_index = self._device_index
 
         event = {
             "eventType": "VoiceCommandDetected",
             "payload": {
-                "command": command,
-                "raw_input": raw_input,
+                "command": match.command,
+                "raw_input": match.raw_input,
                 "timestamp": timestamp.isoformat(),
                 "source": "microphone",
                 "transcript": transcript,
@@ -382,34 +412,135 @@ class VoiceService:
         }
         self.realtime.publish_from_thread(event)
         metadata = {
-            "command": command,
+            "command": match.command,
             "transcript": transcript,
             "partial": partial,
             "device_index": device_index,
         }
         self.input_orchestrator.publish_raw_input_detected(
             input_source="voice",
-            raw_input=raw_input,
+            raw_input=match.raw_input,
             timestamp=timestamp,
             metadata=metadata,
         )
         self.input_orchestrator.publish_ui_action_requested(
             input_source="voice",
-            raw_input=raw_input,
+            raw_input=match.raw_input,
             timestamp=timestamp,
+            action_args=match.action_args,
             metadata=metadata,
         )
 
-    def _match_command(self, transcript: str) -> str | None:
+    def _match_command(self, transcript: str) -> VoiceCommandMatch | None:
         normalized_transcript = self._normalize_text(transcript)
         if not normalized_transcript:
             return None
 
         with self._lock:
-            commands = list(self._active_config.commands)
+            config = self._active_config.model_copy(deep=True)
+
+        targeted_resize_match = self._match_targeted_resize(normalized_transcript, config)
+        if targeted_resize_match is not None:
+            return targeted_resize_match
+
+        focus_cell_match = self._match_focus_grid_cell(normalized_transcript, config)
+        if focus_cell_match is not None:
+            return focus_cell_match
+
+        widget_type_match = self._match_focus_widget_type(normalized_transcript, config)
+        if widget_type_match is not None:
+            return widget_type_match
+
+        signal_match = self._match_defined_signal(normalized_transcript, config)
+        if signal_match is not None:
+            return signal_match
+
+        legacy_command = self._match_legacy_command(normalized_transcript, config.commands)
+        if legacy_command is None:
+            return None
+
+        return VoiceCommandMatch(
+            command=legacy_command,
+            raw_input=self._normalize_command_identifier(legacy_command),
+            action_args={},
+        )
+
+    def _match_defined_signal(self, normalized_transcript: str, config: VoiceConfig) -> VoiceCommandMatch | None:
+        for signal in config.signals:
+            for phrase in signal.phrases:
+                if normalized_transcript != self._normalize_text(phrase):
+                    continue
+
+                return VoiceCommandMatch(
+                    command=signal.raw_input,
+                    raw_input=signal.raw_input,
+                    action_args=signal.action_args.model_dump(exclude_none=True),
+                )
+
+        return None
+
+    def _match_focus_grid_cell(self, normalized_transcript: str, config: VoiceConfig) -> VoiceCommandMatch | None:
+        cell_index = self._extract_cell_index(normalized_transcript, config.grid_cell_count)
+        if cell_index is None:
+            return None
+
+        return VoiceCommandMatch(
+            command=f"voice.focus_grid_cell[{cell_index}]",
+            raw_input="voice.focus_grid_cell",
+            action_args={"cell_index": cell_index, "mode": "grid"},
+        )
+
+    def _match_focus_widget_type(self, normalized_transcript: str, config: VoiceConfig) -> VoiceCommandMatch | None:
+        normalized_alias_map = {
+            self._normalize_text(alias): widget_type
+            for widget_type, aliases in config.widget_aliases.items()
+            for alias in aliases
+        }
+        widget_type = normalized_alias_map.get(normalized_transcript)
+        if widget_type is None:
+            return None
+
+        return VoiceCommandMatch(
+            command=f"voice.focus_widget_type[{widget_type}]",
+            raw_input="voice.focus_widget_type",
+            action_args={"widget_type": widget_type},
+        )
+
+    def _match_targeted_resize(self, normalized_transcript: str, config: VoiceConfig) -> VoiceCommandMatch | None:
+        for raw_input in ("voice.resize_expand", "voice.resize_shrink"):
+            resize_phrases = [
+                self._normalize_text(phrase)
+                for signal in config.signals
+                if signal.raw_input == raw_input
+                for phrase in signal.phrases
+            ]
+            for resize_phrase in resize_phrases:
+                for prefix in ("feld ", "zelle "):
+                    if not normalized_transcript.startswith(prefix):
+                        continue
+                    if not normalized_transcript.endswith(f" {resize_phrase}"):
+                        continue
+
+                    number_phrase = normalized_transcript[len(prefix): -len(f" {resize_phrase}")].strip()
+                    cell_index = self._parse_number_phrase(number_phrase, config.grid_cell_count)
+                    if cell_index is None:
+                        continue
+
+                    return VoiceCommandMatch(
+                        command=f"{raw_input}[{cell_index}]",
+                        raw_input=raw_input,
+                        action_args={"cell_index": cell_index, "mode": "grid"},
+                    )
+
+        return None
+
+    @classmethod
+    def _match_legacy_command(cls, normalized_transcript: str, commands: list[str]) -> str | None:
+        if not normalized_transcript:
+            return None
 
         for command in sorted(commands, key=len, reverse=True):
-            normalized_command = self._normalize_text(command)
+            normalized_command = cls._normalize_text(command)
             if not normalized_command:
                 continue
             if normalized_transcript == normalized_command or normalized_command in normalized_transcript:
@@ -455,6 +586,33 @@ class VoiceService:
         index = candidate_indices[0]
         return index, str(devices[index]["name"])
 
+    @classmethod
+    def _extract_cell_index(cls, normalized_transcript: str, grid_cell_count: int) -> int | None:
+        if normalized_transcript.startswith("feld "):
+            return cls._parse_number_phrase(normalized_transcript.removeprefix("feld ").strip(), grid_cell_count)
+        if normalized_transcript.startswith("zelle "):
+            return cls._parse_number_phrase(normalized_transcript.removeprefix("zelle ").strip(), grid_cell_count)
+        if " " in normalized_transcript:
+            return None
+        return cls._parse_number_phrase(normalized_transcript, grid_cell_count)
+
+    @classmethod
+    def _parse_number_phrase(cls, number_phrase: str, grid_cell_count: int) -> int | None:
+        if not number_phrase:
+            return None
+
+        if number_phrase.isdigit():
+            value = int(number_phrase)
+            return value if 1 <= value <= grid_cell_count else None
+
+        normalized = cls._normalize_text(number_phrase)
+        for value, aliases in GERMAN_NUMBER_WORDS.items():
+            if value > grid_cell_count:
+                continue
+            if normalized in aliases:
+                return value
+
+        return None
     def _build_unavailable_message(self) -> str:
         with self._lock:
             enabled = self._active_config.enabled

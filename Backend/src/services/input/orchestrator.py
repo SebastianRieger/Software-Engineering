@@ -8,10 +8,18 @@ from typing import Any
 from core.realtime import RealtimeHub, realtime_hub
 from repositories.config import ConfigRepository
 from schemas.commands import CommandProfile
-from schemas.interactions import InputActionConfig
+from schemas.interactions import InputActionConfig, UIActionArguments
 
 
 logger = logging.getLogger(__name__)
+
+
+def _model_to_dict(model_or_dict: UIActionArguments | dict[str, Any] | None) -> dict[str, Any]:
+    if model_or_dict is None:
+        return {}
+    if isinstance(model_or_dict, UIActionArguments):
+        return model_or_dict.model_dump(exclude_none=True)
+    return UIActionArguments.model_validate(model_or_dict).model_dump(exclude_none=True)
 
 
 class InputOrchestrator:
@@ -74,6 +82,7 @@ class InputOrchestrator:
         outcome: str,
         action: str | None = None,
         reason: str | None = None,
+        action_args: UIActionArguments | dict[str, Any] | None = None,
         metadata: dict[str, Any] | None = None,
     ) -> None:
         self.realtime.publish_from_thread(
@@ -86,6 +95,7 @@ class InputOrchestrator:
                     "outcome": outcome,
                     "action": action,
                     "reason": reason,
+                    "action_args": _model_to_dict(action_args),
                     "metadata": metadata or {},
                 },
             }
@@ -97,6 +107,7 @@ class InputOrchestrator:
         input_source: str,
         raw_input: str,
         timestamp: datetime,
+        action_args: UIActionArguments | dict[str, Any] | None = None,
         metadata: dict[str, Any] | None = None,
     ) -> bool:
         with self._lock:
@@ -104,6 +115,7 @@ class InputOrchestrator:
             active_profile = self._active_command_profile
 
         merged_metadata = metadata or {}
+        merged_action_args = _model_to_dict(action_args)
 
         if active_profile is not None:
             modality_settings = active_profile.modality_settings.get(input_source)
@@ -114,6 +126,7 @@ class InputOrchestrator:
                     timestamp=timestamp,
                     outcome="disabled",
                     reason="modality_disabled",
+                    action_args=merged_action_args,
                     metadata=merged_metadata,
                 )
                 return False
@@ -133,9 +146,15 @@ class InputOrchestrator:
                 timestamp=timestamp,
                 outcome="unmapped",
                 reason="no_mapping",
+                action_args=merged_action_args,
                 metadata=merged_metadata,
             )
             return False
+
+        merged_action_args = {
+            **_model_to_dict(mapping.action_args),
+            **merged_action_args,
+        }
 
         merged_metadata = {
             **mapping.metadata,
@@ -158,6 +177,7 @@ class InputOrchestrator:
                     outcome="suppressed",
                     action=mapping.action,
                     reason="repeat_window",
+                    action_args=merged_action_args,
                     metadata=merged_metadata,
                 )
                 return False
@@ -170,6 +190,7 @@ class InputOrchestrator:
                     outcome="suppressed",
                     action=mapping.action,
                     reason="global_cooldown",
+                    action_args=merged_action_args,
                     metadata=merged_metadata,
                 )
                 return False
@@ -184,6 +205,7 @@ class InputOrchestrator:
             timestamp=timestamp,
             outcome="accepted",
             action=mapping.action,
+            action_args=merged_action_args,
             metadata=merged_metadata,
         )
 
@@ -195,6 +217,7 @@ class InputOrchestrator:
                     "timestamp": timestamp.isoformat(),
                     "input_source": input_source,
                     "raw_input": raw_input,
+                    "action_args": merged_action_args,
                     "metadata": merged_metadata,
                 },
             }

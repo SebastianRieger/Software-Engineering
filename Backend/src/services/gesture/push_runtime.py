@@ -3,6 +3,7 @@ from __future__ import annotations
 import math
 from dataclasses import dataclass
 
+from core.config import settings
 from schemas.gestures import GestureConfig
 from services.gesture.detection import GestureDetectionResult
 from services.gesture.tracking import GestureObservation, extract_hand_pose_features
@@ -35,6 +36,13 @@ def compute_push_pose_snapshot(
     *,
     center_tolerance: float,
     extension_ratio: float,
+    push_depth_threshold: float = 0.0,
+    folded_distance_ratio: float = settings.GESTURE_PUSH_FOLDED_DISTANCE_RATIO,
+    required_folded_fingers: int = settings.GESTURE_PUSH_REQUIRED_FOLDED_FINGERS,
+    relaxed_center_tolerance_multiplier: float = settings.GESTURE_PUSH_RELAXED_CENTER_TOLERANCE_MULTIPLIER,
+    relaxed_center_tolerance_max: float = settings.GESTURE_PUSH_RELAXED_CENTER_TOLERANCE_MAX,
+    depth_assist_min_threshold: float = settings.GESTURE_PUSH_DEPTH_ASSIST_MIN_THRESHOLD,
+    depth_assist_threshold_ratio: float = settings.GESTURE_PUSH_DEPTH_ASSIST_THRESHOLD_RATIO,
 ) -> PushPoseSnapshot:
     pose = extract_hand_pose_features(observation)
     if pose is None:
@@ -45,7 +53,7 @@ def compute_push_pose_snapshot(
             index_extension_ratio=0.0,
         )
 
-    if observation.landmarks is None or pose.center_distance > center_tolerance or pose.index_extension_ratio <= extension_ratio:
+    if observation.landmarks is None:
         return PushPoseSnapshot(
             push_depth=pose.push_depth,
             pose_valid=False,
@@ -71,12 +79,16 @@ def compute_push_pose_snapshot(
         mcp = landmarks.get(finger_mcp)
         if tip is None or mcp is None:
             continue
-        if _distance(tip, wrist) <= _distance(mcp, wrist) * 1.12:
+        if _distance(tip, wrist) <= _distance(mcp, wrist) * folded_distance_ratio:
             folded_checks += 1
+
+    relaxed_center_tolerance = min(relaxed_center_tolerance_max, center_tolerance * relaxed_center_tolerance_multiplier)
+    depth_assisted_push = pose.push_depth >= max(depth_assist_min_threshold, push_depth_threshold * depth_assist_threshold_ratio)
+    index_or_depth_valid = pose.index_extension_ratio > extension_ratio or depth_assisted_push
 
     return PushPoseSnapshot(
         push_depth=pose.push_depth,
-        pose_valid=folded_checks >= 2,
+        pose_valid=(folded_checks >= required_folded_fingers and pose.center_distance <= relaxed_center_tolerance and index_or_depth_valid),
         center_distance=pose.center_distance,
         index_extension_ratio=pose.index_extension_ratio,
     )
@@ -87,11 +99,15 @@ def is_click_pose_candidate(
     *,
     center_tolerance: float,
     extension_ratio: float,
+    center_tolerance_multiplier: float = settings.GESTURE_CLICK_POSE_CENTER_TOLERANCE_MULTIPLIER,
+    extension_ratio_multiplier: float = settings.GESTURE_CLICK_POSE_EXTENSION_RATIO_MULTIPLIER,
+    extension_ratio_floor: float = settings.GESTURE_CLICK_POSE_EXTENSION_RATIO_FLOOR,
 ) -> bool:
     snapshot = compute_push_pose_snapshot(
         observation,
-        center_tolerance=center_tolerance * 1.35,
-        extension_ratio=max(1.02, extension_ratio * 0.92),
+        center_tolerance=center_tolerance * center_tolerance_multiplier,
+        extension_ratio=max(extension_ratio_floor, extension_ratio * extension_ratio_multiplier),
+        push_depth_threshold=0.0,
     )
     return snapshot.pose_valid
 
@@ -133,10 +149,20 @@ def detect_push_gesture(
         observation,
         center_tolerance=config.center_tolerance,
         extension_ratio=config.push_pose_extension_ratio,
+        push_depth_threshold=config.push_depth_threshold,
+        folded_distance_ratio=config.push_folded_distance_ratio,
+        required_folded_fingers=config.push_required_folded_fingers,
+        relaxed_center_tolerance_multiplier=config.push_relaxed_center_tolerance_multiplier,
+        relaxed_center_tolerance_max=config.push_relaxed_center_tolerance_max,
+        depth_assist_min_threshold=config.push_depth_assist_min_threshold,
+        depth_assist_threshold_ratio=config.push_depth_assist_threshold_ratio,
     )
     is_forward = snapshot.pose_valid and snapshot.push_depth >= config.push_depth_threshold
     is_released = snapshot.push_depth <= config.push_release_threshold
-    transient_pose_gap_seconds = min(0.16, config.long_click_seconds * 0.35)
+    transient_pose_gap_seconds = min(
+        config.push_transient_pose_gap_max_seconds,
+        config.long_click_seconds * config.push_transient_pose_gap_long_ratio,
+    )
 
     if state is not None and state.forward_started_at is not None and is_released and observed_at >= state.forward_started_at:
         gesture_started_at = state.forward_started_at
@@ -155,7 +181,7 @@ def detect_push_gesture(
                 hold_duration_seconds=total_duration,
                 stage="releasing",
             )
-        if 0.08 <= duration < config.long_click_seconds:
+        if config.push_short_click_min_duration <= duration < config.long_click_seconds:
             return None, _build_push_detection(
                 gesture="push_click_short",
                 confidence=confidence,
@@ -215,7 +241,11 @@ def detect_push_gesture(
     release_gap = observed_at - state.last_seen_at
     confidence = min(1.0, state.max_depth / max(config.push_depth_threshold, 1e-6))
 
-    if total_duration >= config.long_click_seconds and release_gap <= 0.25 and not state.long_reported:
+    if (
+        total_duration >= config.long_click_seconds
+        and release_gap <= config.push_long_release_max_gap_seconds
+        and not state.long_reported
+    ):
         return None, _build_push_detection(
             gesture="push_click_long",
             confidence=confidence,
@@ -226,7 +256,7 @@ def detect_push_gesture(
             stage=state.stage,
         )
 
-    if 0.08 <= duration < config.long_click_seconds:
+    if config.push_short_click_min_duration <= duration < config.long_click_seconds:
         return None, _build_push_detection(
             gesture="push_click_short",
             confidence=confidence,

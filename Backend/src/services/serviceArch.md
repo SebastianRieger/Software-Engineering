@@ -36,13 +36,28 @@ The current migration direction is to keep the backend root layers stable and st
 
 The gesture runtime therefore no longer needs to be read as a single file story. `services/gesture/runtime.py` orchestrates the live loop, while `services/gesture/contracts.py`, `services/gesture/detection.py`, `services/gesture/tracking.py` and `services/gesture/push_runtime.py` carry the gesture-specific behavior behind that facade.
 
+The intended ownership split for the current gesture iteration is explicit and should be treated as binding while refactors continue:
+
+- `services/gesture/tracking.py` owns normalized observations, hand landmarks, pose features and preview extraction.
+- `services/gesture/detection.py` owns temporal windows, candidate evaluation, primitive scoring, explicit `DetectionContext` construction, runtime-spec derivation from gesture contracts and conflict resolution.
+- `services/gesture/runtime.py` owns thread orchestration, lifecycle transport, cooldown, event publication and calibration-capture handoff, but not the semantic resolver logic. Its trajectory and two-hand motion state now live behind an internal lifecycle owner instead of scattered raw lists.
+- `services/gesture/push_runtime.py` remains the specialized push-state path and is not folded into a generic global FSM.
+- `services/gesture/contracts.py` remains the canonical gesture-definition source for runtime, tuning and docs.
+- `services/calibration.py` owns feedback collection, snapshotting, suggestion generation, apply and rollback semantics.
+
+Gesture configuration follows the same split: environment settings only provide layer-0 defaults, while persisted `GestureConfig` is the single active runtime source of truth once the service has loaded configuration.
+
+This now includes more than the obvious top-level swipe or push thresholds. The active gesture config also drives push-pose heuristics, offline swipe and push cycle segmentation, primitive pass thresholds, resolver score weights and candidate-shape gates, so live runtime and tuner workflows no longer diverge through hidden literals.
+
 The hardware-facing part of the service layer is also less opaque than before. `services/gesture/tracking.py` now probes available cameras explicitly and resolves Linux camera names when possible, while `voice.py` enumerates concrete audio input devices from PortAudio. That turns multi-device support from a fixed-index assumption into inspectable runtime state the UI can present.
 
 `voice.py` now also participates in the same semantic input path as gestures. Recognized transcripts are matched against configured commands, normalized to stable `voice.*` raw inputs and then handed to `services/input/orchestrator.py`, which can publish both `RawInputDetected` and `UIActionRequested` events.
 
-`calibration.py` is intentionally generic in lifecycle semantics and specific in current analysis strategy. It owns session state, accepted samples, heuristic threshold recommendations, profile persistence triggers and apply or rollback coordination. This keeps the feature inside the normal application boundary instead of drifting into scripts or offline tooling.
+`calibration.py` is intentionally generic in lifecycle semantics and specific in current analysis strategy. It owns session state, accepted samples, heuristic threshold recommendations, reviewable gesture-config patch generation, profile persistence triggers and apply or rollback coordination. This keeps the feature inside the normal application boundary instead of drifting into scripts or offline tooling.
 
 The offline cycle-analysis modules deserve separate mention: `services/gesture/offline/push_cycle_analysis.py` and `services/gesture/offline/swipe_cycle_analysis.py` are not live runtime services in the same sense as `services/gesture/runtime.py` or `voice.py`. They serve tuner, benchmark and validation workflows and now sit with the rest of the gesture subsystem instead of the flat top-level `services/` namespace.
+
+The important architectural correction inside `services/gesture/detection.py` is that primitive-specific thresholds are no longer decorative. Required primitives are now resolved against each primitive's configured threshold with a configurable global floor, which makes threshold tuning and calibration suggestions materially affect runtime decisions. The runtime analysis path now also has an explicit derived context object and contract-derived runtime specs, so detector internals can evolve without pushing orchestration state back into `runtime.py`.
 
 ## Critical Assessment
 
@@ -60,6 +75,16 @@ The offline cycle-analysis modules deserve separate mention: `services/gesture/o
 - stronger extraction of common measurement or analysis helpers if calibration scope grows
 - broader operational telemetry around long-running gesture and calibration sessions
 - real MQTT-backed smart-home behavior
+
+## Iteration Non-Goals
+
+The current consolidation iteration explicitly does not introduce:
+
+- a new CV base stack beyond the current MediaPipe-hands-centered path
+- simultaneous multi-gesture recognition as a primary runtime feature
+- per-user active live gesture configs
+- a broker- or event-bus-centric architecture
+- automatic model training or self-updating runtime thresholds without explicit review
 
 ## Navigation
 

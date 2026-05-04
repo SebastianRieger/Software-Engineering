@@ -2,8 +2,9 @@ from __future__ import annotations
 
 import argparse
 import json
+import re
 import sys
-from dataclasses import asdict, dataclass
+from dataclasses import asdict, dataclass, replace
 from pathlib import Path
 from statistics import quantiles
 from typing import Any
@@ -54,6 +55,46 @@ VIDEO_LABELS: dict[str, GestureType] = {
     "rauszoomen.mkv": "zoom_out_hands",
     "reinzoomen.mkv": "zoom_in_hands",
 }
+
+VIDEO_PREFIX_LABELS: tuple[tuple[str, GestureType], ...] = (
+    ("swipeleft", "swipe_left"),
+    ("swiperight", "swipe_right"),
+    ("swipeup", "swipe_up"),
+    ("swipedown", "swipe_down"),
+    ("kreis", "circle"),
+    ("klickkurz", "push_click_short"),
+    ("klicklang", "push_click_long"),
+    ("reinzoom", "zoom_in_hands"),
+    ("reinzoomen", "zoom_in_hands"),
+    ("rauszoom", "zoom_out_hands"),
+    ("rauszoomen", "zoom_out_hands"),
+)
+
+
+def infer_video_label(file_name: str) -> GestureType | None:
+    exact_match = VIDEO_LABELS.get(file_name)
+    if exact_match is not None:
+        return exact_match
+
+    stem = Path(file_name).stem.lower()
+    for prefix, label in VIDEO_PREFIX_LABELS:
+        if not stem.startswith(prefix):
+            continue
+        suffix = stem[len(prefix) :]
+        if suffix == "" or re.fullmatch(r"\d+", suffix):
+            return label
+    return None
+
+
+def discover_video_labels(videos_dir: Path) -> list[tuple[str, GestureType]]:
+    discovered: list[tuple[str, GestureType]] = []
+    for path in sorted(videos_dir.iterdir()):
+        if not path.is_file() or path.suffix.lower() not in {".mkv", ".mp4", ".mov", ".avi"}:
+            continue
+        label = infer_video_label(path.name)
+        if label is not None:
+            discovered.append((path.name, label))
+    return discovered
 
 
 @dataclass(slots=True)
@@ -245,6 +286,16 @@ def _analyze_runtime_gesture(service: GestureService, **kwargs) -> Any:
     return analyzer(**kwargs)
 
 
+def _advance_pending_gesture(service: GestureService, **kwargs) -> Any:
+    advance = getattr(service, "_advance_pending_gesture")
+    return advance(**kwargs)
+
+
+def _flush_pending_gesture(service: GestureService, observed_at: float) -> Any:
+    flush = getattr(service, "_flush_pending_gesture")
+    return flush(observed_at)
+
+
 def _select_runtime_single_hand_trajectory(service: GestureService, **kwargs) -> list[tuple[float, float]]:
     selector = getattr(service, "_select_runtime_single_hand_trajectory")
     return selector(**kwargs)
@@ -274,13 +325,16 @@ def _simulate_video(
     service.hand_size_samples = []
     service.two_hand_distance_history = []
     _set_push_state(service, None)
+    service._pending_gesture = None
     service.last_gesture_time_by_name = {}
 
     best_sample: VideoGestureSample | None = None
+    last_sample: VideoGestureSample | None = None
     swipe_samples: list[SwipeFrameSample] = []
     push_samples: list[PushFrameSample] = []
     frame_index = start_frame
     processed_frames = 0
+    last_observed_at = float(start_frame) / fps if fps > 0 else 0.0
 
     try:
         while True:
@@ -298,6 +352,7 @@ def _simulate_video(
                 break
 
             observed_at = current_frame_index / fps
+            last_observed_at = observed_at
             processed_frames += 1
             observation = _extract_observation(adapter, frame, hands)
 
@@ -333,6 +388,12 @@ def _simulate_video(
                 trajectory_timestamps=timestamp_snapshot,
                 hand_size=hand_size_snapshot,
             )
+            finalized_detection = _advance_pending_gesture(
+                service,
+                analysis=analysis,
+                observed_at=observed_at,
+            )
+            effective_detection = finalized_detection or analysis.detection
             pose = extract_hand_pose_features(observation)
             folded_fingers_count = 0
             push_pose_valid = False
@@ -373,7 +434,7 @@ def _simulate_video(
             )
             label_score = analysis.candidate_scores.get(label, 0.0)
             best_any_score = max(analysis.candidate_scores.values(), default=0.0)
-            detected = analysis.detection.gesture if analysis.detection is not None else None
+            detected = effective_detection.gesture if effective_detection is not None else None
 
             selected_trajectory = _select_runtime_single_hand_trajectory(
                 service,
@@ -407,10 +468,10 @@ def _simulate_video(
                 contract_id=get_gesture_contract(label).contract_id,
                 detected_gesture=detected,
                 best_candidate_score=label_score,
-                confidence=analysis.detection.confidence if analysis.detection is not None and analysis.detection.gesture == label else None,
+                confidence=effective_detection.confidence if effective_detection is not None and effective_detection.gesture == label else None,
                 active_phase=analysis.active_phase,
                 reject_reason=analysis.reject_reason,
-                spec_id=analysis.spec_id,
+                spec_id=effective_detection.spec_id if effective_detection is not None else analysis.spec_id,
                 hand_size=hand_size_snapshot,
                 trajectory_points=len(selected_trajectory),
                 frame_count=temporal.frame_count,
@@ -433,6 +494,7 @@ def _simulate_video(
                 hold_stability=temporal.hold_stability,
                 jitter=temporal.jitter,
             )
+            last_sample = sample
             current_rank = (sample.best_candidate_score, 1.0 if sample.detected_gesture == label else 0.0, best_any_score, float(sample.trajectory_points))
             best_rank = None
             if best_sample is not None:
@@ -448,6 +510,31 @@ def _simulate_video(
         hands.close()
         capture.release()
 
+    flushed_detection = _flush_pending_gesture(service, last_observed_at)
+    if flushed_detection is not None and last_sample is not None:
+        flushed_sample = replace(
+            last_sample,
+            detected_gesture=flushed_detection.gesture,
+            confidence=flushed_detection.confidence if flushed_detection.gesture == label else None,
+            spec_id=flushed_detection.spec_id,
+        )
+        current_rank = (
+            flushed_sample.best_candidate_score,
+            1.0 if flushed_sample.detected_gesture == label else 0.0,
+            flushed_sample.best_candidate_score,
+            float(flushed_sample.trajectory_points),
+        )
+        best_rank = None
+        if best_sample is not None:
+            best_rank = (
+                best_sample.best_candidate_score,
+                1.0 if best_sample.detected_gesture == label else 0.0,
+                best_sample.best_candidate_score,
+                float(best_sample.trajectory_points),
+            )
+        if best_sample is None or current_rank >= best_rank:
+            best_sample = flushed_sample
+
     swipe_cycles: list[SwipeCycle] = []
     swipe_profiles: list[SwipeCycleProfile] = []
     push_cycles: list[PushCycle] = []
@@ -458,7 +545,7 @@ def _simulate_video(
         swipe_cycles = segment_swipe_cycles(
             swipe_samples,
             expected_gesture=label,
-            min_cycle_displacement=config.swipe_threshold,
+            **config.offline_swipe_cycle_kwargs(),
         )
         swipe_profiles = profile_swipe_cycles(swipe_samples, swipe_cycles)
         swipe_summary = summarize_swipe_profiles(swipe_profiles)
@@ -466,11 +553,7 @@ def _simulate_video(
         push_cycles = segment_push_cycles(
             push_samples,
             expected_gesture=label,
-            activation_depth_threshold=config.push_depth_threshold,
-            release_depth_threshold=config.push_release_threshold,
-            min_index_extension_ratio=config.push_pose_extension_ratio,
-            center_distance_max=config.center_tolerance,
-            long_click_seconds=config.long_click_seconds,
+            **config.offline_push_cycle_kwargs(),
         )
         push_profiles = profile_push_cycles(push_samples, push_cycles)
         push_summary = summarize_push_profiles(push_profiles)
@@ -535,11 +618,7 @@ def _collect_negative_push_cycles(
             segment_push_cycles(
                 push_samples,
                 expected_gesture=expected_push,
-                activation_depth_threshold=config.push_depth_threshold,
-                release_depth_threshold=config.push_release_threshold,
-                min_index_extension_ratio=config.push_pose_extension_ratio,
-                center_distance_max=config.center_tolerance,
-                long_click_seconds=config.long_click_seconds,
+                **config.offline_push_cycle_kwargs(),
             )
         )
 
@@ -586,20 +665,10 @@ def _evaluate_swipe_cycles(
     for cycle_index, cycle in enumerate(cycles):
         detection = detect_gesture_with_confidence(
             trajectory=cycle.trajectory,
-            swipe_threshold=config.swipe_threshold,
-            down_threshold=config.down_threshold,
-            circle_sweep_min=config.circle_sweep_min,
-            circle_cv_max=config.circle_radius_cv_max,
             min_detection_points=min(runtime_min_detection_points, len(cycle.trajectory)),
-            swipe_min_span=config.swipe_min_span,
-            circle_min_radius=config.circle_min_radius,
-            min_confidence=config.min_confidence,
             hand_size=cycle.average_hand_size,
-            hand_size_reference=config.hand_size_reference,
-            hand_size_scale_min=config.hand_size_scale_min,
-            hand_size_scale_max=config.hand_size_scale_max,
             tracking_source="swipe_cycle",
-            up_threshold=config.up_threshold,
+            **{**config.trajectory_detection_kwargs(), "min_detection_points": min(runtime_min_detection_points, len(cycle.trajectory))},
         )
         detected_gesture = detection.gesture if detection is not None else None
         evaluations.append(
@@ -626,7 +695,7 @@ def _collect_negative_swipe_cycles(
             segment_swipe_cycles(
                 swipe_samples,
                 expected_gesture=expected_swipe,
-                min_cycle_displacement=config.swipe_threshold,
+                **config.offline_swipe_cycle_kwargs(),
             )
         )
 
@@ -651,20 +720,10 @@ def _evaluate_negative_swipe_cycles(
     for cycle_index, cycle in enumerate(cycles):
         detection = detect_gesture_with_confidence(
             trajectory=cycle.trajectory,
-            swipe_threshold=config.swipe_threshold,
-            down_threshold=config.down_threshold,
-            circle_sweep_min=config.circle_sweep_min,
-            circle_cv_max=config.circle_radius_cv_max,
             min_detection_points=min(runtime_min_detection_points, len(cycle.trajectory)),
-            swipe_min_span=config.swipe_min_span,
-            circle_min_radius=config.circle_min_radius,
-            min_confidence=config.min_confidence,
             hand_size=cycle.average_hand_size,
-            hand_size_reference=config.hand_size_reference,
-            hand_size_scale_min=config.hand_size_scale_min,
-            hand_size_scale_max=config.hand_size_scale_max,
             tracking_source="negative_swipe_cycle",
-            up_threshold=config.up_threshold,
+            **{**config.trajectory_detection_kwargs(), "min_detection_points": min(runtime_min_detection_points, len(cycle.trajectory))},
         )
         detected_gesture = detection.gesture if detection is not None else None
         evaluations.append(
@@ -1070,8 +1129,8 @@ def main() -> int:
     requested_files = set(args.video)
     selected_videos = [
         (file_name, label)
-        for file_name, label in VIDEO_LABELS.items()
-        if (args.videos_dir / file_name).exists() and (not requested_files or file_name in requested_files)
+        for file_name, label in discover_video_labels(args.videos_dir)
+        if not requested_files or file_name in requested_files
     ]
     results = [
         _simulate_video(

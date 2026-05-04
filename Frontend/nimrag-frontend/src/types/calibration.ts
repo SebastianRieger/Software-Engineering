@@ -1,5 +1,6 @@
 export type CalibrationModality = 'gesture' | 'voice'
 export type CalibrationSessionStatus = 'collecting' | 'analysis_ready' | 'applied' | 'rolled_back' | 'cancelled'
+export type CalibrationTakeStatus = 'prepared' | 'recording' | 'pending_review'
 
 export interface CalibrationModalityDefinition {
   modality: CalibrationModality
@@ -68,6 +69,25 @@ export interface CalibrationAnalysisResult {
   summary: string | null
 }
 
+export interface CalibrationAdvisoryRecognition {
+  recognized_target_id: string | null
+  confidence: number | null
+  tracking_source: string | null
+}
+
+export interface CalibrationTakeRecord {
+  take_id: string
+  target_id: string
+  status: CalibrationTakeStatus
+  prepared_at: string
+  countdown_seconds: number
+  ready_at: string | null
+  recording_started_at: string | null
+  recording_stopped_at: string | null
+  trimmed_tail_ms: number
+  advisory_recognition: CalibrationAdvisoryRecognition | null
+}
+
 export interface CalibrationSessionRecord {
   session_id: string
   modality: CalibrationModality
@@ -83,6 +103,8 @@ export interface CalibrationSessionRecord {
   applied_at: string | null
   rolled_back_at: string | null
   cancelled_at: string | null
+  active_take: CalibrationTakeRecord | null
+  pending_take: CalibrationTakeRecord | null
   progress: CalibrationTargetProgress[]
   analysis: CalibrationAnalysisResult | null
 }
@@ -122,6 +144,7 @@ export interface CalibrationEventPayload {
   modality: CalibrationModality
   status: CalibrationSessionStatus | null
   target_id: string | null
+  take_id: string | null
   sample_id: string | null
   collected_samples: number | null
   target_repetitions: number | null
@@ -134,6 +157,11 @@ export interface CalibrationRealtimeEvent {
   eventType:
     | 'CalibrationSessionStarted'
     | 'CalibrationTargetArmed'
+    | 'CalibrationTakePrepared'
+    | 'CalibrationRecordingStarted'
+    | 'CalibrationRecordingStopped'
+    | 'CalibrationTakeAccepted'
+    | 'CalibrationTakeDiscarded'
     | 'CalibrationSampleAccepted'
     | 'CalibrationSampleRejected'
     | 'CalibrationTargetCompleted'

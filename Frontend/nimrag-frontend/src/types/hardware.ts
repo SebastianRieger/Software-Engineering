@@ -32,6 +32,8 @@ export interface GestureCameraListResponse {
 
 export interface GestureFrameResponse {
   image: string
+  captured_at: string | null
+  frame_age_ms: number | null
 }
 
 export interface LEDColor {

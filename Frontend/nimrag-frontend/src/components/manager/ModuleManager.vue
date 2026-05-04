@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
+import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 
 import { apiClient } from '../../services/api'
 import { realtimeClient } from '../../services/realtime'
@@ -17,6 +17,7 @@ import type {
 import type { SystemConfig, WidgetSettings } from '../../types/config'
 import type {
   GestureCameraDevice,
+  GestureStatusResponse,
   MusicalAudioInputDevice,
   MusicalAudioStatusResponse,
   VoiceInputDevice,
@@ -42,6 +43,9 @@ import {
   upsertWidget,
 } from '../../utils/layout'
 import {
+  getModuleItems,
+} from '../../utils/moduleShop'
+import {
   reduceInteractionState,
   type InteractionReducerEffect,
   type InteractionState,
@@ -51,6 +55,8 @@ import CalibrationWizard from './CalibrationWizard.vue'
 import CommandSettingsPanel from './CommandSettingsPanel.vue'
 import InteractionOverlay from './InteractionOverlay.vue'
 import ModuleShop from './ModuleShop.vue'
+
+type CalibrationPreviewState = 'warming_up' | 'live' | 'stale' | 'unavailable' | 'error'
 
 const activeWidgets = ref<ActiveWidgetMap>({})
 const configError = ref<string | null>(null)
@@ -72,9 +78,14 @@ const calibrationError = ref<string | null>(null)
 const calibrationEventMessage = ref<string | null>(null)
 const calibrationProfileName = ref('default')
 const calibrationGestureDevices = ref<GestureCameraDevice[]>([])
+const calibrationGestureStatus = ref<GestureStatusResponse | null>(null)
 const calibrationCameraIndex = ref(0)
 const calibrationSelectedTargets = ref<string[]>([])
 const calibrationTargetRepetitions = ref(12)
+const calibrationPreviewImage = ref<string | null>(null)
+const calibrationPreviewState = ref<CalibrationPreviewState>('warming_up')
+const calibrationPreviewMessage = ref<string | null>(null)
+const calibrationCountdownSeconds = ref<number | null>(null)
 const isCalibrationMode = ref(false)
 const isCalibrationLoading = ref(false)
 const isCalibrationBusy = ref(false)
@@ -93,10 +104,21 @@ let latestSaveRequest = 0
 let unsubscribeRealtime: (() => void) | null = null
 let gestureCooldownTimer: number | null = null
 let initialLoadRetryTimer: number | null = null
+let calibrationPreviewTimer: number | null = null
+let calibrationCountdownTimer: number | null = null
+let calibrationPreviewRequestInFlight = false
+let calibrationLastPreviewSuccessAt: number | null = null
+let calibrationAutoStartTakeId: string | null = null
+let calibrationAutoStartLastAttemptAt: number | null = null
 
 const calibrationEventTypes = new Set([
   'CalibrationSessionStarted',
   'CalibrationTargetArmed',
+  'CalibrationTakePrepared',
+  'CalibrationRecordingStarted',
+  'CalibrationRecordingStopped',
+  'CalibrationTakeAccepted',
+  'CalibrationTakeDiscarded',
   'CalibrationSampleAccepted',
   'CalibrationSampleRejected',
   'CalibrationTargetCompleted',
@@ -265,6 +287,18 @@ function applyInteractionEffects(effects: InteractionReducerEffect[]): void {
       return
     }
 
+    if (effect.type === 'shop-select-widget-type') {
+      if (!moduleShopRef.value) {
+        return
+      }
+
+      const targetIndex = getModuleItems().findIndex((item) => item.type === effect.widgetType)
+      if (targetIndex >= 0) {
+        moduleShopRef.value.setCurrentModule(targetIndex)
+      }
+      return
+    }
+
     if (!moduleShopRef.value) {
       return
     }
@@ -285,7 +319,7 @@ function dispatchUIActionPayload(payload: UIActionRequestedPayload): void {
 
   const result = reduceInteractionState(getInteractionState(), payload.action, {
     shopCurrentWidgetType: moduleShopRef.value?.getCurrentModuleType() ?? null,
-  })
+  }, payload.action_args)
 
   applyInteractionState(result.state)
   if (result.error) {
@@ -327,6 +361,139 @@ async function ensureCalibrationDefinitions(): Promise<void> {
   }
 }
 
+function stopCalibrationPreviewLoop(): void {
+  if (calibrationPreviewTimer !== null) {
+    window.clearInterval(calibrationPreviewTimer)
+    calibrationPreviewTimer = null
+  }
+}
+
+function stopCalibrationCountdownLoop(): void {
+  if (calibrationCountdownTimer !== null) {
+    window.clearInterval(calibrationCountdownTimer)
+    calibrationCountdownTimer = null
+  }
+  calibrationCountdownSeconds.value = null
+  calibrationAutoStartTakeId = null
+  calibrationAutoStartLastAttemptAt = null
+}
+
+function hasLiveCalibrationPreview(): boolean {
+  return calibrationPreviewState.value === 'live' && calibrationGestureStatus.value?.running === true
+}
+
+function normalizeCalibrationPreviewImage(image: string): string {
+  return image.startsWith('data:') ? image : `data:image/jpeg;base64,${image}`
+}
+
+async function refreshCalibrationPreview(): Promise<void> {
+  if (!isCalibrationMode.value || calibrationPreviewRequestInFlight) {
+    return
+  }
+
+  calibrationPreviewRequestInFlight = true
+  try {
+    const gestureStatus = await apiClient.getGestureStatus()
+    calibrationGestureStatus.value = gestureStatus
+
+    if (!gestureStatus.available || !gestureStatus.running) {
+      calibrationPreviewImage.value = null
+      calibrationPreviewState.value = 'unavailable'
+      calibrationPreviewMessage.value = gestureStatus.last_error ?? 'Gestenerkennung laeuft nicht.'
+      return
+    }
+
+    try {
+      const frame = await apiClient.getGestureFrame()
+      calibrationPreviewImage.value = normalizeCalibrationPreviewImage(frame.image)
+      calibrationLastPreviewSuccessAt = Date.now()
+      const frameAgeMs = frame.frame_age_ms ?? 0
+      if (frameAgeMs > 1800) {
+        calibrationPreviewState.value = 'stale'
+        calibrationPreviewMessage.value = 'Vorschau ist veraltet. Warte auf einen frischen Kameraframe.'
+      } else {
+        calibrationPreviewState.value = 'live'
+        calibrationPreviewMessage.value = null
+      }
+    } catch (error) {
+      calibrationPreviewImage.value = null
+      if (calibrationLastPreviewSuccessAt !== null && Date.now() - calibrationLastPreviewSuccessAt < 2500) {
+        calibrationPreviewState.value = 'stale'
+        calibrationPreviewMessage.value = 'Vorschau aktualisiert sich nicht mehr.'
+      } else {
+        calibrationPreviewState.value = 'warming_up'
+        calibrationPreviewMessage.value = formatApiErrorMessage(error, 'Vorschau waermt noch auf.')
+      }
+    }
+  } catch (error) {
+    calibrationPreviewState.value = 'error'
+    calibrationPreviewMessage.value = `Preview konnte nicht geladen werden: ${formatApiErrorMessage(error, 'Unbekannter Fehler')}`
+  } finally {
+    calibrationPreviewRequestInFlight = false
+  }
+}
+
+function getCalibrationPreparedTake(): CalibrationSessionRecord['active_take'] {
+  const activeTake = calibrationSession.value?.active_take
+  if (!activeTake || activeTake.status !== 'prepared') {
+    return null
+  }
+  return activeTake
+}
+
+function scheduleCalibrationPreviewLoop(): void {
+  stopCalibrationPreviewLoop()
+  if (!isCalibrationMode.value) {
+    return
+  }
+
+  const activeTakeStatus = calibrationSession.value?.active_take?.status
+  const intervalMs = activeTakeStatus === 'prepared' || activeTakeStatus === 'recording' ? 333 : 1000
+  void refreshCalibrationPreview()
+  calibrationPreviewTimer = window.setInterval(() => {
+    void refreshCalibrationPreview()
+  }, intervalMs)
+}
+
+function syncCalibrationCountdown(): void {
+  stopCalibrationCountdownLoop()
+
+  const activeTake = getCalibrationPreparedTake()
+  if (!isCalibrationMode.value || !activeTake || !activeTake.ready_at) {
+    return
+  }
+
+  const readyAtMs = Date.parse(activeTake.ready_at)
+  const takeId = activeTake.take_id
+  const update = () => {
+    if (calibrationSession.value?.active_take?.take_id !== takeId || calibrationSession.value?.active_take?.status !== 'prepared') {
+      stopCalibrationCountdownLoop()
+      return
+    }
+
+    const remainingMs = readyAtMs - Date.now()
+    calibrationCountdownSeconds.value = Math.max(0, Math.ceil(remainingMs / 1000))
+    if (remainingMs <= 0) {
+      calibrationCountdownSeconds.value = 0
+      if (!hasLiveCalibrationPreview() || isCalibrationBusy.value) {
+        return
+      }
+
+      const now = Date.now()
+      if (calibrationAutoStartTakeId === takeId && calibrationAutoStartLastAttemptAt !== null && now - calibrationAutoStartLastAttemptAt < 1000) {
+        return
+      }
+
+      calibrationAutoStartTakeId = takeId
+      calibrationAutoStartLastAttemptAt = now
+      void startCalibrationTake()
+    }
+  }
+
+  update()
+  calibrationCountdownTimer = window.setInterval(update, 200)
+}
+
 async function openCalibrationWizard(): Promise<void> {
   isCommandSettingsMode.value = false
   shopVisible.value = false
@@ -336,13 +503,20 @@ async function openCalibrationWizard(): Promise<void> {
   calibrationError.value = null
   isCalibrationMode.value = true
   await Promise.all([ensureCalibrationDefinitions(), loadCalibrationCameraContext()])
+  scheduleCalibrationPreviewLoop()
+  syncCalibrationCountdown()
 }
 
 function closeCalibrationWizard(): void {
+  stopCalibrationPreviewLoop()
+  stopCalibrationCountdownLoop()
   isCalibrationMode.value = false
   calibrationEventMessage.value = null
   calibrationError.value = null
   calibrationSession.value = null
+  calibrationPreviewImage.value = null
+  calibrationPreviewMessage.value = null
+  calibrationPreviewState.value = 'warming_up'
 }
 
 async function loadCommandSettings(): Promise<void> {
@@ -491,13 +665,18 @@ async function refreshCalibrationSession(sessionId: string): Promise<void> {
 }
 
 async function startCalibrationSession(): Promise<void> {
+  if (!hasLiveCalibrationPreview()) {
+    calibrationError.value = 'Kalibrierung startet erst mit frischer Live-Vorschau und laufender Gestenerkennung.'
+    return
+  }
+
   calibrationError.value = null
   calibrationEventMessage.value = null
   isCalibrationBusy.value = true
 
   const payload: CalibrationSessionCreateRequest = {
     modality: 'gesture',
-    selected_targets: calibrationSelectedTargets.value.slice(0, 1),
+    selected_targets: calibrationSelectedTargets.value.slice(),
     target_repetitions: calibrationTargetRepetitions.value,
     profile: calibrationProfileName.value.trim() || 'default',
     camera_index: calibrationCameraIndex.value,
@@ -506,6 +685,8 @@ async function startCalibrationSession(): Promise<void> {
   try {
     const response = await apiClient.startCalibrationSession(payload)
     calibrationSession.value = response.session
+    const preparedTake = await apiClient.prepareCalibrationTake(response.session.session_id)
+    calibrationSession.value = preparedTake.session
   } catch (error) {
     calibrationError.value = `Kalibrierung konnte nicht gestartet werden: ${formatApiErrorMessage(error, 'Unbekannter Fehler')}`
   } finally {
@@ -514,25 +695,157 @@ async function startCalibrationSession(): Promise<void> {
 }
 
 async function loadCalibrationCameraContext(): Promise<void> {
+  calibrationError.value = null
+
   try {
-    const [gestureStatus, gestureDeviceList] = await Promise.all([
-      apiClient.getGestureStatus(),
-      apiClient.getGestureDevices(),
-    ])
-    calibrationGestureDevices.value = gestureDeviceList.devices
+    const gestureStatus = await apiClient.getGestureStatus()
+    calibrationGestureStatus.value = gestureStatus
 
     if (gestureStatus.camera_index !== null) {
       calibrationCameraIndex.value = gestureStatus.camera_index
-      return
     }
 
-    const firstAvailableDevice = gestureDeviceList.devices.find((device) => device.available)
-    if (firstAvailableDevice) {
-      calibrationCameraIndex.value = firstAvailableDevice.index
+    try {
+      const gestureDeviceList = await apiClient.getGestureDevices()
+      calibrationGestureDevices.value = gestureDeviceList.devices
+      if (gestureStatus.camera_index === null) {
+        const firstAvailableDevice = gestureDeviceList.devices.find((device) => device.available)
+        if (firstAvailableDevice) {
+          calibrationCameraIndex.value = firstAvailableDevice.index
+        }
+      }
+    } catch (error) {
+      calibrationGestureDevices.value = gestureStatus.camera_index !== null
+        ? [{ index: gestureStatus.camera_index, name: gestureStatus.camera_name ?? `Camera ${gestureStatus.camera_index}`, available: true, backend: null }]
+        : []
+      calibrationError.value = `Kameraliste konnte nicht vollstaendig geladen werden: ${formatApiErrorMessage(error, 'Unbekannter Fehler')}`
+    }
+
+    if (gestureStatus.available && !gestureStatus.running) {
+      try {
+        calibrationGestureStatus.value = await apiClient.startGestures(calibrationCameraIndex.value)
+      } catch (error) {
+        calibrationPreviewImage.value = null
+        calibrationPreviewState.value = 'error'
+        calibrationPreviewMessage.value = formatApiErrorMessage(error, 'Gestenerkennung konnte nicht gestartet werden.')
+        calibrationError.value = `Gestenerkennung konnte nicht gestartet werden: ${formatApiErrorMessage(error, 'Unbekannter Fehler')}`
+        return
+      }
+    }
+
+    await refreshCalibrationPreview()
+  } catch (error) {
+    calibrationGestureDevices.value = calibrationGestureDevices.value.length > 0 ? calibrationGestureDevices.value : []
+    calibrationError.value = `Kalibrierungs-Kamerakontext konnte nicht geladen werden: ${formatApiErrorMessage(error, 'Unbekannter Fehler')}`
+    calibrationPreviewState.value = 'error'
+  }
+}
+
+async function prepareCalibrationTake(): Promise<void> {
+  if (!calibrationSession.value) {
+    return
+  }
+  if (!hasLiveCalibrationPreview()) {
+    calibrationError.value = 'Ein neuer Take wird blockiert, bis die Vorschau live und frisch ist.'
+    return
+  }
+
+  isCalibrationBusy.value = true
+  calibrationError.value = null
+  try {
+    const response = await apiClient.prepareCalibrationTake(calibrationSession.value.session_id)
+    calibrationSession.value = response.session
+  } catch (error) {
+    calibrationError.value = `Take konnte nicht vorbereitet werden: ${formatApiErrorMessage(error, 'Unbekannter Fehler')}`
+  } finally {
+    isCalibrationBusy.value = false
+  }
+}
+
+async function startCalibrationTake(): Promise<void> {
+  const preparedTake = getCalibrationPreparedTake()
+  if (!calibrationSession.value || !preparedTake) {
+    return
+  }
+  if (!hasLiveCalibrationPreview()) {
+    calibrationError.value = 'Recording startet erst mit frischer Live-Vorschau.'
+    return
+  }
+
+  isCalibrationBusy.value = true
+  calibrationError.value = null
+  try {
+    const response = await apiClient.startCalibrationTake(calibrationSession.value.session_id)
+    calibrationSession.value = response.session
+    calibrationAutoStartTakeId = null
+    calibrationAutoStartLastAttemptAt = null
+  } catch (error) {
+    calibrationError.value = `Recording konnte nicht gestartet werden: ${formatApiErrorMessage(error, 'Unbekannter Fehler')}`
+  } finally {
+    isCalibrationBusy.value = false
+  }
+}
+
+async function stopCalibrationTake(): Promise<void> {
+  if (!calibrationSession.value) {
+    return
+  }
+
+  isCalibrationBusy.value = true
+  calibrationError.value = null
+  try {
+    const response = await apiClient.stopCalibrationTake(calibrationSession.value.session_id)
+    calibrationSession.value = response.session
+  } catch (error) {
+    calibrationError.value = `Recording konnte nicht gestoppt werden: ${formatApiErrorMessage(error, 'Unbekannter Fehler')}`
+  } finally {
+    isCalibrationBusy.value = false
+  }
+}
+
+function sessionHasIncompleteTargets(): boolean {
+  return calibrationSession.value?.progress.some((entry) => !entry.completed) ?? false
+}
+
+async function acceptCalibrationTake(): Promise<void> {
+  if (!calibrationSession.value) {
+    return
+  }
+
+  isCalibrationBusy.value = true
+  calibrationError.value = null
+  try {
+    const response = await apiClient.acceptCalibrationTake(calibrationSession.value.session_id)
+    calibrationSession.value = response.session
+    if (response.session.status === 'collecting' && sessionHasIncompleteTargets()) {
+      const preparedTake = await apiClient.prepareCalibrationTake(response.session.session_id)
+      calibrationSession.value = preparedTake.session
     }
   } catch (error) {
-    calibrationGestureDevices.value = []
-    calibrationError.value = `Kameraliste konnte nicht geladen werden: ${formatApiErrorMessage(error, 'Unbekannter Fehler')}`
+    calibrationError.value = `Take konnte nicht akzeptiert werden: ${formatApiErrorMessage(error, 'Unbekannter Fehler')}`
+  } finally {
+    isCalibrationBusy.value = false
+  }
+}
+
+async function discardCalibrationTake(): Promise<void> {
+  if (!calibrationSession.value) {
+    return
+  }
+
+  isCalibrationBusy.value = true
+  calibrationError.value = null
+  try {
+    const response = await apiClient.discardCalibrationTake(calibrationSession.value.session_id)
+    calibrationSession.value = response.session
+    if (response.session.status === 'collecting' && sessionHasIncompleteTargets()) {
+      const preparedTake = await apiClient.prepareCalibrationTake(response.session.session_id)
+      calibrationSession.value = preparedTake.session
+    }
+  } catch (error) {
+    calibrationError.value = `Take konnte nicht verworfen werden: ${formatApiErrorMessage(error, 'Unbekannter Fehler')}`
+  } finally {
+    isCalibrationBusy.value = false
   }
 }
 
@@ -746,6 +1059,20 @@ const handleKeydown = (event: KeyboardEvent) => {
   })
 }
 
+watch(
+  () => [
+    isCalibrationMode.value,
+    calibrationSession.value?.active_take?.status,
+    calibrationSession.value?.active_take?.take_id,
+    calibrationSession.value?.active_take?.ready_at,
+    calibrationSession.value?.pending_take?.take_id,
+  ],
+  () => {
+    scheduleCalibrationPreviewLoop()
+    syncCalibrationCountdown()
+  },
+)
+
 onMounted(() => {
   window.addEventListener('keydown', handleKeydown)
   unsubscribeRealtime = realtimeClient.subscribe(handleRealtimeEvent)
@@ -755,6 +1082,8 @@ onMounted(() => {
 onBeforeUnmount(() => {
   window.removeEventListener('keydown', handleKeydown)
   unsubscribeRealtime?.()
+  stopCalibrationPreviewLoop()
+  stopCalibrationCountdownLoop()
   if (gestureCooldownTimer !== null) {
     window.clearTimeout(gestureCooldownTimer)
   }
@@ -820,11 +1149,21 @@ onBeforeUnmount(() => {
       :selected-targets="calibrationSelectedTargets"
       :target-repetitions="calibrationTargetRepetitions"
       :last-event-message="calibrationEventMessage"
+      :gesture-status="calibrationGestureStatus"
+      :preview-image="calibrationPreviewImage"
+      :preview-state="calibrationPreviewState"
+      :preview-message="calibrationPreviewMessage"
+      :countdown-seconds="calibrationCountdownSeconds"
       @update:profile-name="calibrationProfileName = $event"
       @update:camera-index="calibrationCameraIndex = $event"
       @update:selected-targets="calibrationSelectedTargets = $event"
       @update:target-repetitions="calibrationTargetRepetitions = $event"
       @start="void startCalibrationSession()"
+      @prepare-take="void prepareCalibrationTake()"
+      @start-take="void startCalibrationTake()"
+      @stop-take="void stopCalibrationTake()"
+      @accept-take="void acceptCalibrationTake()"
+      @discard-take="void discardCalibrationTake()"
       @complete="void completeCalibrationSession()"
       @apply="void applyCalibrationSession()"
       @rollback="void rollbackCalibrationSession()"

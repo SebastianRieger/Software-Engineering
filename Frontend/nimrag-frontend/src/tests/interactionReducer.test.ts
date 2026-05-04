@@ -81,4 +81,62 @@ describe('reduceInteractionState', () => {
     expect(result.state.activeWidgets['weather-1-1']?.col).toBe(2)
     expect(result.effects).toEqual([{ type: 'persist-layout' }])
   })
+
+  it('focuses an explicit grid cell by row-major index', () => {
+    const result = reduceInteractionState(buildState(), 'focus_grid_cell', {
+      shopCurrentWidgetType: null,
+    }, {
+      cell_index: 6,
+      mode: 'grid',
+    })
+
+    expect(result.state.focusedState).toEqual({ row: 2, col: 2, widgetId: null })
+    expect(result.effects).toEqual([])
+  })
+
+  it('focuses the first existing widget of a requested type', () => {
+    const { activeWidgets } = buildWidgetState()
+    const result = reduceInteractionState(buildState({
+      activeWidgets,
+      focusedState: { row: 4, col: 4, widgetId: null },
+    }), 'focus_widget_type', {
+      shopCurrentWidgetType: null,
+    }, {
+      widget_type: 'weather',
+    })
+
+    expect(result.state.focusedState).toEqual({ row: 1, col: 1, widgetId: 'weather-1-1' })
+    expect(result.effects).toEqual([])
+  })
+
+  it('opens the shop and selects a widget type when the focused cell is empty', () => {
+    const result = reduceInteractionState(buildState(), 'focus_widget_type', {
+      shopCurrentWidgetType: null,
+    }, {
+      widget_type: 'weather',
+    })
+
+    expect(result.state.shopVisible).toBe(true)
+    expect(result.effects).toEqual([{ type: 'shop-select-widget-type', widgetType: 'weather' }])
+  })
+
+  it('enters and exits arrange mode through explicit actions', () => {
+    const { activeWidgets, focusedState } = buildWidgetState()
+    const entered = reduceInteractionState(buildState({
+      activeWidgets,
+      focusedState,
+    }), 'enter_arrange_mode', {
+      shopCurrentWidgetType: null,
+    })
+
+    expect(entered.state.isArrangeMode).toBe(true)
+    expect(entered.state.selectedWidgetId).toBe('weather-1-1')
+
+    const exited = reduceInteractionState(entered.state, 'exit_arrange_mode', {
+      shopCurrentWidgetType: null,
+    })
+
+    expect(exited.state.isArrangeMode).toBe(false)
+    expect(exited.state.selectedWidgetId).toBeNull()
+  })
 })

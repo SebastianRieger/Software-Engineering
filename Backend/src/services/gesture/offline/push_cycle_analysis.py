@@ -4,6 +4,7 @@ from dataclasses import dataclass
 from statistics import mean, median
 from typing import Literal
 
+from core.config import settings
 
 PushGestureName = Literal["push_click_short", "push_click_long"]
 
@@ -79,16 +80,16 @@ def segment_push_cycles(
     samples: list[PushFrameSample],
     *,
     expected_gesture: PushGestureName,
-    min_cycle_points: int = 4,
+    min_cycle_points: int = settings.GESTURE_OFFLINE_PUSH_MIN_CYCLE_POINTS,
     activation_depth_threshold: float = 0.06,
     release_depth_threshold: float = 0.03,
-    active_gap_seconds: float = 0.45,
-    min_pose_valid_ratio: float = 0.6,
+    active_gap_seconds: float = settings.GESTURE_OFFLINE_PUSH_ACTIVE_GAP_SECONDS,
+    min_pose_valid_ratio: float = settings.GESTURE_OFFLINE_PUSH_MIN_POSE_VALID_RATIO,
     min_index_extension_ratio: float = 1.1,
     min_folded_fingers: int = 2,
     center_distance_max: float = 0.35,
     long_click_seconds: float = 0.5,
-    inactive_grace_seconds: float = 0.18,
+    inactive_grace_seconds: float = settings.GESTURE_OFFLINE_PUSH_INACTIVE_GRACE_SECONDS,
 ) -> list[PushCycle]:
     if len(samples) < min_cycle_points:
         return []

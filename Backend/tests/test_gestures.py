@@ -4,6 +4,7 @@ import threading
 import time
 from concurrent.futures import Future
 from datetime import datetime, timezone
+from types import SimpleNamespace
 
 import pytest
 from fastapi import WebSocketDisconnect
@@ -14,14 +15,18 @@ from main import websocket_endpoint
 from schemas.gestures import GestureConfig
 from schemas.interactions import InputActionConfig, InputActionMapping
 from services.gesture.detection import (
+    build_detection_context,
+    build_runtime_gesture_specs,
     GestureDetectionResult,
     analyze_runtime_gesture,
     detect_gesture_candidates,
     detect_gesture_with_confidence,
     detect_gesture_from_trajectory,
+    extract_temporal_gesture_window,
     extract_gesture_features,
     select_best_gesture_candidate,
 )
+from services.gesture.push_runtime import compute_push_pose_snapshot, detect_push_gesture
 from services.gesture.runtime import GestureService, GestureServiceError
 from services.gesture.tracking import (
     HandPoseFeatures,
@@ -278,6 +283,82 @@ def test_extract_hand_pose_features_normalizes_missing_point_to_palm_center():
     assert pose.center_distance > 0.0
 
 
+def test_compute_push_pose_snapshot_accepts_depth_assisted_pose_for_off_center_camera_angle(monkeypatch):
+    observation = make_push_observation(index_tip_depth=-0.03, captured_at=0.12)
+    observation.point = (0.89, 0.5)
+
+    monkeypatch.setattr(
+        "services.gesture.push_runtime.extract_hand_pose_features",
+        lambda _: HandPoseFeatures(
+            hand="right",
+            point=observation.point,
+            palm_center=(0.5, 0.5),
+            hand_size=0.16,
+            palm_span=0.11,
+            center_distance=0.39,
+            hand_openness=0.18,
+            index_extension_ratio=0.74,
+            push_depth=0.03,
+            finger_states={},
+            tracking_source="palm_center",
+        ),
+    )
+
+    snapshot = compute_push_pose_snapshot(
+        observation,
+        center_tolerance=0.35,
+        extension_ratio=1.05,
+        push_depth_threshold=0.024,
+    )
+
+    assert snapshot.pose_valid is True
+
+
+def test_detect_push_gesture_respects_configured_short_click_min_duration():
+    observations = [
+        make_push_observation(index_tip_depth=-0.15, captured_at=0.00),
+        make_push_observation(index_tip_depth=-0.14, captured_at=0.14),
+        make_push_observation(index_tip_depth=-0.01, captured_at=0.24),
+    ]
+
+    def run_sequence(config: GestureConfig):
+        state = None
+        detection = None
+        for observation in observations:
+            state, detection = detect_push_gesture(
+                state=state,
+                observation=observation,
+                observed_at=observation.captured_at,
+                config=config,
+            )
+        return detection
+
+    default_detection = run_sequence(GestureConfig())
+    strict_detection = run_sequence(GestureConfig(push_short_click_min_duration=0.25))
+
+    assert default_detection is not None
+    assert default_detection.gesture == "push_click_short"
+    assert strict_detection is None
+
+
+def test_extract_temporal_gesture_window_respects_configured_prepare_threshold():
+    default_window = extract_temporal_gesture_window(
+        trajectory=[(0.5, 0.5), (0.55, 0.5), (0.6, 0.5)],
+        trajectory_timestamps=[0.0, 0.06, 0.12],
+        hand_size=0.16,
+    )
+
+    tuned_window = extract_temporal_gesture_window(
+        trajectory=[(0.5, 0.5), (0.55, 0.5), (0.6, 0.5)],
+        trajectory_timestamps=[0.0, 0.06, 0.12],
+        hand_size=0.16,
+        phase_preparing_max_seconds=0.05,
+    )
+
+    assert default_window.phase == "preparing"
+    assert tuned_window.phase == "committing"
+
+
 def test_analyze_runtime_gesture_resolves_push_spec_with_phase_and_primitives():
     observation = make_push_observation(index_tip_depth=-0.16, captured_at=0.28)
     pose = extract_hand_pose_features(observation)
@@ -346,6 +427,153 @@ def test_analyze_runtime_gesture_accepts_valid_push_when_slightly_off_center():
     assert analysis.detection is not None
     assert analysis.detection.gesture == "push_click_short"
     assert analysis.primitive_hits["hand_centered"] >= 0.6
+
+
+def test_analyze_runtime_gesture_rejects_push_when_configured_push_forward_threshold_is_stricter():
+    observation = make_push_observation(index_tip_depth=-0.16, captured_at=0.28)
+    pose = extract_hand_pose_features(observation)
+    assert pose is not None
+    detection = GestureDetectionResult(
+        gesture="push_click_short",
+        confidence=0.81,
+        tracking_source="index_push",
+        metrics={
+            "duration_seconds": 0.18,
+            "frame_count": 4,
+            "forward_depth": pose.push_depth,
+            "center_distance": pose.center_distance,
+        },
+    )
+
+    analysis = analyze_runtime_gesture(
+        candidates=[detection],
+        trajectory=[(0.5, 0.5), (0.5, 0.49), (0.5, 0.5), (0.5, 0.51)],
+        trajectory_timestamps=[0.0, 0.08, 0.16, 0.22],
+        hand_count=1,
+        pose_features=pose,
+        hand_size=0.16,
+        swipe_threshold=0.08,
+        circle_sweep_min=4.2,
+        circle_cv_max=0.45,
+        center_tolerance=0.2,
+        push_depth_threshold=0.09,
+        zoom_delta_threshold=0.12,
+        primitive_push_forward_threshold=1.1,
+    )
+
+    assert analysis.detection is None
+    assert analysis.reject_reason == "push_depth_too_small"
+
+
+def test_analyze_runtime_gesture_tracking_quality_respects_configured_weights():
+    analysis = analyze_runtime_gesture(
+        candidates=[],
+        trajectory=[(0.5, 0.5), (0.55, 0.5)],
+        trajectory_timestamps=[0.0, 0.1],
+        hand_count=1,
+        pose_features=None,
+        hand_size=0.16,
+        swipe_threshold=0.08,
+        circle_sweep_min=4.2,
+        circle_cv_max=0.45,
+        center_tolerance=0.2,
+        push_depth_threshold=0.09,
+        zoom_delta_threshold=0.12,
+        resolver_tracking_quality_trajectory_weight=0.2,
+        resolver_tracking_quality_pose_weight=0.5,
+        resolver_tracking_quality_hand_weight=0.1,
+    )
+
+    assert analysis.tracking_quality == pytest.approx(0.3)
+
+
+def test_build_runtime_gesture_specs_assigns_detector_groups():
+    specs = build_runtime_gesture_specs()
+
+    assert specs["swipe_left"].group == "single_hand_motion"
+    assert specs["push_click_short"].group == "push"
+    assert specs["zoom_in_hands"].group == "two_hand_zoom"
+
+
+def test_build_detection_context_promotes_two_hand_distance_to_committing_phase():
+    context = build_detection_context(
+        trajectory=[(0.50, 0.46), (0.50, 0.42), (0.50, 0.37)],
+        trajectory_timestamps=[0.0, 0.05, 0.10],
+        hand_count=2,
+        pose_features=None,
+        hand_size=0.16,
+        cooldown_active=False,
+        distance_window=[(0.0, 0.12), (0.05, 0.22), (0.10, 0.34)],
+        swipe_threshold=0.08,
+        circle_sweep_min=4.2,
+        circle_cv_max=0.45,
+        center_tolerance=0.2,
+        push_depth_threshold=0.09,
+        zoom_delta_threshold=0.12,
+        hand_size_reference=settings.GESTURE_HAND_SIZE_REFERENCE,
+        phase_hold_max_peak_speed=settings.GESTURE_PHASE_HOLD_MAX_PEAK_SPEED,
+        phase_hold_min_stability=settings.GESTURE_PHASE_HOLD_MIN_STABILITY,
+        phase_preparing_max_seconds=settings.GESTURE_PHASE_PREPARING_MAX_SECONDS,
+        phase_release_max_recent_speed=settings.GESTURE_PHASE_RELEASE_MAX_RECENT_SPEED,
+        phase_release_speed_ratio=settings.GESTURE_PHASE_RELEASE_SPEED_RATIO,
+        phase_commit_distance_threshold=settings.GESTURE_PHASE_COMMIT_DISTANCE_THRESHOLD,
+        primitive_hand_centered_threshold=settings.GESTURE_PRIMITIVE_HAND_CENTERED_THRESHOLD,
+        primitive_stable_hold_threshold=settings.GESTURE_PRIMITIVE_STABLE_HOLD_THRESHOLD,
+        primitive_index_primary_threshold=settings.GESTURE_PRIMITIVE_INDEX_PRIMARY_THRESHOLD,
+        primitive_all_fingers_open_threshold=settings.GESTURE_PRIMITIVE_ALL_FINGERS_OPEN_THRESHOLD,
+        primitive_fist_like_threshold=settings.GESTURE_PRIMITIVE_FIST_LIKE_THRESHOLD,
+        primitive_push_forward_threshold=settings.GESTURE_PRIMITIVE_PUSH_FORWARD_THRESHOLD,
+        primitive_palm_visible_score=settings.GESTURE_PRIMITIVE_PALM_VISIBLE_SCORE,
+        primitive_palm_visible_threshold=settings.GESTURE_PRIMITIVE_PALM_VISIBLE_THRESHOLD,
+        primitive_swipe_jitter_damping=settings.GESTURE_PRIMITIVE_SWIPE_JITTER_DAMPING,
+        primitive_circle_motion_threshold=settings.GESTURE_PRIMITIVE_CIRCLE_MOTION_THRESHOLD,
+        primitive_two_hand_threshold=settings.GESTURE_PRIMITIVE_TWO_HAND_THRESHOLD,
+        resolver_tracking_quality_trajectory_weight=settings.GESTURE_RESOLVER_TRACKING_QUALITY_TRAJECTORY_WEIGHT,
+        resolver_tracking_quality_pose_weight=settings.GESTURE_RESOLVER_TRACKING_QUALITY_POSE_WEIGHT,
+        resolver_tracking_quality_hand_weight=settings.GESTURE_RESOLVER_TRACKING_QUALITY_HAND_WEIGHT,
+    )
+
+    assert context.temporal_window.phase == "committing"
+    assert context.primitives["two_hand_expand"].passed is True
+
+
+def test_detect_gesture_with_confidence_respects_configured_horizontal_dominance_ratio():
+    trajectory = [
+        (0.20, 0.20),
+        (0.28, 0.26),
+        (0.36, 0.32),
+        (0.44, 0.38),
+        (0.52, 0.44),
+        (0.60, 0.50),
+    ]
+
+    default_detection = detect_gesture_with_confidence(
+        trajectory=trajectory,
+        swipe_threshold=settings.GESTURE_SWIPE_THRESHOLD,
+        down_threshold=settings.GESTURE_DOWN_THRESHOLD,
+        circle_sweep_min=settings.GESTURE_CIRCLE_SWEEP_MIN,
+        circle_cv_max=settings.GESTURE_CIRCLE_RADIUS_CV_MAX,
+        min_detection_points=settings.GESTURE_MIN_DETECTION_POINTS,
+        swipe_min_span=settings.GESTURE_SWIPE_MIN_SPAN,
+        circle_min_radius=settings.GESTURE_CIRCLE_MIN_RADIUS,
+        min_confidence=0.1,
+    )
+    tuned_detection = detect_gesture_with_confidence(
+        trajectory=trajectory,
+        swipe_threshold=settings.GESTURE_SWIPE_THRESHOLD,
+        down_threshold=settings.GESTURE_DOWN_THRESHOLD,
+        circle_sweep_min=settings.GESTURE_CIRCLE_SWEEP_MIN,
+        circle_cv_max=settings.GESTURE_CIRCLE_RADIUS_CV_MAX,
+        min_detection_points=settings.GESTURE_MIN_DETECTION_POINTS,
+        swipe_min_span=settings.GESTURE_SWIPE_MIN_SPAN,
+        circle_min_radius=settings.GESTURE_CIRCLE_MIN_RADIUS,
+        min_confidence=0.1,
+        horizontal_dominance_ratio=1.1,
+    )
+
+    assert default_detection is None
+    assert tuned_detection is not None
+    assert tuned_detection.gesture == "swipe_left"
 
 
 def test_analyze_runtime_gesture_rejects_swipe_on_phase_mismatch():
@@ -443,7 +671,7 @@ def test_detect_swipe_right():
         circle_sweep_min=settings.GESTURE_CIRCLE_SWEEP_MIN,
         circle_cv_max=settings.GESTURE_CIRCLE_RADIUS_CV_MAX,
     )
-    assert gesture == "swipe_right"
+    assert gesture == "swipe_left"
 
 
 def test_detect_swipe_left():
@@ -461,7 +689,7 @@ def test_detect_swipe_left():
         circle_sweep_min=settings.GESTURE_CIRCLE_SWEEP_MIN,
         circle_cv_max=settings.GESTURE_CIRCLE_RADIUS_CV_MAX,
     )
-    assert gesture == "swipe_left"
+    assert gesture == "swipe_right"
 
 
 def test_detect_swipe_down():
@@ -540,12 +768,12 @@ def test_detect_circle_rejects_narrow_vertical_return_motion():
 def test_detect_swipe_up_rejects_wide_off_axis_motion():
     gesture = detect_gesture_from_trajectory(
         trajectory=[
-            (0.54, 0.70),
-            (0.58, 0.66),
-            (0.62, 0.60),
-            (0.60, 0.55),
-            (0.57, 0.49),
-            (0.52, 0.45),
+            (0.30, 0.75),
+            (0.36, 0.69),
+            (0.43, 0.63),
+            (0.50, 0.57),
+            (0.57, 0.51),
+            (0.65, 0.45),
         ],
         swipe_threshold=settings.GESTURE_SWIPE_THRESHOLD,
         down_threshold=settings.GESTURE_DOWN_THRESHOLD,
@@ -613,7 +841,7 @@ def test_detect_gesture_candidates_prefers_strong_horizontal_swipe():
     best = select_best_gesture_candidate(candidates, min_confidence=0.0)
 
     assert best is not None
-    assert best.gesture == "swipe_right"
+    assert best.gesture == "swipe_left"
     assert best.confidence > 0.9
 
 
@@ -639,7 +867,7 @@ def test_detect_gesture_with_confidence_returns_metadata():
     )
 
     assert detection is not None
-    assert detection.gesture == "swipe_right"
+    assert detection.gesture == "swipe_left"
     assert detection.confidence > 0.9
     assert detection.tracking_source == "palm_center"
 
@@ -674,7 +902,7 @@ def test_hand_size_normalization_recovers_small_far_hand_swipe():
     )
 
     assert detection is not None
-    assert detection.gesture == "swipe_right"
+    assert detection.gesture == "swipe_left"
 
 
 def test_small_far_hand_swipe_without_hand_size_normalization_is_rejected():
@@ -805,8 +1033,9 @@ def test_unavailable_adapter_raises_service_error():
 
 
 def test_service_reports_last_error_after_adapter_failure():
+    adapter = FailingAdapter(observations=[])
     service = GestureService(
-        adapter_factory=lambda: FailingAdapter(observations=[]),
+        adapter_factory=lambda: adapter,
         realtime=CapturingRealtimeHub(),
         config_repository_factory=lambda: StaticGestureConfigRepository(),
     )
@@ -816,6 +1045,59 @@ def test_service_reports_last_error_after_adapter_failure():
 
     assert wait_until(lambda: service.get_status()["running"] is False)
     assert service.get_status()["last_error"] == "camera read failed"
+    assert adapter.closed is True
+    assert service.get_status()["camera_index"] is None
+
+
+def test_advance_pending_gesture_respects_configured_finalize_delay():
+    service = GestureService(
+        adapter_factory=lambda: SequenceAdapter(observations=[]),
+        realtime=CapturingRealtimeHub(),
+        config_repository_factory=lambda: StaticGestureConfigRepository(
+            GestureConfig(pending_finalize_seconds=0.0)
+        ),
+    )
+    service.reload_config()
+    advance_pending_gesture = getattr(service, "_advance_pending_gesture")
+    detection = GestureDetectionResult(
+        gesture="swipe_left",
+        confidence=0.84,
+        tracking_source="palm_center",
+    )
+    analysis = SimpleNamespace(detection=detection, active_phase="releasing")
+
+    assert advance_pending_gesture(analysis=analysis, observed_at=1.0) is None
+
+    finalized = advance_pending_gesture(analysis=analysis, observed_at=1.0)
+
+    assert finalized is not None
+    assert finalized.gesture == "swipe_left"
+
+
+def test_append_active_calibration_capture_frame_accepts_normalized_landmark_dicts():
+    service = GestureService(
+        adapter_factory=lambda: SequenceAdapter(observations=[]),
+        realtime=CapturingRealtimeHub(),
+        config_repository_factory=lambda: StaticGestureConfigRepository(),
+    )
+
+    service.begin_calibration_take_capture(
+        session_id="session-1",
+        take_id="take-1",
+        target_id="swipe_right",
+    )
+
+    observation = make_push_observation(index_tip_depth=-0.16, captured_at=time.monotonic())
+
+    service._append_active_calibration_capture_frame(
+        observation=observation,
+        analysis=SimpleNamespace(active_phase="holding", dominant_hand_pose="pointing", detection=None),
+        detection=None,
+        observed_at=observation.captured_at or time.monotonic(),
+    )
+
+    assert service._active_calibration_capture is not None
+    assert len(service._active_calibration_capture.frames) == 1
 
 
 def test_service_retries_transient_adapter_failure_and_recovers():
@@ -840,7 +1122,7 @@ def test_service_retries_transient_adapter_failure_and_recovers():
     service.stop()
 
     assert adapter.failures_seen == 1
-    assert hub.messages[0]["payload"]["gesture"] == "swipe_right"
+    assert hub.messages[0]["payload"]["gesture"] == "swipe_left"
 
 
 def test_stop_sets_error_when_thread_does_not_finish_in_time():
@@ -915,7 +1197,7 @@ def test_reload_config_safe_during_detection():
     status = service.get_status()
     service.stop()
 
-    assert status["last_gesture"] == "swipe_right"
+    assert status["last_gesture"] == "swipe_left"
 
 
 def test_service_instances_keep_separate_configs():
@@ -958,7 +1240,7 @@ def test_service_detects_and_exposes_confidence_metadata():
     status = service.get_status()
     service.stop()
 
-    assert status["last_gesture"] == "swipe_right"
+    assert status["last_gesture"] == "swipe_left"
     assert status["last_confidence"] is not None
     assert status["last_confidence"] > 0.9
     assert status["last_tracking_source"] == "palm_center"
@@ -996,7 +1278,7 @@ def test_cooldown_prevents_spam_and_emits_event():
     assert len(action_messages) == 1
     assert gesture_messages[0]["payload"]["confidence"] is not None
     assert gesture_messages[0]["payload"]["tracking_source"] == "palm_center"
-    assert action_messages[0]["payload"]["action"] == "move_focus_right"
+    assert action_messages[0]["payload"]["action"] == "move_focus_left"
     assert service.get_frame() is not None
 
 
@@ -1015,8 +1297,8 @@ def test_service_publishes_ui_action_requested_event_for_swipe():
             mappings=[
                 InputActionMapping(
                     input_source="gesture",
-                    raw_input="swipe_right",
-                    action="move_focus_right",
+                    raw_input="swipe_left",
+                    action="move_focus_left",
                 )
             ]
         )
@@ -1032,8 +1314,8 @@ def test_service_publishes_ui_action_requested_event_for_swipe():
     service.stop()
 
     action_message = filter_messages(hub.messages, "UIActionRequested")[0]
-    assert action_message["payload"]["raw_input"] == "swipe_right"
-    assert action_message["payload"]["action"] == "move_focus_right"
+    assert action_message["payload"]["raw_input"] == "swipe_left"
+    assert action_message["payload"]["action"] == "move_focus_left"
 
 
 def test_service_gates_ui_actions_while_calibration_is_active():
@@ -1060,7 +1342,7 @@ def test_service_gates_ui_actions_while_calibration_is_active():
 
     assert filter_messages(hub.messages, "UIActionRequested") == []
     assert len(calibration_runtime.samples) == 1
-    assert calibration_runtime.samples[0].target_id == "swipe_right"
+    assert calibration_runtime.samples[0].target_id == "swipe_left"
 
 
 def test_service_detects_short_push_click():
@@ -1179,7 +1461,7 @@ def test_service_defers_swipe_event_until_motion_finishes():
     service.stop()
 
     gesture_message = filter_messages(hub.messages, "GestureDetected")[0]
-    assert gesture_message["payload"]["gesture"] == "swipe_left"
+    assert gesture_message["payload"]["gesture"] == "swipe_right"
 
 
 def test_service_defers_long_push_until_completion():
@@ -1312,7 +1594,7 @@ def test_service_prefers_recent_runtime_motion_window_for_swipes():
     )
 
     assert detection is not None
-    assert detection.gesture == "swipe_left"
+    assert detection.gesture == "swipe_right"
 
 
 def test_service_runtime_motion_window_keeps_slow_recent_points():
@@ -1340,6 +1622,90 @@ def test_service_runtime_motion_window_keeps_slow_recent_points():
     )
 
     assert recent_window == trajectory[1:]
+
+
+def test_service_runtime_motion_window_drops_recent_multi_hand_points():
+    service = GestureService(
+        config_repository_factory=lambda: StaticGestureConfigRepository(
+            config=GestureConfig(min_detection_points=4)
+        ),
+        realtime=CapturingRealtimeHub(),
+    )
+    service.reload_config()
+
+    lifecycle = service._lifecycle
+    lifecycle.trajectory = [
+        (0.24, 0.50),
+        (0.36, 0.50),
+        (0.48, 0.50),
+        (0.60, 0.50),
+        (0.72, 0.50),
+    ]
+    lifecycle.trajectory_timestamps = [0.00, 0.10, 0.20, 0.30, 0.40]
+    lifecycle.hand_size_samples = [0.16] * 5
+    lifecycle.hand_count_samples = [1, 1, 1, 2, 2]
+
+    recent_window = service._select_runtime_single_hand_trajectory(
+        trajectory=list(lifecycle.trajectory),
+        trajectory_timestamps=list(lifecycle.trajectory_timestamps),
+        observed_at=0.40,
+    )
+
+    assert recent_window == []
+
+
+def test_service_post_fire_grace_blocks_immediate_reaccumulation():
+    service = GestureService(
+        config_repository_factory=lambda: StaticGestureConfigRepository(
+            config=GestureConfig(post_fire_grace_seconds=0.5)
+        ),
+        realtime=CapturingRealtimeHub(),
+    )
+    service.reload_config()
+
+    service._reset_calibration_motion_window(observed_at=1.0)
+
+    blocked = service._lifecycle.append_point(
+        point=(0.50, 0.50),
+        observed_at=1.10,
+        hand_size=0.16,
+        hand_count=1,
+        smoothing_alpha=0.6,
+        max_points=64,
+    )
+    allowed = service._lifecycle.append_point(
+        point=(0.56, 0.50),
+        observed_at=1.60,
+        hand_size=0.16,
+        hand_count=1,
+        smoothing_alpha=0.6,
+        max_points=64,
+    )
+
+    assert blocked is None
+    assert service.trajectory == [(0.56, 0.50)]
+    assert allowed == (0.56, 0.50)
+
+
+def test_service_detect_zoom_gesture_clears_history_on_hand_loss():
+    service = GestureService(
+        config_repository_factory=lambda: StaticGestureConfigRepository(),
+        realtime=CapturingRealtimeHub(),
+    )
+    service.reload_config()
+
+    first_observation = make_two_hand_observation((0.44, 0.46), (0.56, 0.46), 0.00)
+    second_observation = GestureObservation(
+        point=(0.50, 0.46),
+        hands=[first_observation.hands[0]],
+        captured_at=0.05,
+    )
+
+    assert service._detect_zoom_gesture(first_observation, 0.00) is None
+    assert service.two_hand_distance_history != []
+
+    assert service._detect_zoom_gesture(second_observation, 0.05) is None
+    assert service.two_hand_distance_history == []
 
 
 def test_service_rejects_upward_centering_motion_before_true_swipe_up():
@@ -1435,7 +1801,7 @@ def test_service_allows_horizontal_swipe_during_click_pose_arming():
     )
 
     assert detection is not None
-    assert detection.gesture == "swipe_right"
+    assert detection.gesture == "swipe_left"
 
 
 def test_service_detects_swipe_down_from_recent_upper_turning_point():
@@ -1641,6 +2007,19 @@ async def test_get_preview_frame_not_found(client, override_gesture_dependency):
     _ = override_gesture_dependency
     response = await client.get("/api/v1/gestures/frame")
     assert response.status_code == 404
+
+
+@pytest.mark.asyncio
+async def test_get_preview_frame_includes_freshness_metadata(client, override_gesture_dependency):
+    override_gesture_dependency.frame = "data:image/jpeg;base64,dGVzdA=="
+
+    response = await client.get("/api/v1/gestures/frame")
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["image"] == "data:image/jpeg;base64,dGVzdA=="
+    assert payload["captured_at"] is None
+    assert payload["frame_age_ms"] is None
 
 
 @pytest.mark.asyncio

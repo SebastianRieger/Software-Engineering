@@ -32,6 +32,17 @@ The backend remains a modular monolith. The major architectural step in this sna
 
 This keeps the stack coherent: no parallel storage, no parallel event channel and no one-off offline tuning path.
 
+For the current gesture consolidation iteration, the intended backend ownership boundaries are:
+
+- `services/gesture/tracking.py` provides normalized runtime observations and pose features.
+- `services/gesture/detection.py` is the only backend owner of candidate evaluation, gesture arbitration, pose gating, explicit detection context assembly and contract-derived runtime specs.
+- `services/gesture/runtime.py` stays an orchestration boundary for the live loop, cooldowns, publication and capture integration; trajectory and two-hand histories are now hidden behind an internal lifecycle owner with post-fire grace handling.
+- `services/gesture/push_runtime.py` remains a separate specialized push detector.
+- `services/gesture/contracts.py` remains the canonical gesture-definition source; runtime specs may only be derived from it.
+- `services/calibration.py` stays the feedback-loop owner for reviewable changes, apply and rollback. Its analysis now emits an explicit `gesture_config_patch` instead of relying only on a mutable candidate snapshot.
+
+The matching configuration rule is also explicit: `core/config.py` supplies defaults, but persisted `GestureConfig` is the active runtime configuration after load and should be treated as the only source of live gesture parameters.
+
 ## Critical Assessment
 
 - The backend structure is materially stronger because calibration was added as a first-class slice rather than a side script.
@@ -48,6 +59,16 @@ This keeps the stack coherent: no parallel storage, no parallel event channel an
 - real calendar and smart-home integrations
 - stronger migration and retention strategy for long-lived calibration history
 - auth, roles and production-grade operational hardening
+
+## Iteration Non-Goals
+
+This iteration is not intended to add:
+
+- a second parallel gesture architecture beside `services/gesture/`
+- a generic global FSM that absorbs the push runtime
+- per-user runtime gesture configuration ownership
+- a broker-first event topology
+- automatic gesture-model training or autonomous application of suggested thresholds
 
 ## Navigation
 

@@ -4,6 +4,7 @@ from dataclasses import dataclass
 from statistics import mean, median
 from typing import Literal
 
+from core.config import settings
 from services.gesture.detection import extract_gesture_features, extract_temporal_gesture_window
 from services.gesture.tracking import GestureName
 
@@ -86,9 +87,9 @@ def _percentile(values: list[float], probability: float) -> float | None:
 
 def swipe_axis_sign(gesture: GestureName) -> tuple[AxisName, float]:
     if gesture == "swipe_left":
-        return "x", -1.0
-    if gesture == "swipe_right":
         return "x", 1.0
+    if gesture == "swipe_right":
+        return "x", -1.0
     if gesture == "swipe_down":
         return "y", 1.0
     if gesture == "swipe_up":
@@ -98,7 +99,7 @@ def swipe_axis_sign(gesture: GestureName) -> tuple[AxisName, float]:
 
 def gesture_for_axis_sign(axis: AxisName, sign: float) -> GestureName:
     if axis == "x":
-        return "swipe_left" if sign < 0 else "swipe_right"
+        return "swipe_left" if sign >= 0 else "swipe_right"
     return "swipe_down" if sign >= 0 else "swipe_up"
 
 
@@ -106,12 +107,14 @@ def segment_swipe_cycles(
     samples: list[SwipeFrameSample],
     *,
     expected_gesture: GestureName,
-    min_cycle_points: int = 4,
-    motion_step_threshold: float = 0.02,
-    edge_speed_threshold: float = 0.025,
-    active_gap_seconds: float = 0.45,
-    axis_ratio_threshold: float = 1.2,
+    min_cycle_points: int = settings.GESTURE_OFFLINE_SWIPE_MIN_CYCLE_POINTS,
+    motion_step_threshold: float = settings.GESTURE_OFFLINE_SWIPE_MOTION_STEP_THRESHOLD,
+    edge_speed_threshold: float = settings.GESTURE_OFFLINE_SWIPE_EDGE_SPEED_THRESHOLD,
+    active_gap_seconds: float = settings.GESTURE_OFFLINE_SWIPE_ACTIVE_GAP_SECONDS,
+    axis_ratio_threshold: float = settings.GESTURE_OFFLINE_SWIPE_AXIS_RATIO_THRESHOLD,
     min_cycle_displacement: float = 0.08,
+    edge_gap_ratio: float = settings.GESTURE_OFFLINE_SWIPE_EDGE_GAP_RATIO,
+    edge_gap_max_seconds: float = settings.GESTURE_OFFLINE_SWIPE_EDGE_GAP_MAX_SECONDS,
 ) -> list[SwipeCycle]:
     if len(samples) < min_cycle_points:
         return []
@@ -140,7 +143,7 @@ def segment_swipe_cycles(
         return []
 
     grouped_end_indices: list[tuple[float, list[int]]] = [(step_end_indices[0][1], [step_end_indices[0][0]])]
-    edge_gap_seconds = min(0.22, active_gap_seconds * 0.5)
+    edge_gap_seconds = min(edge_gap_max_seconds, active_gap_seconds * edge_gap_ratio)
     for point_index, step_sign in step_end_indices[1:]:
         grouped_sign, grouped_points = grouped_end_indices[-1]
         previous_index = grouped_points[-1]

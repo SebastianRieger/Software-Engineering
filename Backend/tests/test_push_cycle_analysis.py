@@ -4,6 +4,7 @@ from services.gesture.offline.push_cycle_analysis import (
     summarize_push_profiles,
     PushFrameSample,
 )
+from schemas.gestures import GestureConfig
 
 
 def test_segment_push_cycles_detects_two_short_clicks() -> None:
@@ -80,3 +81,22 @@ def test_segment_push_cycles_keeps_long_click_through_brief_pose_dropout() -> No
 
     assert len(cycles) == 1
     assert cycles[0].observed_gesture == "push_click_long"
+
+
+def test_segment_push_cycles_respects_gesture_config_kwargs() -> None:
+    samples = [
+        PushFrameSample(timestamp=0.00, push_depth=0.00, pose_valid=False, index_extension_ratio=0.9, folded_fingers_count=0),
+        PushFrameSample(timestamp=0.05, push_depth=0.08, pose_valid=True, index_extension_ratio=1.45, folded_fingers_count=3, center_distance=0.08),
+        PushFrameSample(timestamp=0.10, push_depth=0.15, pose_valid=True, index_extension_ratio=1.52, folded_fingers_count=3, center_distance=0.06),
+        PushFrameSample(timestamp=0.16, push_depth=0.02, pose_valid=False, index_extension_ratio=0.95, folded_fingers_count=1, center_distance=0.12),
+    ]
+
+    config = GestureConfig(offline_push_min_cycle_points=6)
+
+    cycles = segment_push_cycles(
+        samples,
+        expected_gesture="push_click_short",
+        **config.offline_push_cycle_kwargs(),
+    )
+
+    assert cycles == []

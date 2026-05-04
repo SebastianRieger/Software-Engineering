@@ -9,9 +9,16 @@ UIActionType = Literal[
     "move_focus_right",
     "move_focus_up",
     "move_focus_down",
+    "focus_grid_cell",
+    "focus_widget_type",
     "toggle_shop",
+    "open_shop",
+    "close_shop",
     "primary_click",
+    "confirm_selection",
     "secondary_select",
+    "enter_arrange_mode",
+    "exit_arrange_mode",
     "resize_expand",
     "resize_shrink",
     "move_selected_widget",
@@ -20,6 +27,13 @@ UIActionType = Literal[
 
 InputSourceType = Literal["gesture", "voice", "musical_audio", "dev", "keyboard"]
 CommandMatchOutcome = Literal["accepted", "suppressed", "unmapped", "disabled"]
+UIActionMode = Literal["grid", "shop", "arrange"]
+
+
+class UIActionArguments(BaseModel):
+    cell_index: int | None = Field(default=None, ge=1)
+    widget_type: str | None = Field(default=None, min_length=1)
+    mode: UIActionMode | None = None
 
 
 class InputActionMapping(BaseModel):
@@ -27,6 +41,7 @@ class InputActionMapping(BaseModel):
     raw_input: str = Field(min_length=1)
     action: UIActionType
     enabled: bool = True
+    action_args: UIActionArguments = Field(default_factory=UIActionArguments)
     metadata: dict[str, Any] = Field(default_factory=dict)
 
 
@@ -41,6 +56,20 @@ def build_default_input_action_mappings() -> list[InputActionMapping]:
         InputActionMapping(input_source="gesture", raw_input="push_click_long", action="secondary_select"),
         InputActionMapping(input_source="gesture", raw_input="zoom_out_hands", action="resize_shrink"),
         InputActionMapping(input_source="gesture", raw_input="zoom_in_hands", action="resize_expand"),
+        InputActionMapping(input_source="voice", raw_input="voice.move_focus_left", action="move_focus_left"),
+        InputActionMapping(input_source="voice", raw_input="voice.move_focus_right", action="move_focus_right"),
+        InputActionMapping(input_source="voice", raw_input="voice.move_focus_up", action="move_focus_up"),
+        InputActionMapping(input_source="voice", raw_input="voice.move_focus_down", action="move_focus_down"),
+        InputActionMapping(input_source="voice", raw_input="voice.open_shop", action="open_shop"),
+        InputActionMapping(input_source="voice", raw_input="voice.close_shop", action="close_shop"),
+        InputActionMapping(input_source="voice", raw_input="voice.confirm_selection", action="confirm_selection"),
+        InputActionMapping(input_source="voice", raw_input="voice.cancel_selection", action="cancel_selection"),
+        InputActionMapping(input_source="voice", raw_input="voice.enter_arrange_mode", action="enter_arrange_mode"),
+        InputActionMapping(input_source="voice", raw_input="voice.exit_arrange_mode", action="exit_arrange_mode"),
+        InputActionMapping(input_source="voice", raw_input="voice.resize_expand", action="resize_expand"),
+        InputActionMapping(input_source="voice", raw_input="voice.resize_shrink", action="resize_shrink"),
+        InputActionMapping(input_source="voice", raw_input="voice.focus_grid_cell", action="focus_grid_cell"),
+        InputActionMapping(input_source="voice", raw_input="voice.focus_widget_type", action="focus_widget_type"),
     ]
 
 
@@ -71,6 +100,7 @@ class UIActionEventPayload(BaseModel):
     timestamp: datetime
     input_source: InputSourceType
     raw_input: str = Field(min_length=1)
+    action_args: UIActionArguments = Field(default_factory=UIActionArguments)
     metadata: dict[str, Any] = Field(default_factory=dict)
 
 
@@ -98,6 +128,7 @@ class CommandMatchEventPayload(BaseModel):
     outcome: CommandMatchOutcome
     action: UIActionType | None = None
     reason: str | None = None
+    action_args: UIActionArguments = Field(default_factory=UIActionArguments)
     metadata: dict[str, Any] = Field(default_factory=dict)
 
 

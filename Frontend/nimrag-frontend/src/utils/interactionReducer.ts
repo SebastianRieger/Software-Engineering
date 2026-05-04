@@ -1,6 +1,7 @@
 import type { ActiveWidgetMap } from '../types/widgets'
-import type { FocusState, UIActionType } from '../types/interactions'
+import type { FocusState, UIActionArguments, UIActionType } from '../types/interactions'
 import {
+  cellIdToPosition,
   createFocusState,
   findWidgetAtCell,
   getFocusStateForWidget,
@@ -9,6 +10,7 @@ import {
   resizeWidget,
   upsertWidget,
 } from './layout'
+import { getWidgetDefinition } from '../widgets/registry'
 
 export interface InteractionState {
   activeWidgets: ActiveWidgetMap
@@ -26,6 +28,7 @@ export interface InteractionReducerContext {
 export type InteractionReducerEffect =
   | { type: 'persist-layout' }
   | { type: 'shop-navigation'; direction: 'next' | 'prev' }
+  | { type: 'shop-select-widget-type'; widgetType: string }
 
 export interface InteractionReducerResult {
   state: InteractionState
@@ -37,6 +40,12 @@ function getFocusedWidget(state: InteractionState) {
   return state.focusedState.widgetId
     ? state.activeWidgets[state.focusedState.widgetId] ?? null
     : findWidgetAtCell(state.activeWidgets, state.focusedState.row, state.focusedState.col)
+}
+
+function findWidgetByType(state: InteractionState, widgetType: string) {
+  return Object.values(state.activeWidgets)
+    .sort((left, right) => left.cell_id - right.cell_id)
+    .find((widget) => widget.widget_type === widgetType) ?? null
 }
 
 function syncInteractionState(
@@ -170,13 +179,88 @@ function confirmShopSelection(
   return addFocusedWidget(state, context.shopCurrentWidgetType)
 }
 
+function focusGridCell(
+  state: InteractionState,
+  actionArgs: UIActionArguments,
+): InteractionReducerResult {
+  if (!actionArgs.cell_index) {
+    return { state, effects: [], error: null }
+  }
+
+  const target = cellIdToPosition(actionArgs.cell_index)
+  return {
+    state: {
+      ...state,
+      focusedState: createFocusState(target.row, target.col, state.activeWidgets),
+    },
+    effects: [],
+    error: null,
+  }
+}
+
+function focusWidgetType(
+  state: InteractionState,
+  actionArgs: UIActionArguments,
+): InteractionReducerResult {
+  const widgetType = actionArgs.widget_type ?? null
+  if (!widgetType) {
+    return { state, effects: [], error: null }
+  }
+
+  if (!getWidgetDefinition(widgetType)) {
+    return { state, effects: [], error: `Unbekannter Widget-Typ: ${widgetType}` }
+  }
+
+  if (state.shopVisible) {
+    return {
+      state,
+      effects: [{ type: 'shop-select-widget-type', widgetType }],
+      error: null,
+    }
+  }
+
+  const existingWidget = findWidgetByType(state, widgetType)
+  if (existingWidget) {
+    return {
+      state: {
+        ...state,
+        focusedState: getFocusStateForWidget(state.activeWidgets, existingWidget.widget_id),
+      },
+      effects: [],
+      error: null,
+    }
+  }
+
+  if (!getFocusedWidget(state)) {
+    return {
+      state: {
+        ...exitArrangeMode(state),
+        shopVisible: true,
+      },
+      effects: [{ type: 'shop-select-widget-type', widgetType }],
+      error: null,
+    }
+  }
+
+  return { state, effects: [], error: `Kein Widget dieses Typs vorhanden: ${widgetType}` }
+}
+
 export function reduceInteractionState(
   state: InteractionState,
   action: UIActionType,
   context: InteractionReducerContext,
+  actionArgs: UIActionArguments = {},
 ): InteractionReducerResult {
   if (state.isCalibrationMode) {
     return { state, effects: [], error: null }
+  }
+
+  if (action === 'focus_grid_cell') {
+    return focusGridCell(state, actionArgs)
+  }
+
+  if (action === 'focus_widget_type') {
+    return focusWidgetType(state, actionArgs)
   }
 
   if (state.isArrangeMode && state.selectedWidgetId) {
@@ -245,6 +329,21 @@ export function reduceInteractionState(
         effects: [],
         error: null,
       }
+    case 'open_shop':
+      return {
+        state: {
+          ...exitArrangeMode(state),
+          shopVisible: true,
+        },
+        effects: [],
+        error: null,
+      }
+    case 'close_shop':
+      return {
+        state: { ...state, shopVisible: false },
+        effects: [],
+        error: null,
+      }
     case 'primary_click': {
       const confirmation = confirmShopSelection(state, context)
       if (confirmation) {
@@ -270,6 +369,22 @@ export function reduceInteractionState(
         error: null,
       }
     }
+    case 'confirm_selection': {
+      const confirmation = confirmShopSelection(state, context)
+      if (confirmation) {
+        return confirmation
+      }
+
+      if (state.isArrangeMode) {
+        return {
+          state: exitArrangeMode(state),
+          effects: [],
+          error: null,
+        }
+      }
+
+      return { state, effects: [], error: null }
+    }
     case 'secondary_select': {
       const confirmation = confirmShopSelection(state, context)
       if (confirmation) {
@@ -293,6 +408,23 @@ export function reduceInteractionState(
         error: null,
       }
     }
+    case 'enter_arrange_mode': {
+      const focusedWidget = getFocusedWidget(state)
+      if (!focusedWidget) {
+        return { state, effects: [], error: null }
+      }
+      return {
+        state: enterArrangeMode(state, focusedWidget.widget_id),
+        effects: [],
+        error: null,
+      }
+    }
+    case 'exit_arrange_mode':
+      return {
+        state: exitArrangeMode(state),
+        effects: [],
+        error: null,
+      }
     case 'resize_expand':
       return state.isArrangeMode ? resizeSelectedWidget(state, 'expand') : { state, effects: [], error: null }
     case 'resize_shrink':

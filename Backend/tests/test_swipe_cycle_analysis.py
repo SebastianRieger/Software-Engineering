@@ -4,6 +4,7 @@ from services.gesture.offline.swipe_cycle_analysis import (
     segment_swipe_cycles,
     summarize_swipe_profiles,
 )
+from schemas.gestures import GestureConfig
 
 
 def test_segment_swipe_cycles_splits_repeated_horizontal_cycles():
@@ -82,7 +83,7 @@ def test_segment_swipe_cycles_keeps_horizontal_cycle_with_opposite_observed_dire
 
     assert len(cycles) == 1
     assert cycles[0].gesture == "swipe_right"
-    assert cycles[0].observed_gesture == "swipe_left"
+    assert cycles[0].observed_gesture == "swipe_right"
 
 
 def test_summarize_swipe_profiles_returns_cycle_statistics():
@@ -113,3 +114,23 @@ def test_summarize_swipe_profiles_returns_cycle_statistics():
     assert summary["signed_displacement_mean"] is not None
     assert summary["peak_speed_p90"] is not None
     assert summary["direction_stability_mean"] is not None
+
+
+def test_segment_swipe_cycles_respects_gesture_config_kwargs():
+    samples = [
+        SwipeFrameSample(timestamp=0.00, point=(0.10, 0.50), hand_size=0.16),
+        SwipeFrameSample(timestamp=0.10, point=(0.12, 0.50), hand_size=0.16),
+        SwipeFrameSample(timestamp=0.20, point=(0.18, 0.50), hand_size=0.16),
+        SwipeFrameSample(timestamp=0.30, point=(0.26, 0.50), hand_size=0.16),
+        SwipeFrameSample(timestamp=0.40, point=(0.35, 0.50), hand_size=0.16),
+    ]
+
+    config = GestureConfig(offline_swipe_motion_step_threshold=0.12)
+
+    cycles = segment_swipe_cycles(
+        samples,
+        expected_gesture="swipe_right",
+        **config.offline_swipe_cycle_kwargs(),
+    )
+
+    assert cycles == []
