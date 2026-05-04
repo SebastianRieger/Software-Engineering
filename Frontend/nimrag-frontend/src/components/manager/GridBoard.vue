@@ -1,5 +1,6 @@
 <script setup lang="ts">
-import { defineEmits, defineProps, toRefs, ref } from 'vue';
+import { defineEmits, defineProps, toRefs, ref, onMounted } from 'vue';
+import { useWidgetResize } from '../../composables/useWidgetResize';
 
 const emit = defineEmits(['widgetsMoved', 'deleteWidget']);
 
@@ -8,9 +9,18 @@ const props = defineProps<{
 }>();
 
 const { isEditMode } = toRefs(props);
+const { getGridClass, cycleCellSize, getSizeLabel, initializeCell, getVisibleCells } = useWidgetResize();
 
 // Reaktiver "Refresh-Trigger" für die Delete-Buttons
 const widgetVersion = ref(0);
+const resizingCell = ref<number | null>(null);
+
+// Grid-Zellen initialisieren
+onMounted(() => {
+  for (let i = 1; i <= 16; i++) {
+    initializeCell(i);
+  }
+});
 
 // Hilfsfunktion um zu prüfen ob eine Zelle ein Widget hat
 function hasWidget(cellId: number): boolean {
@@ -107,20 +117,41 @@ function onDeleteClick(cellId: number) {
     widgetVersion.value++
   }, 0)
 }
+
+// Resize-Button-Click Handler
+function onResizeClick(cellId: number) {
+  cycleCellSize(cellId);
+
+  // Visuelles Feedback
+  resizingCell.value = cellId;
+  setTimeout(() => {
+    resizingCell.value = null;
+  }, 200);
+
+  // Force UI-Update für getVisibleCells()
+  widgetVersion.value++;
+}
 </script>
 
 
 <template>
   <div
-      class="grid h-screen w-screen grid-cols-4 grid-rows-4 gap-4 bg-neutral-900 text-white p-4"
-      :style="{'--cols': 4, '--rows': 4}"
+      class="grid bg-neutral-900 text-white p-4"
+      style="
+        width: 100vw;
+        height: 100vh;
+        grid-template-columns: repeat(4, 1fr);
+        grid-template-rows: repeat(4, 1fr);
+        gap: 1rem;
+        overflow: hidden;
+      "
   >
-    <!-- generiert leere Zellen mit Platzhaltern -->
+    <!-- generiert Zellen basierend auf verfügbarem Platz -->
     <div
-        v-for="i in 16"
+        v-for="i in getVisibleCells()"
         :key="i"
         :id="String(i)"
-        class="grid-cell rounded-xl bg-neutral-800 shadow-inner overflow-hidden"
+        :class="['grid-cell', getGridClass(i)]"
         draggable="true"
         @dragstart="onDragStart($event, i)"
         @dragover="onDragOver"
@@ -138,13 +169,24 @@ function onDeleteClick(cellId: number) {
         </div>
       </div>
 
-      <!-- Delete-Button von Vue kontrolliert -->
+      <!-- Delete-Button: Obere rechte Ecke -->
       <button
           v-if="isEditMode && widgetVersion >= 0 && hasWidget(i)"
           class="delete-widget-btn"
           @click.stop="onDeleteClick(i)"
+          title="Widget löschen"
       >
-        x
+        ×
+      </button>
+
+      <!-- Resize-Button: Untere rechte Ecke -->
+      <button
+          v-if="isEditMode && hasWidget(i)"
+          :class="['resize-widget-btn', { 'resize-active': resizingCell === i }]"
+          @click.stop="onResizeClick(i)"
+          :title="`Größe: ${getSizeLabel(i)}`"
+      >
+        ⤡
       </button>
     </div>
   </div>
@@ -153,15 +195,37 @@ function onDeleteClick(cellId: number) {
 <style scoped>
 .grid-cell {
   position: relative;
+  transition: all 0.3s ease;
+  min-height: 0;
+  min-width: 0;
+  overflow: hidden;
+  background: #262626;
+  border-radius: 0.75rem;
+  box-shadow: inset 0 1px 2px 0 rgba(0, 0, 0, 0.5);
 }
 
+/* Grid-Spanning für verschiedene Größen */
+.col-span-2 {
+  grid-column: span 2;
+}
+
+.row-span-2 {
+  grid-row: span 2;
+}
+
+.col-span-2.row-span-2 {
+  grid-column: span 2;
+  grid-row: span 2;
+}
+
+/* Delete-Button Styling */
 .delete-widget-btn {
   position: absolute;
   visibility: visible;
   top: 8px;
   right: 8px;
-  width: 28px;
-  height: 28px;
+  width: 32px;
+  height: 32px;
   background: rgba(239, 68, 68, 0.9);
   color: white;
   border: none;
@@ -174,14 +238,67 @@ function onDeleteClick(cellId: number) {
   justify-content: center;
   z-index: 100;
   transition: all 0.2s;
-  line-height: 1;
   padding: 0;
 }
 
 .delete-widget-btn:hover {
   background: rgb(239, 68, 68);
   transform: scale(1.1);
+  box-shadow: 0 4px 12px rgba(239, 68, 68, 0.5);
 }
+
+/* Resize-Button Styling mit Tailwind */
+.resize-widget-btn {
+  position: absolute;
+  visibility: visible;
+  bottom: 8px;
+  right: 8px;
+  width: 36px;
+  height: 36px;
+  background: linear-gradient(135deg, #3b82f6 0%, #2563eb 100%);
+  color: white;
+  border: none;
+  border-radius: 6px;
+  font-size: 18px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 99;
+  transition: all 0.2s ease;
+  padding: 0;
+  font-weight: 600;
+}
+
+.resize-widget-btn:hover {
+  background: linear-gradient(135deg, #2563eb 0%, #1d4ed8 100%);
+  transform: scale(1.1);
+  box-shadow: 0 4px 12px rgba(37, 99, 235, 0.5);
+}
+
+.resize-widget-btn:active {
+  transform: scale(0.95);
+}
+
+.resize-widget-btn.resize-active {
+  background: linear-gradient(135deg, #10b981 0%, #059669 100%);
+  animation: resize-pulse 0.3s ease-out;
+}
+
+@keyframes resize-pulse {
+  0% {
+    transform: scale(1);
+    box-shadow: 0 0 0 0 rgba(16, 185, 129, 0.7);
+  }
+  50% {
+    transform: scale(1.15);
+  }
+  100% {
+    transform: scale(1);
+    box-shadow: 0 0 0 8px rgba(16, 185, 129, 0);
+  }
+}
+
 .cell-dragging {
   opacity: 0.5;
   transition: opacity 0.2s ease;
