@@ -20,6 +20,9 @@ Alles andere liegt im Archiv und dient nur noch als Verlauf oder Referenz.
 - [MULTIMODAL_COMMAND_VALIDATION.md](MULTIMODAL_COMMAND_VALIDATION.md)
   Operatives Runbook fuer die End-to-End-Validierung von Gesture, Voice, Musical Audio und gemeinsamer Command-Orchestrierung.
 
+- [Testing/Teststrategie.md](Testing/Teststrategie.md)
+  Teststrategie fuer Frontend, Backend, API und E2E inklusive Coverage-Ziel und CI-Einbindung.
+
 - [IMPLEMENTATION_PLAN.md](IMPLEMENTATION_PLAN.md)
   Priorisierter Weg vom heutigen Prototypen zur Zielarchitektur.
 

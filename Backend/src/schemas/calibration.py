@@ -133,6 +133,50 @@ class GestureTemporalWindowSummary(BaseModel):
     delta_distance: float | None = None
 
 
+class GestureSequenceFrame(BaseModel):
+    t: float = Field(ge=0)
+    x: float
+    y: float
+    velocity_x: float | None = None
+    velocity_y: float | None = None
+    hand_openness: float | None = Field(default=None, ge=0, le=1)
+    index_extension_ratio: float | None = Field(default=None, ge=0)
+    push_depth: float | None = Field(default=None, ge=0)
+    center_distance: float | None = Field(default=None, ge=0)
+    distance_value: float | None = Field(default=None, ge=0)
+    active_phase: str | None = None
+
+
+class GestureSequenceArtifact(BaseModel):
+    point_count: int = Field(ge=0)
+    frame_count: int = Field(ge=0)
+    anchor_index: int = Field(default=0, ge=0)
+    anchor_phase: str | None = None
+    origin_x: float
+    origin_y: float
+    normalized_by_hand_size: bool = False
+    frames: list[GestureSequenceFrame] = Field(default_factory=list)
+
+
+class GestureSequenceProfile(BaseModel):
+    profile_id: str = Field(min_length=1)
+    gesture: GestureType
+    source_sample_ids: list[str] = Field(default_factory=list)
+    medoid_sample_id: str = Field(min_length=1)
+    distance_threshold: float = Field(ge=0)
+    median_distance: float | None = Field(default=None, ge=0)
+    p90_distance: float | None = Field(default=None, ge=0)
+    sequence: GestureSequenceArtifact
+
+
+class GestureSequenceProfileSet(BaseModel):
+    generated_at: datetime
+    resample_points: int = Field(ge=2, le=256)
+    window: int | None = Field(default=None, ge=1, le=256)
+    channel_names: list[str] = Field(default_factory=list)
+    profiles: list[GestureSequenceProfile] = Field(default_factory=list)
+
+
 class GestureCalibrationSamplePayload(BaseModel):
     gesture: GestureType
     confidence: float = Field(ge=0, le=1)
@@ -146,6 +190,7 @@ class GestureCalibrationSamplePayload(BaseModel):
     zoom: GestureZoomSampleMetrics | None = None
     pose: GesturePoseSnapshot | None = None
     temporal: GestureTemporalWindowSummary | None = None
+    sequence: GestureSequenceArtifact | None = None
     feature_windows: dict[str, Any] = Field(default_factory=dict)
 
 
@@ -219,6 +264,7 @@ class CalibrationAnalysisResult(BaseModel):
     targets: list[CalibrationTargetAnalysis] = Field(default_factory=list)
     candidate_gesture_config: GestureConfig | None = None
     candidate_voice_config: VoiceConfig | None = None
+    gesture_sequence_profile_set: GestureSequenceProfileSet | None = None
     gesture_config_patch: CalibrationConfigPatch | None = None
     summary: str | None = None
 
@@ -228,6 +274,7 @@ class CalibrationConfigSnapshot(BaseModel):
     profile: str = Field(default="default", min_length=1)
     captured_at: datetime
     gesture_config: GestureConfig | None = None
+    gesture_sequence_profile_set: GestureSequenceProfileSet | None = None
     voice_config: VoiceConfig | None = None
 
 
@@ -263,6 +310,7 @@ class CalibrationProfile(BaseModel):
     source_session_id: str = Field(min_length=1)
     saved_at: datetime
     gesture_config: GestureConfig | None = None
+    gesture_sequence_profile_set: GestureSequenceProfileSet | None = None
     voice_config: VoiceConfig | None = None
     analysis: CalibrationAnalysisResult | None = None
 

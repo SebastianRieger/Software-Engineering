@@ -152,15 +152,25 @@ def _build_summary(payload: dict[str, Any], *, videos_dir: Path, target_accuracy
     samples = payload.get("samples", [])
     video_summary = _summarize_video_accuracy(samples)
     video_accuracy = video_summary["video_accuracy"]
+    sequence_shadow_summary = payload.get("sequence_shadow_summary", {})
+    sequence_accuracy = sequence_shadow_summary.get("sequence_accuracy")
     return {
         "videos_dir": str(videos_dir),
         "target_video_accuracy": target_accuracy,
         "passes_video_accuracy_target": (
             video_accuracy is not None and video_accuracy >= target_accuracy
         ),
+        "passes_sequence_promotion_gate": bool(
+            sequence_shadow_summary.get("promotion_ready")
+            and sequence_accuracy is not None
+            and (video_accuracy is None or sequence_accuracy >= video_accuracy)
+        ),
         "video_summary": video_summary,
         "swipe_evaluation_models": payload.get("swipe_evaluation_models", {}),
         "swipe_confusion_matrix": payload.get("swipe_confusion_matrix", {}),
+        "sequence_shadow_summary": sequence_shadow_summary,
+        "sequence_shadow_confusion": payload.get("sequence_shadow_confusion", {}),
+        "sequence_shadow_reports": payload.get("sequence_shadow_reports", []),
         "negative_swipe_summary": payload.get("negative_swipe_summary", {}),
         "push_cycle_reports": payload.get("push_cycle_reports", []),
         "negative_push_summary": payload.get("negative_push_summary", {}),

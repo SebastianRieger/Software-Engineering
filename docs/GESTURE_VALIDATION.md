@@ -32,6 +32,7 @@ Pruefen, dass die Anwendung auf echter Kamera- oder Raspberry-Pi-Hardware stabil
    - fuer `circle` immer mit Faust in der Mitte starten und erst nach geschlossenem Kreis wieder oeffnen.
    - Verifizieren, dass `GestureDetected` fachlich plausibel ist und im Idle-Zustand kein Event-Spam auftritt.
    - Im WebSocket oder Statusmodell pruefen, dass `active_phase`, `spec_id`, `candidate_scores` und `primitive_hits` zu einer erkannten Geste passen.
+   - Falls ein kalibriertes Sequence-Profil aktiv ist, im Statusmodell ausserdem `sequence_scores`, `sequence_distances`, `sequence_margins` und `sequence_profile_ids` beobachten. Im Shadow-Modus duerfen diese Werte sichtbar sein, ohne dass dadurch schon die UI-Aktion kippt.
 
 4. Push-Klicks und Zwei-Hand-Zoom
    - kurzen und langen Push-Klick pruefen
@@ -69,6 +70,7 @@ Pruefen, dass die Anwendung auf echter Kamera- oder Raspberry-Pi-Hardware stabil
    - Profil anwenden.
    - Danach normale Gestensteuerung erneut pruefen.
    - Verhalten soll mindestens stabiler oder konsistenter als vor der Kalibrierung sein.
+   - Im Status pruefen, dass das aktive Sequence-Profilset geladen wurde und fuer Swipe-Familie oder `circle` Schatten-Scores erzeugt.
 
 6. Rollback
    - Rollback ausfuehren.
@@ -85,8 +87,15 @@ Pruefen, dass die Anwendung auf echter Kamera- oder Raspberry-Pi-Hardware stabil
 - False Positives im Idle-Zustand
 - Konsistenz zwischen `GestureDetected`, `UIActionRequested` und Kalibrierungsfeedback
 - Konsistenz zwischen Basiskandidat und Runtime-Metadaten wie `active_phase`, `spec_id`, `candidate_scores`, `primitive_hits` und `reject_reason`
+- wenn Sequence-Profile aktiv sind: Konsistenz zwischen heuristischem Kandidaten und Shadow-Diagnosen wie `sequence_scores`, `sequence_distances`, `sequence_margins` und `sequence_profile_ids`
 - Unterschiede zwischen heller und dunkler Umgebung
 - Stabilitaet von Apply und Rollback ueber mehrere Sitzungen hinweg
+
+## Offline Pflichtcheck Fuer Promotion
+
+1. `python Backend/scripts/gesture_video_tuner.py --output <datei>` mit dem relevanten Swipe- und Circle-Videokorpus laufen lassen.
+2. In der JSON-Ausgabe `sequence_shadow_summary` und `sequence_shadow_confusion` gegen die heuristische `video_summary` vergleichen.
+3. `python Backend/scripts/gesture_benchmark.py --output <datei>` laufen lassen und `passes_sequence_promotion_gate` nur dann als gruen werten, wenn die Sequence-Accuracy mindestens die heuristische Accuracy erreicht und keine neue Konfusionshaeufung sichtbar ist.
 
 ## Zielwerte fuer den aktuellen Meilenstein
 

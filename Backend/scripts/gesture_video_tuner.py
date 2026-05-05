@@ -5,9 +5,10 @@ import json
 import re
 import sys
 from dataclasses import asdict, dataclass, replace
+from datetime import datetime, timezone
 from pathlib import Path
 from statistics import quantiles
-from typing import Any
+from typing import Any, TypedDict, cast
 
 import cv2
 
@@ -16,8 +17,13 @@ SRC_ROOT = BACKEND_ROOT / "src"
 if str(SRC_ROOT) not in sys.path:
     sys.path.insert(0, str(SRC_ROOT))
 
+from schemas.calibration import (
+    CalibrationCollectedSample,
+    GestureCalibrationSamplePayload,
+    GestureSequenceArtifact,
+)
 from schemas.gestures import GestureConfig, GestureType
-from services.gesture import GestureService
+from services.gesture.runtime import GestureService
 from services.gesture.contracts import default_gesture_contracts, get_gesture_contract
 from services.gesture.detection import (
     detect_gesture_with_confidence,
@@ -26,6 +32,7 @@ from services.gesture.detection import (
 )
 from services.gesture.offline.push_cycle_analysis import (
     PushCycle,
+    PushGestureName,
     PushCycleProfile,
     PushFrameSample,
     profile_push_cycles,
@@ -40,7 +47,9 @@ from services.gesture.offline.swipe_cycle_analysis import (
     segment_swipe_cycles,
     summarize_swipe_profiles,
 )
-from services.gesture.tracking import MediaPipeHandsAdapter, extract_hand_pose_features, smooth_point
+from services.gesture.sequence_matcher import GestureSequenceMatcher
+from services.gesture.sequence_profiles import build_sequence_profile_set
+from services.gesture.tracking import MediaPipeHandsAdapter, extract_hand_pose_features
 
 
 VIDEO_LABELS: dict[str, GestureType] = {
@@ -100,10 +109,11 @@ def discover_video_labels(videos_dir: Path) -> list[tuple[str, GestureType]]:
 @dataclass(slots=True)
 class VideoGestureSample:
     file_name: str
-    label: str
+    label: GestureType
     contract_id: str
     detected_gesture: str | None
     best_candidate_score: float
+    best_any_candidate_score: float
     confidence: float | None
     active_phase: str
     reject_reason: str | None
@@ -134,6 +144,7 @@ class VideoGestureSample:
 @dataclass(slots=True)
 class VideoAnalysisResult:
     sample: VideoGestureSample
+    sequence_artifact: GestureSequenceArtifact | None
     swipe_samples: list[SwipeFrameSample]
     swipe_cycles: list[SwipeCycle]
     swipe_profiles: list[SwipeCycleProfile]
@@ -217,6 +228,44 @@ class SwipeTuningResult:
     tuned: SwipeTuningMetrics
 
 
+@dataclass(slots=True)
+class SequenceShadowEvaluation:
+    file_name: str
+    label: GestureType
+    heuristic_detected_gesture: str | None
+    sequence_detected_gesture: str | None
+    heuristic_correct: bool
+    sequence_correct: bool
+    sequence_score: float | None
+    sequence_distance: float | None
+    sequence_margin: float | None
+    sequence_profile_id: str | None
+
+
+class SwipeCycleKwargs(TypedDict):
+    min_cycle_points: int
+    motion_step_threshold: float
+    edge_speed_threshold: float
+    active_gap_seconds: float
+    axis_ratio_threshold: float
+    min_cycle_displacement: float
+    edge_gap_ratio: float
+    edge_gap_max_seconds: float
+
+
+class PushCycleKwargs(TypedDict):
+    min_cycle_points: int
+    activation_depth_threshold: float
+    release_depth_threshold: float
+    active_gap_seconds: float
+    min_pose_valid_ratio: float
+    min_index_extension_ratio: float
+    min_folded_fingers: int
+    center_distance_max: float
+    long_click_seconds: float
+    inactive_grace_seconds: float
+
+
 def _percentile(values: list[float], probability: float) -> float | None:
     if not values:
         return None
@@ -276,9 +325,8 @@ def _reset_sequence_state(service: GestureService, missing_observed_at: float) -
     reset_sequence(missing_observed_at=missing_observed_at)
 
 
-def _average_hand_size(service: GestureService, samples: list[float | None]) -> float | None:
-    average_hand_size = getattr(service, "_average_hand_size")
-    return average_hand_size(samples)
+def _runtime_lifecycle(service: GestureService) -> Any:
+    return getattr(service, "_lifecycle")
 
 
 def _analyze_runtime_gesture(service: GestureService, **kwargs) -> Any:
@@ -301,6 +349,41 @@ def _select_runtime_single_hand_trajectory(service: GestureService, **kwargs) ->
     return selector(**kwargs)
 
 
+def _build_runtime_sequence_artifact(service: GestureService, **kwargs) -> GestureSequenceArtifact | None:
+    builder = getattr(service, "_build_sequence_artifact_from_runtime_window")
+    return builder(**kwargs)
+
+
+def _offline_swipe_cycle_kwargs(config: GestureConfig) -> SwipeCycleKwargs:
+    kwargs = config.offline_swipe_cycle_kwargs()
+    return {
+        "min_cycle_points": int(kwargs["min_cycle_points"]),
+        "motion_step_threshold": float(kwargs["motion_step_threshold"]),
+        "edge_speed_threshold": float(kwargs["edge_speed_threshold"]),
+        "active_gap_seconds": float(kwargs["active_gap_seconds"]),
+        "axis_ratio_threshold": float(kwargs["axis_ratio_threshold"]),
+        "min_cycle_displacement": float(kwargs["min_cycle_displacement"]),
+        "edge_gap_ratio": float(kwargs["edge_gap_ratio"]),
+        "edge_gap_max_seconds": float(kwargs["edge_gap_max_seconds"]),
+    }
+
+
+def _offline_push_cycle_kwargs(config: GestureConfig) -> PushCycleKwargs:
+    kwargs = config.offline_push_cycle_kwargs()
+    return {
+        "min_cycle_points": int(kwargs["min_cycle_points"]),
+        "activation_depth_threshold": float(kwargs["activation_depth_threshold"]),
+        "release_depth_threshold": float(kwargs["release_depth_threshold"]),
+        "active_gap_seconds": float(kwargs["active_gap_seconds"]),
+        "min_pose_valid_ratio": float(kwargs["min_pose_valid_ratio"]),
+        "min_index_extension_ratio": float(kwargs["min_index_extension_ratio"]),
+        "min_folded_fingers": int(kwargs["min_folded_fingers"]),
+        "center_distance_max": float(kwargs["center_distance_max"]),
+        "long_click_seconds": float(kwargs["long_click_seconds"]),
+        "inactive_grace_seconds": float(kwargs["inactive_grace_seconds"]),
+    }
+
+
 def _simulate_video(
     video_path: Path,
     label: GestureType,
@@ -311,7 +394,7 @@ def _simulate_video(
     max_frames: int | None,
     start_frame: int = 0,
     end_frame: int | None = None,
-) -> VideoGestureSample:
+) -> VideoAnalysisResult:
     capture = _open_video_capture(video_path)
     _seek_capture_frame(capture, start_frame)
     fps = _capture_fps(capture)
@@ -319,16 +402,14 @@ def _simulate_video(
 
     service = GestureService()
     _set_runtime_config(service, config)
-    service.smoothed_point = None
-    service.trajectory = []
-    service.trajectory_timestamps = []
-    service.hand_size_samples = []
-    service.two_hand_distance_history = []
     _set_push_state(service, None)
-    service._pending_gesture = None
+    setattr(service, "_pending_gesture", None)
     service.last_gesture_time_by_name = {}
+    lifecycle = _runtime_lifecycle(service)
+    lifecycle.reset_all()
 
     best_sample: VideoGestureSample | None = None
+    best_sequence_artifact: GestureSequenceArtifact | None = None
     last_sample: VideoGestureSample | None = None
     swipe_samples: list[SwipeFrameSample] = []
     push_samples: list[PushFrameSample] = []
@@ -358,28 +439,25 @@ def _simulate_video(
 
             if observation.point is None:
                 _reset_sequence_state(service, observed_at)
-                service.smoothed_point = None
-                service.trajectory.clear()
-                service.trajectory_timestamps.clear()
-                service.hand_size_samples.clear()
+                lifecycle.reset_motion_window(clear_post_fire=True)
                 continue
 
-            service.smoothed_point = smooth_point(
-                previous_point=service.smoothed_point,
-                point=observation.point,
-                alpha=config.smoothing_alpha,
-            )
-            service.trajectory.append(service.smoothed_point)
-            service.trajectory_timestamps.append(observed_at)
-            service.hand_size_samples.append(observation.hand_size)
-            if len(service.trajectory) > config.max_trajectory_points:
-                service.trajectory.pop(0)
-                service.trajectory_timestamps.pop(0)
-                service.hand_size_samples.pop(0)
+            pose = extract_hand_pose_features(observation)
 
-            trajectory_snapshot = list(service.trajectory)
-            timestamp_snapshot = list(service.trajectory_timestamps)
-            hand_size_snapshot = _average_hand_size(service, service.hand_size_samples)
+            recorded_point = lifecycle.append_point(
+                point=observation.point,
+                observed_at=observed_at,
+                hand_size=observation.hand_size,
+                hand_count=len(observation.hands) if observation.hands else 1,
+                pose_features=pose,
+                smoothing_alpha=config.smoothing_alpha,
+                max_points=config.max_trajectory_points,
+            )
+            if recorded_point is None:
+                continue
+
+            trajectory_snapshot, timestamp_snapshot, hand_size_snapshot = lifecycle.copy_motion_snapshot()
+            sequence_channels_snapshot = lifecycle.copy_sequence_channel_snapshot()
             analysis = _analyze_runtime_gesture(
                 service,
                 observation=observation,
@@ -387,14 +465,15 @@ def _simulate_video(
                 trajectory=trajectory_snapshot,
                 trajectory_timestamps=timestamp_snapshot,
                 hand_size=hand_size_snapshot,
+                pose_features=pose,
             )
+            lifecycle.set_last_active_phase(analysis.active_phase)
             finalized_detection = _advance_pending_gesture(
                 service,
                 analysis=analysis,
                 observed_at=observed_at,
             )
             effective_detection = finalized_detection or analysis.detection
-            pose = extract_hand_pose_features(observation)
             folded_fingers_count = 0
             push_pose_valid = False
             if pose is not None:
@@ -412,7 +491,7 @@ def _simulate_video(
                 swipe_samples.append(
                     SwipeFrameSample(
                         timestamp=observed_at,
-                        point=service.smoothed_point,
+                        point=recorded_point,
                         hand_size=observation.hand_size,
                         phase=analysis.active_phase,
                         candidate_score=analysis.candidate_scores.get(label, 0.0),
@@ -443,6 +522,22 @@ def _simulate_video(
                 observed_at=observed_at,
             )
             selected_timestamps = timestamp_snapshot[-len(selected_trajectory):] if selected_trajectory else []
+            selected_point_count = len(selected_trajectory)
+            selected_sequence_artifact = (
+                _build_runtime_sequence_artifact(
+                    service,
+                    trajectory=selected_trajectory,
+                    trajectory_timestamps=selected_timestamps,
+                    hand_size=hand_size_snapshot,
+                    hand_openness=sequence_channels_snapshot["hand_openness"][-selected_point_count:],
+                    index_extension_ratios=sequence_channels_snapshot["index_extension_ratio"][-selected_point_count:],
+                    push_depths=sequence_channels_snapshot["push_depth"][-selected_point_count:],
+                    center_distances=sequence_channels_snapshot["center_distance"][-selected_point_count:],
+                    active_phases=lifecycle.copy_active_phase_snapshot()[-selected_point_count:],
+                )
+                if selected_point_count > 0
+                else None
+            )
             hand_count = len(observation.hands) if observation.hands else 1
             temporal = extract_temporal_gesture_window(
                 trajectory=selected_trajectory,
@@ -451,7 +546,7 @@ def _simulate_video(
                 pose_features=pose,
                 hand_size=hand_size_snapshot,
                 cooldown_active=False,
-                distance_window=list(service.two_hand_distance_history),
+                distance_window=lifecycle.copy_two_hand_history(),
             )
             features = extract_gesture_features(
                 trajectory=selected_trajectory,
@@ -468,6 +563,7 @@ def _simulate_video(
                 contract_id=get_gesture_contract(label).contract_id,
                 detected_gesture=detected,
                 best_candidate_score=label_score,
+                best_any_candidate_score=best_any_score,
                 confidence=effective_detection.confidence if effective_detection is not None and effective_detection.gesture == label else None,
                 active_phase=analysis.active_phase,
                 reject_reason=analysis.reject_reason,
@@ -501,11 +597,12 @@ def _simulate_video(
                 best_rank = (
                     best_sample.best_candidate_score,
                     1.0 if best_sample.detected_gesture == label else 0.0,
-                    0.0,
+                    best_sample.best_any_candidate_score,
                     float(best_sample.trajectory_points),
                 )
-            if best_sample is None or current_rank >= best_rank:
+            if best_sample is None or best_rank is None or current_rank >= best_rank:
                 best_sample = sample
+                best_sequence_artifact = selected_sequence_artifact
     finally:
         hands.close()
         capture.release()
@@ -521,7 +618,7 @@ def _simulate_video(
         current_rank = (
             flushed_sample.best_candidate_score,
             1.0 if flushed_sample.detected_gesture == label else 0.0,
-            flushed_sample.best_candidate_score,
+            flushed_sample.best_any_candidate_score,
             float(flushed_sample.trajectory_points),
         )
         best_rank = None
@@ -529,10 +626,10 @@ def _simulate_video(
             best_rank = (
                 best_sample.best_candidate_score,
                 1.0 if best_sample.detected_gesture == label else 0.0,
-                best_sample.best_candidate_score,
+                best_sample.best_any_candidate_score,
                 float(best_sample.trajectory_points),
             )
-        if best_sample is None or current_rank >= best_rank:
+        if best_sample is None or best_rank is None or current_rank >= best_rank:
             best_sample = flushed_sample
 
     swipe_cycles: list[SwipeCycle] = []
@@ -545,15 +642,15 @@ def _simulate_video(
         swipe_cycles = segment_swipe_cycles(
             swipe_samples,
             expected_gesture=label,
-            **config.offline_swipe_cycle_kwargs(),
+            **_offline_swipe_cycle_kwargs(config),
         )
         swipe_profiles = profile_swipe_cycles(swipe_samples, swipe_cycles)
         swipe_summary = summarize_swipe_profiles(swipe_profiles)
     if label.startswith("push_click"):
         push_cycles = segment_push_cycles(
             push_samples,
-            expected_gesture=label,
-            **config.offline_push_cycle_kwargs(),
+            expected_gesture=cast(PushGestureName, label),
+            **_offline_push_cycle_kwargs(config),
         )
         push_profiles = profile_push_cycles(push_samples, push_cycles)
         push_summary = summarize_push_profiles(push_profiles)
@@ -565,6 +662,7 @@ def _simulate_video(
             contract_id=get_gesture_contract(label).contract_id,
             detected_gesture=None,
             best_candidate_score=0.0,
+            best_any_candidate_score=0.0,
             confidence=None,
             active_phase="idle",
             reject_reason="no_candidate",
@@ -575,6 +673,7 @@ def _simulate_video(
         )
     return VideoAnalysisResult(
         sample=best_sample,
+        sequence_artifact=best_sequence_artifact,
         swipe_samples=swipe_samples,
         swipe_cycles=swipe_cycles,
         swipe_profiles=swipe_profiles,
@@ -618,7 +717,7 @@ def _collect_negative_push_cycles(
             segment_push_cycles(
                 push_samples,
                 expected_gesture=expected_push,
-                **config.offline_push_cycle_kwargs(),
+                **_offline_push_cycle_kwargs(config),
             )
         )
 
@@ -663,12 +762,13 @@ def _evaluate_swipe_cycles(
     evaluations: list[SwipeCycleEvaluation] = []
     runtime_min_detection_points = max(4, config.min_detection_points - 2)
     for cycle_index, cycle in enumerate(cycles):
+        detection_kwargs = config.trajectory_detection_kwargs()
+        detection_kwargs["min_detection_points"] = min(runtime_min_detection_points, len(cycle.trajectory))
         detection = detect_gesture_with_confidence(
             trajectory=cycle.trajectory,
-            min_detection_points=min(runtime_min_detection_points, len(cycle.trajectory)),
             hand_size=cycle.average_hand_size,
             tracking_source="swipe_cycle",
-            **{**config.trajectory_detection_kwargs(), "min_detection_points": min(runtime_min_detection_points, len(cycle.trajectory))},
+            **detection_kwargs,
         )
         detected_gesture = detection.gesture if detection is not None else None
         evaluations.append(
@@ -695,7 +795,7 @@ def _collect_negative_swipe_cycles(
             segment_swipe_cycles(
                 swipe_samples,
                 expected_gesture=expected_swipe,
-                **config.offline_swipe_cycle_kwargs(),
+                **_offline_swipe_cycle_kwargs(config),
             )
         )
 
@@ -718,12 +818,13 @@ def _evaluate_negative_swipe_cycles(
     evaluations: list[NegativeSwipeEvaluation] = []
     runtime_min_detection_points = max(4, config.min_detection_points - 2)
     for cycle_index, cycle in enumerate(cycles):
+        detection_kwargs = config.trajectory_detection_kwargs()
+        detection_kwargs["min_detection_points"] = min(runtime_min_detection_points, len(cycle.trajectory))
         detection = detect_gesture_with_confidence(
             trajectory=cycle.trajectory,
-            min_detection_points=min(runtime_min_detection_points, len(cycle.trajectory)),
             hand_size=cycle.average_hand_size,
             tracking_source="negative_swipe_cycle",
-            **{**config.trajectory_detection_kwargs(), "min_detection_points": min(runtime_min_detection_points, len(cycle.trajectory))},
+            **detection_kwargs,
         )
         detected_gesture = detection.gesture if detection is not None else None
         evaluations.append(
@@ -773,6 +874,133 @@ def _build_negative_confusion_matrix(
         column = evaluation.detected_gesture or "not_detected"
         row[column] = row.get(column, 0) + 1
     return matrix
+
+
+def _make_sequence_calibration_sample(
+    result: VideoAnalysisResult,
+) -> CalibrationCollectedSample | None:
+    label = result.sample.label
+    if result.sequence_artifact is None or (
+        not label.startswith("swipe_") and label != "circle"
+    ):
+        return None
+    return CalibrationCollectedSample(
+        sample_id=f"video::{result.sample.file_name}",
+        modality="gesture",
+        target_id=label,
+        collected_at=datetime.now(timezone.utc),
+        gesture_payload=GestureCalibrationSamplePayload(
+            gesture=label,
+            confidence=max(result.sample.best_candidate_score, result.sample.confidence or 0.0),
+            tracking_source="video_tuner",
+            sequence=result.sequence_artifact,
+        ),
+    )
+
+
+def _evaluate_sequence_shadow(
+    results: list[VideoAnalysisResult],
+    config: GestureConfig,
+) -> list[SequenceShadowEvaluation]:
+    evaluations: list[SequenceShadowEvaluation] = []
+    candidates = [
+        (result, calibration_sample)
+        for result in results
+        for calibration_sample in [_make_sequence_calibration_sample(result)]
+        if calibration_sample is not None
+    ]
+    for result, calibration_sample in candidates:
+        payload = calibration_sample.gesture_payload
+        if payload is None or payload.sequence is None:
+            continue
+        training_samples = [
+            sample
+            for other_result, sample in candidates
+            if other_result.sample.file_name != result.sample.file_name
+        ]
+        if not any(sample.target_id == result.sample.label for sample in training_samples):
+            continue
+        profile_set = build_sequence_profile_set(
+            training_samples,
+            resample_points=config.sequence_resample_points,
+            window=config.sequence_window,
+        )
+        best_match = None
+        if profile_set is not None:
+            matches = GestureSequenceMatcher(profile_set).match_artifact(
+                payload.sequence,
+                gestures={profile.gesture for profile in profile_set.profiles},
+            )
+            best_match = matches[0] if matches else None
+
+        heuristic_detected = result.sample.detected_gesture
+        heuristic_correct = heuristic_detected == result.sample.label
+        sequence_detected = None
+        if best_match is not None and best_match.score > 0.0:
+            if best_match.margin is None or best_match.margin >= config.sequence_min_margin:
+                sequence_detected = best_match.gesture
+        evaluations.append(
+            SequenceShadowEvaluation(
+                file_name=result.sample.file_name,
+                label=result.sample.label,
+                heuristic_detected_gesture=heuristic_detected,
+                sequence_detected_gesture=sequence_detected,
+                heuristic_correct=heuristic_correct,
+                sequence_correct=sequence_detected == result.sample.label,
+                sequence_score=best_match.score if best_match is not None else None,
+                sequence_distance=best_match.distance if best_match is not None else None,
+                sequence_margin=best_match.margin if best_match is not None else None,
+                sequence_profile_id=best_match.profile_id if best_match is not None else None,
+            )
+        )
+    return evaluations
+
+
+def _build_sequence_shadow_confusion_matrix(
+    evaluations: list[SequenceShadowEvaluation],
+) -> dict[str, dict[str, int]]:
+    matrix: dict[str, dict[str, int]] = {}
+    for evaluation in evaluations:
+        row = matrix.setdefault(evaluation.label, {})
+        column = evaluation.sequence_detected_gesture or "not_detected"
+        row[column] = row.get(column, 0) + 1
+    return matrix
+
+
+def _summarize_sequence_shadow_evaluations(
+    evaluations: list[SequenceShadowEvaluation],
+) -> dict[str, float | int | None | bool]:
+    if not evaluations:
+        return {
+            "video_count": 0,
+            "heuristic_correct_videos": 0,
+            "heuristic_accuracy": None,
+            "sequence_correct_videos": 0,
+            "sequence_accuracy": None,
+            "changed_predictions": 0,
+            "net_correct_delta": 0,
+            "promotion_ready": False,
+        }
+
+    heuristic_correct_videos = sum(1 for evaluation in evaluations if evaluation.heuristic_correct)
+    sequence_correct_videos = sum(1 for evaluation in evaluations if evaluation.sequence_correct)
+    changed_predictions = sum(
+        1
+        for evaluation in evaluations
+        if evaluation.heuristic_detected_gesture != evaluation.sequence_detected_gesture
+    )
+    heuristic_accuracy = heuristic_correct_videos / float(len(evaluations))
+    sequence_accuracy = sequence_correct_videos / float(len(evaluations))
+    return {
+        "video_count": len(evaluations),
+        "heuristic_correct_videos": heuristic_correct_videos,
+        "heuristic_accuracy": heuristic_accuracy,
+        "sequence_correct_videos": sequence_correct_videos,
+        "sequence_accuracy": sequence_accuracy,
+        "changed_predictions": changed_predictions,
+        "net_correct_delta": sequence_correct_videos - heuristic_correct_videos,
+        "promotion_ready": sequence_accuracy >= heuristic_accuracy,
+    }
 
 
 def _summarize_swipe_evaluations(
@@ -1127,7 +1355,7 @@ def main() -> int:
     config = GestureConfig()
     adapter = MediaPipeHandsAdapter()
     requested_files = set(args.video)
-    selected_videos = [
+    selected_videos: list[tuple[str, GestureType]] = [
         (file_name, label)
         for file_name, label in discover_video_labels(args.videos_dir)
         if not requested_files or file_name in requested_files
@@ -1190,6 +1418,7 @@ def main() -> int:
             negative_cycle_evaluations,
             negative_video_evaluations,
         ) if positive_cycles else None
+        sequence_shadow_evaluations = _evaluate_sequence_shadow(results, config)
         swipe_cycle_reports = [
             {
                 "file_name": result.sample.file_name,
@@ -1291,6 +1520,13 @@ def main() -> int:
             )
             for label in sorted({result.sample.label for result in results if not result.sample.label.startswith("push_click")})
         }
+        sequence_shadow_reports = [asdict(evaluation) for evaluation in sequence_shadow_evaluations]
+        sequence_shadow_summary = _summarize_sequence_shadow_evaluations(
+            sequence_shadow_evaluations
+        )
+        sequence_shadow_confusion = _build_sequence_shadow_confusion_matrix(
+            sequence_shadow_evaluations
+        )
         payload: dict[str, Any] = {
             "gesture_contracts": {gesture: asdict(contract) for gesture, contract in default_gesture_contracts().items()},
             "samples": [asdict(sample) for sample in samples],
@@ -1298,6 +1534,9 @@ def main() -> int:
             "swipe_models": swipe_models,
             "swipe_evaluation_models": swipe_evaluation_models,
             "swipe_confusion_matrix": swipe_confusion_matrix,
+            "sequence_shadow_reports": sequence_shadow_reports,
+            "sequence_shadow_summary": sequence_shadow_summary,
+            "sequence_shadow_confusion": sequence_shadow_confusion,
             "negative_swipe_reports": negative_swipe_reports,
             "negative_swipe_summary": negative_swipe_summary,
             "negative_swipe_confusion": negative_swipe_confusion,

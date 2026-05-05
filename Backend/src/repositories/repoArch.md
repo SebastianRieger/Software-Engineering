@@ -7,9 +7,9 @@
 
 ## Structure And Logic
 
-The repository layer is broader than before because `ConfigRepository` now persists not only layout, system, gesture, voice and input-action config, but also calibration sessions, saved profiles and deterministic apply or rollback snapshots. The important architectural decision is unchanged: a single SQLite-backed `app_config` keyspace stores structured JSON payloads behind stable domain keys.
+The repository layer is broader than before because `ConfigRepository` now persists not only layout, system, gesture, voice and input-action config, but also calibration sessions, saved profiles, deterministic apply or rollback snapshots and the currently active gesture sequence profile set. The important architectural decision is unchanged: a single SQLite-backed `app_config` keyspace stores structured JSON payloads behind stable domain keys.
 
-This keeps the calibration feature aligned with existing persistence instead of introducing a second storage concept. The tradeoff is that `config.py` has become a genuine multi-domain repository and is no longer just a small config helper.
+This keeps the calibration feature aligned with existing persistence instead of introducing a second storage concept. The tradeoff is that `config.py` has become a genuine multi-domain repository and is no longer just a small config helper. The active gesture sequence profile set is stored separately from named calibration profiles so runtime shadow matching can load the currently applied references without guessing a profile name.
 
 ## Critical Assessment
 

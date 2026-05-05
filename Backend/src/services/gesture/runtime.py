@@ -22,6 +22,9 @@ from schemas.calibration import (
 	GestureFingerStateSnapshot,
 	GesturePoseSnapshot,
 	GesturePushSampleMetrics,
+	GestureSequenceArtifact,
+	GestureSequenceFrame,
+	GestureSequenceProfileSet,
 	GestureTemporalWindowSummary,
 	GestureTrajectorySummary,
 	GestureZoomSampleMetrics,
@@ -42,11 +45,14 @@ from services.gesture.detection import (
 	select_best_gesture_candidate,
 )
 from services.gesture.push_runtime import PushGestureState, detect_push_gesture, is_click_pose_candidate
+from services.gesture.sequence_features import is_sequence_supported_gesture
+from services.gesture.sequence_matcher import GestureSequenceMatcher
 from services.gesture.tracking import (
 	GestureAdapter,
 	GestureAdapterError,
 	GestureName,
 	GestureObservation,
+	HandPoseFeatures,
 	MediaPipeHandsAdapter,
 	TrackedHandObservation,
 	build_hand_landmark_map,
@@ -111,6 +117,11 @@ class TrajectoryLifecycleManager:
 	trajectory_timestamps: list[float] = field(default_factory=list)
 	hand_size_samples: list[float | None] = field(default_factory=list)
 	hand_count_samples: list[int] = field(default_factory=list)
+	hand_openness_samples: list[float | None] = field(default_factory=list)
+	index_extension_ratio_samples: list[float | None] = field(default_factory=list)
+	push_depth_samples: list[float | None] = field(default_factory=list)
+	center_distance_samples: list[float | None] = field(default_factory=list)
+	active_phase_samples: list[str | None] = field(default_factory=list)
 	two_hand_distance_history: list[tuple[float, float]] = field(default_factory=list)
 	post_fire_until: float | None = None
 
@@ -124,6 +135,11 @@ class TrajectoryLifecycleManager:
 		self.trajectory_timestamps = []
 		self.hand_size_samples = []
 		self.hand_count_samples = []
+		self.hand_openness_samples = []
+		self.index_extension_ratio_samples = []
+		self.push_depth_samples = []
+		self.center_distance_samples = []
+		self.active_phase_samples = []
 		if clear_post_fire:
 			self.post_fire_until = None
 
@@ -147,6 +163,7 @@ class TrajectoryLifecycleManager:
 		observed_at: float,
 		hand_size: float | None,
 		hand_count: int,
+		pose_features: HandPoseFeatures | None,
 		smoothing_alpha: float,
 		max_points: int,
 	) -> tuple[float, float] | None:
@@ -162,12 +179,34 @@ class TrajectoryLifecycleManager:
 		self.trajectory_timestamps.append(observed_at)
 		self.hand_size_samples.append(hand_size)
 		self.hand_count_samples.append(max(0, hand_count))
+		self.hand_openness_samples.append(
+			None if pose_features is None else pose_features.hand_openness
+		)
+		self.index_extension_ratio_samples.append(
+			None if pose_features is None else pose_features.index_extension_ratio
+		)
+		self.push_depth_samples.append(
+			None if pose_features is None else pose_features.push_depth
+		)
+		self.center_distance_samples.append(
+			None if pose_features is None else pose_features.center_distance
+		)
+		self.active_phase_samples.append(None)
 		while len(self.trajectory) > max_points:
 			self.trajectory.pop(0)
 			self.trajectory_timestamps.pop(0)
 			self.hand_size_samples.pop(0)
 			self.hand_count_samples.pop(0)
+			self.hand_openness_samples.pop(0)
+			self.index_extension_ratio_samples.pop(0)
+			self.push_depth_samples.pop(0)
+			self.center_distance_samples.pop(0)
+			self.active_phase_samples.pop(0)
 		return self.smoothed_point
+
+	def set_last_active_phase(self, active_phase: str | None) -> None:
+		if self.active_phase_samples:
+			self.active_phase_samples[-1] = active_phase
 
 	def average_hand_size(self) -> float | None:
 		available_sizes = [value for value in self.hand_size_samples if value is not None]
@@ -181,6 +220,17 @@ class TrajectoryLifecycleManager:
 			list(self.trajectory_timestamps),
 			self.average_hand_size(),
 		)
+
+	def copy_sequence_channel_snapshot(self) -> dict[str, list[float | None]]:
+		return {
+			"hand_openness": list(self.hand_openness_samples),
+			"index_extension_ratio": list(self.index_extension_ratio_samples),
+			"push_depth": list(self.push_depth_samples),
+			"center_distance": list(self.center_distance_samples),
+		}
+
+	def copy_active_phase_snapshot(self) -> list[str | None]:
+		return list(self.active_phase_samples)
 
 	def latest_two_hand_distance(self) -> float | None:
 		return self.two_hand_distance_history[-1][1] if self.two_hand_distance_history else None
@@ -271,6 +321,7 @@ class GestureService:
 		self._thread: threading.Thread | None = None
 		self._adapter: GestureAdapter | None = None
 		self._active_config = GestureConfig()
+		self._active_sequence_profile_set: GestureSequenceProfileSet | None = None
 		self.running = False
 		self.camera_index: int | None = None
 		self.camera_name: str | None = None
@@ -289,6 +340,10 @@ class GestureService:
 		self.last_tracking_quality: float | None = None
 		self.last_active_phase: str | None = None
 		self.last_candidate_scores: dict[str, float] = {}
+		self.last_sequence_scores: dict[str, float] = {}
+		self.last_sequence_distances: dict[str, float] = {}
+		self.last_sequence_margins: dict[str, float] = {}
+		self.last_sequence_profile_ids: dict[str, str] = {}
 		self.last_reject_reason: str | None = None
 		self.last_spec_id: str | None = None
 		self.last_dominant_hand_pose: str | None = None
@@ -353,13 +408,25 @@ class GestureService:
 		repository = self.config_repository_factory()
 		try:
 			config = repository.get_gesture_config()
+			sequence_profile_getter = getattr(
+				repository,
+				"get_active_gesture_sequence_profile_set",
+				None,
+			)
+			sequence_profile_set = (
+				sequence_profile_getter()
+				if callable(sequence_profile_getter)
+				else None
+			)
 		except (OSError, sqlite3.Error, TypeError, ValueError) as exc:
 			logger.warning("Could not reload gesture config, using defaults: %s", exc)
 			config = GestureConfig()
+			sequence_profile_set = None
 		self.input_orchestrator.reload_config()
 
 		with self._lock:
 			self._active_config = config
+			self._active_sequence_profile_set = sequence_profile_set
 		return config
 
 	def start(self, camera_index: int = 0) -> dict[str, object]:
@@ -436,6 +503,7 @@ class GestureService:
 
 	def get_status(self) -> dict[str, object]:
 		with self._lock:
+			active_config = self._active_config
 			return {
 				"available": self.is_available(),
 				"running": self.running,
@@ -448,6 +516,12 @@ class GestureService:
 				"tracking_quality": self.last_tracking_quality,
 				"active_phase": self.last_active_phase,
 				"candidate_scores": self.last_candidate_scores,
+				"sequence_scores": self.last_sequence_scores,
+				"sequence_distances": self.last_sequence_distances,
+				"sequence_margins": self.last_sequence_margins,
+				"sequence_profile_ids": self.last_sequence_profile_ids,
+				"sequence_shadow_mode": active_config.sequence_shadow_mode,
+				"sequence_matching_enabled": active_config.sequence_matching_enabled,
 				"reject_reason": self.last_reject_reason,
 				"spec_id": self.last_spec_id,
 				"dominant_hand_pose": self.last_dominant_hand_pose,
@@ -718,6 +792,10 @@ class GestureService:
 				else None
 			),
 			temporal=self._build_take_temporal_summary(frames, trajectory),
+			sequence=self._build_sequence_artifact_from_capture_frames(
+				frames=frames,
+				hand_size=hand_size,
+			),
 			feature_windows={
 				"recognized_target": advisory_recognition.recognized_target_id if advisory_recognition is not None else None,
 				"recognized_confidence": advisory_recognition.confidence if advisory_recognition is not None else None,
@@ -734,6 +812,283 @@ class GestureService:
 			gesture_payload=payload,
 		)
 		return sample, advisory_recognition
+
+	@staticmethod
+	def _select_sequence_anchor_index(
+		*,
+		active_phases: list[str | None],
+		has_points: list[bool] | None = None,
+	) -> int:
+		stable_phases = {"preparing", "holding", "committing"}
+		for index, phase in enumerate(active_phases):
+			if has_points is not None and (index >= len(has_points) or not has_points[index]):
+				continue
+			if phase in stable_phases:
+				return index
+		if has_points is not None:
+			for index, has_point in enumerate(has_points):
+				if has_point:
+					return index
+		else:
+			for index in range(len(active_phases)):
+				return index
+		return 0
+
+	@staticmethod
+	def _build_sequence_frames(
+		*,
+		points: list[tuple[float, float]],
+		timestamps: list[float],
+		scale: float,
+		hand_openness: list[float | None] | None = None,
+		index_extension_ratios: list[float | None] | None = None,
+		push_depths: list[float | None] | None = None,
+		center_distances: list[float | None] | None = None,
+		distance_values: list[float | None] | None = None,
+		active_phases: list[str | None] | None = None,
+	) -> list[GestureSequenceFrame]:
+		frames: list[GestureSequenceFrame] = []
+		if not points or len(points) != len(timestamps):
+			return frames
+
+		origin_x, origin_y = points[0]
+		anchor_time = timestamps[0]
+		previous_x: float | None = None
+		previous_y: float | None = None
+		previous_t: float | None = None
+
+		for index, (point, timestamp) in enumerate(zip(points, timestamps)):
+			relative_t = max(0.0, timestamp - anchor_time)
+			local_x = (point[0] - origin_x) / scale
+			local_y = (point[1] - origin_y) / scale
+			velocity_x = None
+			velocity_y = None
+			if previous_t is not None:
+				dt = max(timestamp - previous_t, 1e-6)
+				velocity_x = (local_x - (previous_x or 0.0)) / dt
+				velocity_y = (local_y - (previous_y or 0.0)) / dt
+
+			frames.append(
+				GestureSequenceFrame(
+					t=relative_t,
+					x=local_x,
+					y=local_y,
+					velocity_x=velocity_x,
+					velocity_y=velocity_y,
+					hand_openness=hand_openness[index] if hand_openness is not None and index < len(hand_openness) else None,
+					index_extension_ratio=(
+						index_extension_ratios[index]
+						if index_extension_ratios is not None and index < len(index_extension_ratios)
+						else None
+					),
+					push_depth=push_depths[index] if push_depths is not None and index < len(push_depths) else None,
+					center_distance=(
+						center_distances[index]
+						if center_distances is not None and index < len(center_distances)
+						else None
+					),
+					distance_value=(
+						distance_values[index]
+						if distance_values is not None and index < len(distance_values)
+						else None
+					),
+					active_phase=active_phases[index] if active_phases is not None and index < len(active_phases) else None,
+				)
+			)
+
+			previous_x = local_x
+			previous_y = local_y
+			previous_t = timestamp
+
+		return frames
+
+	def _build_sequence_artifact_from_capture_frames(
+		self,
+		*,
+		frames: list[CalibrationCaptureFrame],
+		hand_size: float | None,
+	) -> GestureSequenceArtifact | None:
+		indexed_frames = [
+			(index, frame)
+			for index, frame in enumerate(frames)
+			if frame.point is not None
+		]
+		if not indexed_frames:
+			return None
+
+		anchor_index = self._select_sequence_anchor_index(
+			active_phases=[frame.active_phase for frame in frames],
+			has_points=[frame.point is not None for frame in frames],
+		)
+		trimmed = [item for item in indexed_frames if item[0] >= anchor_index]
+		if not trimmed:
+			trimmed = indexed_frames
+			anchor_index = indexed_frames[0][0]
+
+		points = [frame.point for _, frame in trimmed if frame.point is not None]
+		timestamps = [frame.observed_at for _, frame in trimmed if frame.point is not None]
+		sequence_frames = [frame for _, frame in trimmed if frame.point is not None]
+		if not points or not timestamps:
+			return None
+
+		scale = hand_size if hand_size is not None and hand_size > 0 else 1.0
+		frames_payload = self._build_sequence_frames(
+			points=cast(list[tuple[float, float]], points),
+			timestamps=timestamps,
+			scale=scale,
+			hand_openness=[frame.hand_openness for frame in sequence_frames],
+			index_extension_ratios=[frame.index_extension_ratio for frame in sequence_frames],
+			push_depths=[frame.push_depth for frame in sequence_frames],
+			center_distances=[frame.center_distance for frame in sequence_frames],
+			distance_values=[frame.distance_value for frame in sequence_frames],
+			active_phases=[frame.active_phase for frame in sequence_frames],
+		)
+		origin_x, origin_y = points[0]
+		return GestureSequenceArtifact(
+			point_count=len(points),
+			frame_count=len(frames_payload),
+			anchor_index=anchor_index,
+			anchor_phase=sequence_frames[0].active_phase if sequence_frames else None,
+			origin_x=origin_x,
+			origin_y=origin_y,
+			normalized_by_hand_size=hand_size is not None and hand_size > 0,
+			frames=frames_payload,
+		)
+
+	def _build_sequence_artifact_from_runtime_window(
+		self,
+		*,
+		trajectory: list[tuple[float, float]],
+		trajectory_timestamps: list[float],
+		hand_size: float | None,
+		hand_openness: list[float | None] | None = None,
+		index_extension_ratios: list[float | None] | None = None,
+		push_depths: list[float | None] | None = None,
+		center_distances: list[float | None] | None = None,
+		active_phases: list[str | None] | None = None,
+	) -> GestureSequenceArtifact | None:
+		if not trajectory or len(trajectory) != len(trajectory_timestamps):
+			return None
+
+		anchor_index = 0
+		if active_phases:
+			anchor_index = self._select_sequence_anchor_index(
+				active_phases=active_phases[: len(trajectory)],
+			)
+
+		trimmed_trajectory = trajectory[anchor_index:]
+		trimmed_timestamps = trajectory_timestamps[anchor_index:]
+		trimmed_hand_openness = hand_openness[anchor_index:] if hand_openness is not None else None
+		trimmed_index_extension_ratios = (
+			index_extension_ratios[anchor_index:]
+			if index_extension_ratios is not None
+			else None
+		)
+		trimmed_push_depths = push_depths[anchor_index:] if push_depths is not None else None
+		trimmed_center_distances = (
+			center_distances[anchor_index:]
+			if center_distances is not None
+			else None
+		)
+		trimmed_active_phases = active_phases[anchor_index:] if active_phases is not None else None
+		if not trimmed_trajectory or not trimmed_timestamps:
+			return None
+
+		scale = hand_size if hand_size is not None and hand_size > 0 else 1.0
+		frames_payload = self._build_sequence_frames(
+			points=trimmed_trajectory,
+			timestamps=trimmed_timestamps,
+			scale=scale,
+			hand_openness=trimmed_hand_openness,
+			index_extension_ratios=trimmed_index_extension_ratios,
+			push_depths=trimmed_push_depths,
+			center_distances=trimmed_center_distances,
+			active_phases=trimmed_active_phases,
+		)
+		origin_x, origin_y = trimmed_trajectory[0]
+		return GestureSequenceArtifact(
+			point_count=len(trimmed_trajectory),
+			frame_count=len(frames_payload),
+			anchor_index=anchor_index,
+			anchor_phase=trimmed_active_phases[0] if trimmed_active_phases else None,
+			origin_x=origin_x,
+			origin_y=origin_y,
+			normalized_by_hand_size=hand_size is not None and hand_size > 0,
+			frames=frames_payload,
+		)
+
+	def _slice_runtime_sequence_channels(self, point_count: int) -> dict[str, list[float | None]]:
+		with self._lock:
+			channel_snapshot = self._lifecycle.copy_sequence_channel_snapshot()
+		if point_count <= 0:
+			return {name: [] for name in channel_snapshot}
+		return {
+			name: values[-point_count:] if len(values) >= point_count else list(values)
+			for name, values in channel_snapshot.items()
+		}
+
+	def _slice_runtime_sequence_active_phases(self, point_count: int) -> list[str | None]:
+		with self._lock:
+			active_phase_snapshot = self._lifecycle.copy_active_phase_snapshot()
+		if point_count <= 0:
+			return []
+		return (
+			active_phase_snapshot[-point_count:]
+			if len(active_phase_snapshot) >= point_count
+			else list(active_phase_snapshot)
+		)
+
+	def _match_runtime_sequence_window(
+		self,
+		*,
+		candidate_gestures: set[GestureName],
+		trajectory: list[tuple[float, float]],
+		trajectory_timestamps: list[float],
+		hand_size: float | None,
+		sequence_channels: dict[str, list[float | None]],
+		active_phases: list[str | None],
+	) -> tuple[
+		dict[str, float],
+		dict[str, float],
+		dict[str, float],
+		dict[str, str],
+	]:
+		with self._lock:
+			active_config = self._active_config
+			sequence_profile_set = self._active_sequence_profile_set
+
+		if (
+			not candidate_gestures
+			or sequence_profile_set is None
+			or (not active_config.sequence_shadow_mode and not active_config.sequence_matching_enabled)
+		):
+			return {}, {}, {}, {}
+
+		artifact = self._build_sequence_artifact_from_runtime_window(
+			trajectory=trajectory,
+			trajectory_timestamps=trajectory_timestamps,
+			hand_size=hand_size,
+			hand_openness=sequence_channels.get("hand_openness"),
+			index_extension_ratios=sequence_channels.get("index_extension_ratio"),
+			push_depths=sequence_channels.get("push_depth"),
+			center_distances=sequence_channels.get("center_distance"),
+			active_phases=active_phases,
+		)
+		if artifact is None:
+			return {}, {}, {}, {}
+
+		matcher = GestureSequenceMatcher(sequence_profile_set)
+		matches = matcher.match_artifact(artifact, gestures=candidate_gestures)
+		return (
+			{match.gesture: match.score for match in matches},
+			{match.gesture: match.distance for match in matches},
+			{
+				match.gesture: match.margin
+				for match in matches
+				if match.margin is not None
+			},
+			{match.gesture: match.profile_id for match in matches},
+		)
 
 	@staticmethod
 	def _most_common_non_null(values: list[str | None] | tuple[str | None, ...] | Any) -> str | None:
@@ -884,6 +1239,7 @@ class GestureService:
 					continue
 
 				hand_count = len(observation.hands) if observation.hands else 1
+				pose_features = extract_hand_pose_features(observation)
 				with self._lock:
 					self.last_error = None
 					self.last_hand = observation.hand
@@ -893,6 +1249,7 @@ class GestureService:
 						observed_at=observed_at,
 						hand_size=observation.hand_size,
 						hand_count=hand_count,
+						pose_features=pose_features,
 						smoothing_alpha=active_config.smoothing_alpha,
 						max_points=active_config.max_trajectory_points,
 					)
@@ -908,11 +1265,17 @@ class GestureService:
 					trajectory=trajectory_snapshot,
 					trajectory_timestamps=trajectory_timestamps_snapshot,
 					hand_size=hand_size_snapshot,
+					pose_features=pose_features,
 				)
 				with self._lock:
+					self._lifecycle.set_last_active_phase(analysis.active_phase)
 					self.last_tracking_quality = analysis.tracking_quality
 					self.last_active_phase = analysis.active_phase
 					self.last_candidate_scores = dict(analysis.candidate_scores)
+					self.last_sequence_scores = dict(analysis.sequence_scores)
+					self.last_sequence_distances = dict(analysis.sequence_distances)
+					self.last_sequence_margins = dict(analysis.sequence_margins)
+					self.last_sequence_profile_ids = dict(analysis.sequence_profile_ids)
 					self.last_reject_reason = analysis.reject_reason
 					self.last_spec_id = analysis.spec_id
 					self.last_dominant_hand_pose = analysis.dominant_hand_pose
@@ -1113,6 +1476,10 @@ class GestureService:
 			"tracking_quality": detection.tracking_quality,
 			"active_phase": detection.active_phase,
 			"candidate_scores": detection.candidate_scores,
+			"sequence_scores": self.last_sequence_scores,
+			"sequence_distances": self.last_sequence_distances,
+			"sequence_margins": self.last_sequence_margins,
+			"sequence_profile_ids": self.last_sequence_profile_ids,
 			"reject_reason": detection.reject_reason,
 			"spec_id": detection.spec_id,
 			"dominant_hand_pose": detection.dominant_hand_pose,
@@ -1165,6 +1532,7 @@ class GestureService:
 		trajectory: list[tuple[float, float]],
 		trajectory_timestamps: list[float],
 		hand_size: float | None,
+		pose_features: HandPoseFeatures | None = None,
 	) -> GestureRuntimeAnalysis:
 		candidates: list[GestureDetectionResult] = []
 
@@ -1199,16 +1567,44 @@ class GestureService:
 			last_seen = max(self.last_gesture_time_by_name.values(), default=0.0)
 			cooldown_active = bool(self.last_gesture_time_by_name) and time.time() - last_seen <= active_config.cooldown_seconds
 
-		pose_features = extract_hand_pose_features(observation)
+		resolved_pose_features = pose_features or extract_hand_pose_features(observation)
+		sequence_scores: dict[str, float] = {}
+		sequence_distances: dict[str, float] = {}
+		sequence_margins: dict[str, float] = {}
+		sequence_profile_ids: dict[str, str] = {}
+		if hand_count == 1 and trajectory_window and trajectory_window_timestamps:
+			sequence_candidate_gestures = {
+				candidate.gesture
+				for candidate in candidates
+				if is_sequence_supported_gesture(candidate.gesture)
+			}
+			if sequence_candidate_gestures:
+				(
+					sequence_scores,
+					sequence_distances,
+					sequence_margins,
+					sequence_profile_ids,
+				) = self._match_runtime_sequence_window(
+					candidate_gestures=sequence_candidate_gestures,
+					trajectory=trajectory_window,
+					trajectory_timestamps=trajectory_window_timestamps,
+					hand_size=hand_size,
+					sequence_channels=self._slice_runtime_sequence_channels(len(trajectory_window)),
+					active_phases=self._slice_runtime_sequence_active_phases(len(trajectory_window)),
+				)
 		return analyze_runtime_gesture(
 			candidates=candidates,
 			trajectory=analysis_trajectory,
 			trajectory_timestamps=analysis_timestamps,
 			hand_count=hand_count,
-			pose_features=pose_features,
+			pose_features=resolved_pose_features,
 			hand_size=hand_size,
 			cooldown_active=cooldown_active,
 			distance_window=self._lifecycle.copy_two_hand_history(),
+			sequence_scores=sequence_scores,
+			sequence_profile_ids=sequence_profile_ids,
+			sequence_distances=sequence_distances,
+			sequence_margins=sequence_margins,
 			**active_config.runtime_analysis_kwargs(),
 		)
 
@@ -1757,6 +2153,11 @@ class GestureService:
 					active_phase=runtime_analysis.active_phase,
 					delta_distance=temporal_window.delta_distance,
 				),
+				sequence=self._build_sequence_artifact_from_runtime_window(
+					trajectory=trajectory,
+					trajectory_timestamps=trajectory_timestamps,
+					hand_size=hand_size,
+				),
 				feature_windows={
 					"index_extension_ratio": self._metric_float(detection.metrics, "index_extension_ratio"),
 					"center_distance": self._metric_float(detection.metrics, "center_distance"),
@@ -1828,6 +2229,10 @@ class GestureService:
 		self.last_tracking_quality = None
 		self.last_active_phase = None
 		self.last_candidate_scores = {}
+		self.last_sequence_scores = {}
+		self.last_sequence_distances = {}
+		self.last_sequence_margins = {}
+		self.last_sequence_profile_ids = {}
 		self.last_reject_reason = None
 		self.last_spec_id = None
 		self.last_dominant_hand_pose = None

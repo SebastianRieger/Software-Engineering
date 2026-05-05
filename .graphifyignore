@@ -1,0 +1,98 @@
+# Graphify outputs
+graphify-out/
+graphify-out-*/
+
+# VCS / editor / local agent state
+.git/
+.vscode/
+.idea/
+.sixth/
+.github/copilot-instructions.md
+AGENTS.md
+CLAUDE.md
+GEMINI.md
+
+# Python environments and caches
+venv/
+.venv/
+env/
+ENV/
+Backend/venv_py312/
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.mypy_cache/
+htmlcov/
+.coverage
+.coverage.*
+
+# Frontend package manager and build outputs
+node_modules/
+Frontend/nimrag-frontend/node_modules/
+dist/
+build/
+coverage/
+
+# Large media and binary assets that add noise but not architecture
+pics/
+Backend/models/*.task
+Backend/src/models/*.task
+
+# Historical docs that would dominate semantic extraction without helping navigation
+docs/archive/
+
+# Tests are valuable for direct work but add a lot of structural noise to the main architecture graphs.
+Backend/tests/
+Frontend/nimrag-frontend/src/tests/
+
+# Bootstrap, scripts, and public API surfaces are intentionally excluded: they wire the system,
+# but they do not contain the complex runtime logic this graph should optimize for.
+setup.js
+scripts/
+Backend/scripts/
+Backend/src/api/
+Backend/src/main.py
+
+# DTO and envelope schemas are useful contracts, but they dominate AST-only graphs without adding
+# much navigation value for the core implementation logic.
+Backend/src/schemas/
+
+# Peripheral backend surfaces that are internally simple or adjacent to the central logic focus.
+Backend/src/core/config.py
+Backend/src/core/logging.py
+Backend/src/db/
+Backend/src/__init__.py
+Backend/src/repositories/__init__.py
+Backend/src/repositories/weather.py
+Backend/src/services/led.py
+Backend/src/services/interactions.py
+Backend/src/services/mqtt.py
+Backend/src/services/weather.py
+Backend/src/services/gesture/__init__.py
+Backend/src/services/gesture/offline/
+Backend/src/services/input/__init__.py
+
+# Frontend surfaces that are mostly shell/UI flow or straightforward adapters rather than core
+# interaction state logic.
+Frontend/nimrag-frontend/src/App.vue
+Frontend/nimrag-frontend/src/main.ts
+Frontend/nimrag-frontend/vite.config.ts
+Frontend/nimrag-frontend/src/shims-vue.d.ts
+Frontend/nimrag-frontend/src/services/api.ts
+Frontend/nimrag-frontend/src/services/apiConfig.ts
+Frontend/nimrag-frontend/src/types/
+Frontend/nimrag-frontend/src/utils/hardwareWidget.ts
+Frontend/nimrag-frontend/src/utils/moduleShop.ts
+Frontend/nimrag-frontend/src/utils/musicalTraining.ts
+Frontend/nimrag-frontend/src/utils/musicalTrainingDiagnostics.ts
+Frontend/nimrag-frontend/src/components/manager/CalibrationWizard.vue
+Frontend/nimrag-frontend/src/components/manager/CommandSettingsPanel.vue
+Frontend/nimrag-frontend/src/components/manager/GridBoard.vue
+Frontend/nimrag-frontend/src/components/manager/InteractionOverlay.vue
+Frontend/nimrag-frontend/src/components/manager/ModuleShop.vue
+Frontend/nimrag-frontend/src/components/widgets/
+
+# Common transient files
+*.log
+.DS_Store
+Thumbs.db

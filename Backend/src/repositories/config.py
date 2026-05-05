@@ -6,6 +6,7 @@ from schemas.calibration import (
     CalibrationModality,
     CalibrationProfile,
     CalibrationSessionRecord,
+    GestureSequenceProfileSet,
 )
 from schemas.commands import (
     CommandDevicePreferences,
@@ -608,6 +609,51 @@ class ConfigRepository:
 
         return updated_snapshot
 
+    def get_active_gesture_sequence_profile_set(self) -> GestureSequenceProfileSet | None:
+        config_key = self._active_gesture_sequence_profile_key()
+        with get_db_connection() as connection:
+            row = connection.execute(
+                "SELECT payload FROM app_config WHERE config_key = ?",
+                (config_key,),
+            ).fetchone()
+
+        if row is None:
+            return None
+
+        return GestureSequenceProfileSet.model_validate_json(row["payload"])
+
+    def save_active_gesture_sequence_profile_set(
+        self,
+        profile_set: GestureSequenceProfileSet | None,
+    ) -> GestureSequenceProfileSet | None:
+        config_key = self._active_gesture_sequence_profile_key()
+        timestamp = datetime.now(timezone.utc)
+
+        with get_db_connection() as connection:
+            if profile_set is None:
+                connection.execute(
+                    "DELETE FROM app_config WHERE config_key = ?",
+                    (config_key,),
+                )
+                return None
+
+            connection.execute(
+                """
+                INSERT INTO app_config (config_key, payload, updated_at)
+                VALUES (?, ?, ?)
+                ON CONFLICT(config_key) DO UPDATE SET
+                    payload = excluded.payload,
+                    updated_at = excluded.updated_at
+                """,
+                (
+                    config_key,
+                    profile_set.model_dump_json(),
+                    timestamp.isoformat(),
+                ),
+            )
+
+        return profile_set
+
     def count_entries(self) -> int:
         with get_db_connection() as connection:
             row = connection.execute("SELECT COUNT(*) AS count FROM app_config").fetchone()
@@ -760,3 +806,8 @@ class ConfigRepository:
     @staticmethod
     def _calibration_last_applied_key(modality: CalibrationModality, profile: str) -> str:
         return f"calibration:last-applied:{modality}:{profile}"
+
+    @staticmethod
+    def _active_gesture_sequence_profile_key() -> str:
+        return "gestures:sequence-profile:active"
+

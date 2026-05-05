@@ -15,6 +15,9 @@
 | `gesture/detection.py` | 900+ | Gesture feature extraction, primitive scoring, specs and runtime analysis |
 | `gesture/contracts.py` | 300+ | Canonical gesture execution contracts for tuning and user-facing documentation |
 | `gesture/push_runtime.py` | 250+ | Push click state machine separate from general runtime arbitration |
+| `gesture/sequence_features.py` | 100+ | Compact sequence-channel preparation and resampling for calibration and runtime windows |
+| `gesture/sequence_profiles.py` | 100+ | DTW-ready medoid profile generation from accepted calibration samples |
+| `gesture/sequence_matcher.py` | 80+ | Runtime and offline DTW comparison against active sequence profiles |
 | `gesture/offline/push_cycle_analysis.py` | 250+ | Offline push cycle segmentation and profiling for tuner and benchmarking |
 | `gesture/offline/swipe_cycle_analysis.py` | 500+ | Offline swipe cycle segmentation and profiling for tuner and benchmarking |
 | `interactions.py` | 170+ | Compatibility wrapper for the shared input orchestrator |
@@ -41,9 +44,11 @@ The intended ownership split for the current gesture iteration is explicit and s
 - `services/gesture/tracking.py` owns normalized observations, hand landmarks, pose features and preview extraction.
 - `services/gesture/detection.py` owns temporal windows, candidate evaluation, primitive scoring, explicit `DetectionContext` construction, runtime-spec derivation from gesture contracts and conflict resolution.
 - `services/gesture/runtime.py` owns thread orchestration, lifecycle transport, cooldown, event publication and calibration-capture handoff, but not the semantic resolver logic. Its trajectory and two-hand motion state now live behind an internal lifecycle owner instead of scattered raw lists.
+- `services/gesture/runtime.py` additionally exposes sequence-shadow diagnostics by carrying per-frame pose channels in the live motion window and comparing supported gestures against the active profile set.
 - `services/gesture/push_runtime.py` remains the specialized push-state path and is not folded into a generic global FSM.
 - `services/gesture/contracts.py` remains the canonical gesture-definition source for runtime, tuning and docs.
-- `services/calibration.py` owns feedback collection, snapshotting, suggestion generation, apply and rollback semantics.
+- `services/gesture/sequence_features.py`, `services/gesture/sequence_profiles.py` and `services/gesture/sequence_matcher.py` are the dedicated sequence-matcher slice; they are reused by calibration, live runtime shadowing and offline benchmark tooling instead of duplicating DTW logic.
+- `services/calibration.py` owns feedback collection, snapshotting, suggestion generation, sequence-profile generation, active-profile activation and rollback semantics.
 
 Gesture configuration follows the same split: environment settings only provide layer-0 defaults, while persisted `GestureConfig` is the single active runtime source of truth once the service has loaded configuration.
 
@@ -53,9 +58,9 @@ The hardware-facing part of the service layer is also less opaque than before. `
 
 `voice.py` now also participates in the same semantic input path as gestures. Recognized transcripts are matched against configured commands, normalized to stable `voice.*` raw inputs and then handed to `services/input/orchestrator.py`, which can publish both `RawInputDetected` and `UIActionRequested` events.
 
-`calibration.py` is intentionally generic in lifecycle semantics and specific in current analysis strategy. It owns session state, accepted samples, heuristic threshold recommendations, reviewable gesture-config patch generation, profile persistence triggers and apply or rollback coordination. This keeps the feature inside the normal application boundary instead of drifting into scripts or offline tooling.
+`calibration.py` is intentionally generic in lifecycle semantics and specific in current analysis strategy. It owns session state, accepted samples, heuristic threshold recommendations, DTW profile extraction for supported dynamic gestures, reviewable gesture-config patch generation, profile persistence triggers and apply or rollback coordination. This keeps the feature inside the normal application boundary instead of drifting into scripts or offline tooling.
 
-The offline cycle-analysis modules deserve separate mention: `services/gesture/offline/push_cycle_analysis.py` and `services/gesture/offline/swipe_cycle_analysis.py` are not live runtime services in the same sense as `services/gesture/runtime.py` or `voice.py`. They serve tuner, benchmark and validation workflows and now sit with the rest of the gesture subsystem instead of the flat top-level `services/` namespace.
+The offline cycle-analysis modules deserve separate mention: `services/gesture/offline/push_cycle_analysis.py` and `services/gesture/offline/swipe_cycle_analysis.py` are not live runtime services in the same sense as `services/gesture/runtime.py` or `voice.py`. They serve tuner, benchmark and validation workflows and now sit with the rest of the gesture subsystem instead of the flat top-level `services/` namespace. The same is now true for the sequence matcher helpers, which are shared by calibration, shadow mode and the offline A/B benchmark path.
 
 The important architectural correction inside `services/gesture/detection.py` is that primitive-specific thresholds are no longer decorative. Required primitives are now resolved against each primitive's configured threshold with a configurable global floor, which makes threshold tuning and calibration suggestions materially affect runtime decisions. The runtime analysis path now also has an explicit derived context object and contract-derived runtime specs, so detector internals can evolve without pushing orchestration state back into `runtime.py`.
 

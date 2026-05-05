@@ -38,8 +38,11 @@ import {
   findWidgetAtCell,
   formatApiErrorMessage,
   getDefaultFocus,
+  getFocusStateForWidget,
   getWidgetDisplayTitle,
   patchWidgetSettings,
+  removeWidget,
+  resizeWidget,
   upsertWidget,
 } from '../../utils/layout'
 import {
@@ -237,13 +240,13 @@ const focusedLabel = computed(() => {
 
 const nextHint = computed(() => {
   if (isArrangeMode.value) {
-    return 'Swipes verschieben das selektierte Widget, Zoom skaliert es, Circle oder Langklick beendet den ArrangeMode.'
+    return 'Swipes verschieben das selektierte Widget, Zoom skaliert es. Die Kartenbuttons vergroessern, verkleinern oder entfernen Widgets direkt.'
   }
   if (shopVisible.value) {
     return 'Mit Enter oder der Klick-Geste wird das aktuell gewaehlte Shop-Widget in die leere Fokuszelle gesetzt.'
   }
   if (focusedWidget.value) {
-    return 'Langklick aktiviert den ArrangeMode fuer das fokussierte Widget. Circle oeffnet oder schliesst den Shop.'
+    return 'Langklick aktiviert den ArrangeMode fuer das fokussierte Widget. Die Kartenbuttons skalieren oder entfernen das Widget, Circle oeffnet oder schliesst den Shop.'
   }
   return 'Swipes bewegen den Fokus. Klick oeffnet fuer leere Felder den Shop.'
 })
@@ -998,6 +1001,37 @@ function handleFocusWidget(payload: { widgetId: string; row: number; col: number
   focusedState.value = createFocusState(payload.row, payload.col, activeWidgets.value)
 }
 
+function handleResizeWidget(payload: { widgetId: string; mode: 'expand' | 'shrink' }): void {
+  if (isCalibrationMode.value || isCommandSettingsMode.value) {
+    return
+  }
+
+  const nextWidgets = resizeWidget(activeWidgets.value, payload.widgetId, payload.mode)
+  if (nextWidgets === activeWidgets.value) {
+    return
+  }
+
+  activeWidgets.value = nextWidgets
+  selectedWidgetId.value = payload.widgetId
+  focusedState.value = getFocusStateForWidget(activeWidgets.value, payload.widgetId)
+  void persistLayout()
+}
+
+function handleDeleteWidget(payload: { widgetId: string }): void {
+  if (isCalibrationMode.value || isCommandSettingsMode.value) {
+    return
+  }
+
+  const nextWidgets = removeWidget(activeWidgets.value, payload.widgetId)
+  if (nextWidgets === activeWidgets.value) {
+    return
+  }
+
+  activeWidgets.value = nextWidgets
+  syncFocus()
+  void persistLayout()
+}
+
 const handleAddWidget = ({ widgetType }: { widgetType: string }) => {
   if (isCalibrationMode.value) {
     return
@@ -1199,6 +1233,8 @@ onBeforeUnmount(() => {
       :is-arrange-mode="isArrangeMode"
       @focus-cell="handleFocusCell"
       @focus-widget="handleFocusWidget"
+      @resize-widget="handleResizeWidget"
+      @delete-widget="handleDeleteWidget"
     />
   </div>
 </template>

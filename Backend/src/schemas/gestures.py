@@ -46,6 +46,12 @@ class GestureStatusResponse(BaseModel):
     tracking_quality: float | None = Field(default=None, ge=0, le=1)
     active_phase: Literal["idle", "preparing", "holding", "committing", "releasing", "cooldown"] | None = None
     candidate_scores: dict[str, float] = Field(default_factory=dict)
+    sequence_scores: dict[str, float] = Field(default_factory=dict)
+    sequence_distances: dict[str, float] = Field(default_factory=dict)
+    sequence_margins: dict[str, float] = Field(default_factory=dict)
+    sequence_profile_ids: dict[str, str] = Field(default_factory=dict)
+    sequence_shadow_mode: bool = False
+    sequence_matching_enabled: bool = False
     reject_reason: str | None = None
     spec_id: str | None = None
     dominant_hand_pose: str | None = None
@@ -156,6 +162,12 @@ class GestureConfig(BaseModel):
     resolver_candidate_primitive_weight: float = Field(default=settings.GESTURE_RESOLVER_CANDIDATE_PRIMITIVE_WEIGHT, ge=0, le=1)
     resolver_candidate_phase_weight: float = Field(default=settings.GESTURE_RESOLVER_CANDIDATE_PHASE_WEIGHT, ge=0, le=1)
     resolver_required_primitive_min_score: float = Field(default=settings.GESTURE_RESOLVER_REQUIRED_PRIMITIVE_MIN_SCORE, ge=0, le=1)
+    sequence_matching_enabled: bool = settings.GESTURE_SEQUENCE_MATCHING_ENABLED
+    sequence_shadow_mode: bool = settings.GESTURE_SEQUENCE_SHADOW_MODE
+    sequence_resample_points: int = Field(default=settings.GESTURE_SEQUENCE_RESAMPLE_POINTS, ge=4, le=128)
+    sequence_window: int = Field(default=settings.GESTURE_SEQUENCE_WINDOW, ge=1, le=64)
+    sequence_min_margin: float = Field(default=settings.GESTURE_SEQUENCE_MIN_MARGIN, ge=0, le=10)
+    sequence_score_weight: float = Field(default=settings.GESTURE_SEQUENCE_SCORE_WEIGHT, ge=0, le=1)
     candidate_horizontal_dominance_ratio: float = Field(default=settings.GESTURE_CANDIDATE_HORIZONTAL_DOMINANCE_RATIO, gt=0, le=10)
     candidate_horizontal_max_off_axis_span_ratio: float = Field(default=settings.GESTURE_CANDIDATE_HORIZONTAL_MAX_OFF_AXIS_SPAN_RATIO, gt=0, le=10)
     candidate_horizontal_max_off_axis_motion_ratio: float = Field(default=settings.GESTURE_CANDIDATE_HORIZONTAL_MAX_OFF_AXIS_MOTION_RATIO, gt=0, le=10)
@@ -269,6 +281,9 @@ class GestureConfig(BaseModel):
             "resolver_candidate_primitive_weight": self.resolver_candidate_primitive_weight,
             "resolver_candidate_phase_weight": self.resolver_candidate_phase_weight,
             "resolver_required_primitive_min_score": self.resolver_required_primitive_min_score,
+            "sequence_matching_enabled": self.sequence_matching_enabled,
+            "sequence_min_margin": self.sequence_min_margin,
+            "sequence_score_weight": self.sequence_score_weight,
         }
 
 

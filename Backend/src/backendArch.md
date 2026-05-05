@@ -24,9 +24,11 @@ The backend remains a modular monolith. The major architectural step in this sna
 - the gesture subsystem now lives directly under `services/gesture/` instead of a flat compatibility layer.
 - `services/gesture/runtime.py` owns live gesture orchestration, while `services/gesture/detection.py`, `services/gesture/tracking.py`, `services/gesture/contracts.py` and `services/gesture/push_runtime.py` carry the extracted gesture-specific logic.
 - `services/gesture/offline/` contains the tuner-facing cycle analysis for swipe and push validation runs.
+- `services/gesture/sequence_features.py`, `services/gesture/sequence_profiles.py` and `services/gesture/sequence_matcher.py` now add the new DTW-based sequence path for swipe-family and circle comparison.
 - `services/calibration.py` owns active calibration sessions, accepted sample capture, heuristic analysis, apply, rollback and discard.
+- calibration analysis now produces both heuristic config recommendations and a persisted gesture-sequence profile set that can be activated independently of the normal `GestureConfig` thresholds.
 - `services/input/orchestrator.py` is now the canonical location of the shared input-to-command path that gestures, voice and musical audio use.
-- `repositories/config.py` persists both normal config and calibration artifacts.
+- `repositories/config.py` persists both normal config and calibration artifacts, including the active gesture sequence profile set used by runtime shadow matching.
 - `api/system_endpoints.py` exposes the full calibration lifecycle over HTTP.
 - `core/realtime.py` carries calibration feedback over the same websocket channel as the existing interaction events.
 
@@ -37,7 +39,9 @@ For the current gesture consolidation iteration, the intended backend ownership 
 - `services/gesture/tracking.py` provides normalized runtime observations and pose features.
 - `services/gesture/detection.py` is the only backend owner of candidate evaluation, gesture arbitration, pose gating, explicit detection context assembly and contract-derived runtime specs.
 - `services/gesture/runtime.py` stays an orchestration boundary for the live loop, cooldowns, publication and capture integration; trajectory and two-hand histories are now hidden behind an internal lifecycle owner with post-fire grace handling.
+- `services/gesture/runtime.py` also carries the sequence-shadow bridge: live motion windows are turned into compact sequence artifacts and compared against the active profile set without forcing production promotion.
 - `services/gesture/push_runtime.py` remains a separate specialized push detector.
+- `services/gesture/sequence_profiles.py` is the only owner of calibration-to-profile conversion, while `services/gesture/sequence_matcher.py` owns DTW distance evaluation against those saved references.
 - `services/gesture/contracts.py` remains the canonical gesture-definition source; runtime specs may only be derived from it.
 - `services/calibration.py` stays the feedback-loop owner for reviewable changes, apply and rollback. Its analysis now emits an explicit `gesture_config_patch` instead of relying only on a mutable candidate snapshot.
 

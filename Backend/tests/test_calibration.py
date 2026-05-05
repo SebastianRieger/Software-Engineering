@@ -1,20 +1,27 @@
 import asyncio
+import json
 from datetime import datetime, timezone
 
 import pytest
 
 from core.config import settings
-from core.database import init_db
+from core.database import get_db_connection, init_db
 from core.realtime import realtime_hub
 from main import websocket_endpoint
 from repositories.config import ConfigRepository
 from schemas.calibration import (
     CalibrationAdvisoryRecognition,
+    CalibrationAnalysisResult,
     CalibrationSessionCreateRequest,
     CalibrationAppliedSnapshot,
     CalibrationConfigSnapshot,
     CalibrationCollectedSample,
     CalibrationProfile,
+    CalibrationTargetAnalysis,
+    GestureSequenceArtifact,
+    GestureSequenceFrame,
+    GestureSequenceProfile,
+    GestureSequenceProfileSet,
     CalibrationSessionRecord,
     CalibrationTargetProgress,
     GestureCalibrationSamplePayload,
@@ -93,6 +100,49 @@ def make_swipe_sample(target_id: str, *, confidence: float = 0.92) -> Calibratio
     )
 
 
+def make_sequence_profile_set(*, gesture: str = "swipe_right") -> GestureSequenceProfileSet:
+    return GestureSequenceProfileSet(
+        generated_at=datetime(2026, 4, 28, 12, 0, tzinfo=timezone.utc),
+        resample_points=24,
+        window=6,
+        channel_names=[
+            "x",
+            "y",
+            "velocity_x",
+            "velocity_y",
+            "hand_openness",
+            "index_extension_ratio",
+            "push_depth",
+            "center_distance",
+        ],
+        profiles=[
+            GestureSequenceProfile(
+                profile_id=f"{gesture}:primary",
+                gesture=gesture,
+                source_sample_ids=[f"sample-{gesture}-1", f"sample-{gesture}-2"],
+                medoid_sample_id=f"sample-{gesture}-1",
+                distance_threshold=0.62,
+                median_distance=0.18,
+                p90_distance=0.24,
+                sequence=GestureSequenceArtifact(
+                    point_count=3,
+                    frame_count=3,
+                    anchor_index=0,
+                    anchor_phase="preparing",
+                    origin_x=0.5,
+                    origin_y=0.5,
+                    normalized_by_hand_size=True,
+                    frames=[
+                        GestureSequenceFrame(t=0.0, x=0.0, y=0.0, active_phase="preparing"),
+                        GestureSequenceFrame(t=0.1, x=0.8, y=0.0, velocity_x=8.0, velocity_y=0.0, active_phase="committing"),
+                        GestureSequenceFrame(t=0.2, x=1.6, y=0.0, velocity_x=8.0, velocity_y=0.0, active_phase="releasing"),
+                    ],
+                ),
+            )
+        ],
+    )
+
+
 def test_config_repository_round_trips_calibration_session(tmp_path):
     repo = build_calibration_repo(tmp_path)
     captured_at = datetime(2026, 4, 28, 12, 0, tzinfo=timezone.utc)
@@ -135,6 +185,20 @@ def test_config_repository_round_trips_calibration_session(tmp_path):
                         radius_cv=0.11,
                         total_sweep=0.12,
                     ),
+                    sequence=GestureSequenceArtifact(
+                        point_count=3,
+                        frame_count=3,
+                        anchor_index=0,
+                        anchor_phase="preparing",
+                        origin_x=0.5,
+                        origin_y=0.5,
+                        normalized_by_hand_size=True,
+                        frames=[
+                            GestureSequenceFrame(t=0.0, x=0.0, y=0.0, active_phase="preparing"),
+                            GestureSequenceFrame(t=0.1, x=-0.8, y=0.0, velocity_x=-8.0, velocity_y=0.0, active_phase="committing"),
+                            GestureSequenceFrame(t=0.2, x=-1.6, y=0.0, velocity_x=-8.0, velocity_y=0.0, active_phase="releasing"),
+                        ],
+                    ),
                 ),
             )
         ],
@@ -158,23 +222,74 @@ def test_config_repository_round_trips_calibration_session(tmp_path):
     assert loaded_session.profile == "demo-user"
     assert loaded_session.samples[0].gesture_payload is not None
     assert loaded_session.samples[0].gesture_payload.gesture == "swipe_left"
+    assert loaded_session.samples[0].gesture_payload.sequence is not None
+    assert loaded_session.samples[0].gesture_payload.sequence.frames[1].x == pytest.approx(-0.8)
     assert listed_sessions[0].session_id == "gesture-session-1"
+
+
+def test_config_repository_loads_legacy_calibration_session_without_sequence_fields(tmp_path):
+    repo = build_calibration_repo(tmp_path)
+    captured_at = datetime(2026, 4, 28, 12, 0, tzinfo=timezone.utc)
+    session = CalibrationSessionRecord(
+        session_id="legacy-gesture-session",
+        modality="gesture",
+        profile="demo-user",
+        status="collecting",
+        target_repetitions=4,
+        selected_targets=["swipe_left"],
+        created_at=captured_at,
+        updated_at=captured_at,
+        original_snapshot=CalibrationConfigSnapshot(
+            modality="gesture",
+            profile="demo-user",
+            captured_at=captured_at,
+            gesture_config=GestureConfig(),
+        ),
+        samples=[make_swipe_sample("swipe_left")],
+    )
+
+    payload = session.model_dump(mode="json", exclude_none=True)
+    payload["samples"][0]["gesture_payload"].pop("sequence", None)
+    payload["original_snapshot"].pop("gesture_sequence_profile_set", None)
+
+    with get_db_connection() as connection:
+        connection.execute(
+            """
+            INSERT INTO app_config (config_key, payload, updated_at)
+            VALUES (?, ?, ?)
+            """,
+            (
+                "calibration:session:legacy-gesture-session",
+                json.dumps(payload),
+                captured_at.isoformat(),
+            ),
+        )
+
+    loaded_session = repo.get_calibration_session("legacy-gesture-session")
+
+    assert loaded_session is not None
+    assert loaded_session.samples[0].gesture_payload is not None
+    assert loaded_session.samples[0].gesture_payload.sequence is None
+    assert loaded_session.original_snapshot.gesture_sequence_profile_set is None
 
 
 def test_config_repository_round_trips_calibration_profiles_and_snapshots(tmp_path):
     repo = build_calibration_repo(tmp_path)
     captured_at = datetime(2026, 4, 28, 12, 0, tzinfo=timezone.utc)
+    sequence_profile_set = make_sequence_profile_set()
     original_snapshot = CalibrationConfigSnapshot(
         modality="gesture",
         profile="default",
         captured_at=captured_at,
         gesture_config=GestureConfig(swipe_threshold=0.18),
+        gesture_sequence_profile_set=None,
     )
     applied_snapshot = CalibrationConfigSnapshot(
         modality="gesture",
         profile="default",
         captured_at=captured_at,
         gesture_config=GestureConfig(swipe_threshold=0.14, circle_sweep_min=4.5),
+        gesture_sequence_profile_set=sequence_profile_set,
     )
     profile = CalibrationProfile(
         modality="gesture",
@@ -182,6 +297,7 @@ def test_config_repository_round_trips_calibration_profiles_and_snapshots(tmp_pa
         source_session_id="gesture-session-1",
         saved_at=captured_at,
         gesture_config=applied_snapshot.gesture_config,
+        gesture_sequence_profile_set=sequence_profile_set,
     )
     snapshot = CalibrationAppliedSnapshot(
         modality="gesture",
@@ -196,15 +312,84 @@ def test_config_repository_round_trips_calibration_profiles_and_snapshots(tmp_pa
     saved_snapshot = repo.save_last_applied_calibration_snapshot(snapshot)
     loaded_profile = repo.get_calibration_profile("gesture", "default")
     loaded_snapshot = repo.get_last_applied_calibration_snapshot("gesture", "default")
+    saved_active_profile_set = repo.save_active_gesture_sequence_profile_set(sequence_profile_set)
+    loaded_active_profile_set = repo.get_active_gesture_sequence_profile_set()
 
     assert saved_profile.saved_at >= captured_at
     assert saved_snapshot.captured_at >= captured_at
+    assert saved_active_profile_set is not None
     assert loaded_profile is not None
     assert loaded_profile.gesture_config is not None
     assert loaded_profile.gesture_config.swipe_threshold == 0.14
+    assert loaded_profile.gesture_sequence_profile_set is not None
+    assert loaded_profile.gesture_sequence_profile_set.profiles[0].profile_id == "swipe_right:primary"
     assert loaded_snapshot is not None
     assert loaded_snapshot.original_snapshot.gesture_config is not None
     assert loaded_snapshot.original_snapshot.gesture_config.swipe_threshold == 0.18
+    assert loaded_snapshot.applied_snapshot.gesture_sequence_profile_set is not None
+    assert loaded_snapshot.applied_snapshot.gesture_sequence_profile_set.profiles[0].gesture == "swipe_right"
+    assert loaded_active_profile_set is not None
+    assert loaded_active_profile_set.profiles[0].medoid_sample_id == "sample-swipe_right-1"
+
+
+def test_apply_and_rollback_session_updates_active_sequence_profile_set(tmp_path):
+    repo = build_calibration_repo(tmp_path)
+    service = build_calibration_service(tmp_path)
+    captured_at = datetime(2026, 4, 28, 12, 0, tzinfo=timezone.utc)
+    sequence_profile_set = make_sequence_profile_set()
+    session = CalibrationSessionRecord(
+        session_id="analysis-session-1",
+        modality="gesture",
+        profile="default",
+        status="analysis_ready",
+        target_repetitions=4,
+        selected_targets=["swipe_right"],
+        created_at=captured_at,
+        updated_at=captured_at,
+        original_snapshot=CalibrationConfigSnapshot(
+            modality="gesture",
+            profile="default",
+            captured_at=captured_at,
+            gesture_config=GestureConfig(sequence_matching_enabled=False, swipe_threshold=0.18),
+            gesture_sequence_profile_set=None,
+        ),
+        candidate_snapshot=CalibrationConfigSnapshot(
+            modality="gesture",
+            profile="default",
+            captured_at=captured_at,
+            gesture_config=GestureConfig(sequence_matching_enabled=False, swipe_threshold=0.12),
+            gesture_sequence_profile_set=sequence_profile_set,
+        ),
+        analysis=CalibrationAnalysisResult(
+            modality="gesture",
+            generated_at=captured_at,
+            targets=[
+                CalibrationTargetAnalysis(
+                    target_id="swipe_right",
+                    sample_count=2,
+                )
+            ],
+            candidate_gesture_config=GestureConfig(sequence_matching_enabled=False, swipe_threshold=0.12),
+            gesture_sequence_profile_set=sequence_profile_set,
+        ),
+    )
+    repo.save_calibration_session(session)
+
+    applied_session, applied_profile = service.apply_session("analysis-session-1")
+    active_sequence_profile_set = repo.get_active_gesture_sequence_profile_set()
+
+    assert applied_session.status == "applied"
+    assert applied_profile.gesture_sequence_profile_set is not None
+    assert applied_profile.gesture_sequence_profile_set.profiles[0].profile_id == "swipe_right:primary"
+    assert active_sequence_profile_set is not None
+    assert active_sequence_profile_set.profiles[0].gesture == "swipe_right"
+
+    rolled_back_session, rollback_snapshot = service.rollback_session("analysis-session-1")
+    active_sequence_profile_set_after_rollback = repo.get_active_gesture_sequence_profile_set()
+
+    assert rolled_back_session.status == "rolled_back"
+    assert rollback_snapshot.applied_snapshot.gesture_sequence_profile_set is not None
+    assert active_sequence_profile_set_after_rollback is None
 
 
 def test_calibration_startup_cancels_stale_collecting_sessions(tmp_path):

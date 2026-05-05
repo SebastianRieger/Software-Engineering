@@ -15,6 +15,8 @@ const props = defineProps<{
 const emit = defineEmits<{
   focusCell: [payload: { row: number; col: number }]
   focusWidget: [payload: { widgetId: string; row: number; col: number }]
+  resizeWidget: [payload: { widgetId: string; mode: 'expand' | 'shrink' }]
+  deleteWidget: [payload: { widgetId: string }]
 }>()
 
 const cells = computed(() => {
@@ -36,6 +38,10 @@ function widgetStyle(row: number, col: number, rowSpan: number, colSpan: number)
     gridColumn: `${col} / span ${colSpan}`,
     gridRow: `${row} / span ${rowSpan}`,
   }
+}
+
+function showWidgetActions(widgetId: string): boolean {
+  return props.selectedWidgetId === widgetId || props.focusedCell.widgetId === widgetId
 }
 </script>
 
@@ -69,8 +75,42 @@ function widgetStyle(row: number, col: number, rowSpan: number, colSpan: number)
         @click.stop="emit('focusWidget', { widgetId: widget.widget_id, row: widget.row, col: widget.col })"
       >
         <header class="widget-meta">
-          <span class="widget-title">{{ widget.title ?? widget.widget_type }}</span>
-          <span class="widget-size">{{ widget.row_span }}x{{ widget.col_span }}</span>
+          <div class="widget-heading">
+            <span class="widget-title">{{ widget.title ?? widget.widget_type }}</span>
+            <span class="widget-size">{{ widget.row_span }}x{{ widget.col_span }}</span>
+          </div>
+
+          <div v-if="showWidgetActions(widget.widget_id)" class="widget-actions">
+            <button
+              type="button"
+              class="widget-action"
+              data-action="resize-shrink"
+              title="Widget verkleinern"
+              @click.stop="emit('resizeWidget', { widgetId: widget.widget_id, mode: 'shrink' })"
+            >
+              -
+            </button>
+
+            <button
+              type="button"
+              class="widget-action"
+              data-action="resize-expand"
+              title="Widget vergroessern"
+              @click.stop="emit('resizeWidget', { widgetId: widget.widget_id, mode: 'expand' })"
+            >
+              +
+            </button>
+
+            <button
+              type="button"
+              class="widget-action is-danger"
+              data-action="delete-widget"
+              title="Widget entfernen"
+              @click.stop="emit('deleteWidget', { widgetId: widget.widget_id })"
+            >
+              x
+            </button>
+          </div>
         </header>
 
         <component
@@ -160,11 +200,19 @@ function widgetStyle(row: number, col: number, rowSpan: number, colSpan: number)
   display: flex;
   justify-content: space-between;
   align-items: center;
+  gap: 12px;
   padding: 12px 14px 8px;
   color: rgba(226, 232, 240, 0.9);
   font-size: 0.78rem;
   letter-spacing: 0.06em;
   text-transform: uppercase;
+}
+
+.widget-heading {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
 }
 
 .widget-title {
@@ -175,6 +223,39 @@ function widgetStyle(row: number, col: number, rowSpan: number, colSpan: number)
 
 .widget-size {
   opacity: 0.7;
+}
+
+.widget-actions {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.widget-action {
+  width: 28px;
+  height: 28px;
+  border: 1px solid rgba(226, 232, 240, 0.16);
+  border-radius: 999px;
+  background: rgba(15, 23, 42, 0.72);
+  color: rgba(248, 250, 252, 0.92);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  font-size: 0.9rem;
+  line-height: 1;
+  transition: transform 120ms ease, border-color 120ms ease, background 120ms ease;
+}
+
+.widget-action:hover {
+  transform: translateY(-1px);
+  border-color: rgba(248, 250, 252, 0.4);
+  background: rgba(30, 41, 59, 0.92);
+}
+
+.widget-action.is-danger:hover {
+  border-color: rgba(248, 113, 113, 0.58);
+  background: rgba(127, 29, 29, 0.9);
 }
 
 .widget-body {

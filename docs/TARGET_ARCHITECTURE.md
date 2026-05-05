@@ -107,6 +107,7 @@ flowchart LR
 - dieselbe persistierte `GestureConfig` soll auch die verbleibenden Live- und Offline-Heuristiken tragen: Push-Pose-Checks, Offline-Zyklussegmentierung, Primitive-Schwellen, Resolver-Gewichte und Kandidaten-Geometriegates
 - dieselben Runtime-Specs sollen an explizite, dokumentierte Gesture-Contracts fuer Startpose, Bewegungsprofil und Endpose gekoppelt bleiben, damit neue Trainings- und Tuning-Videos dieselbe Definition wie die Nutzerdokumentation verwenden
 - Gestenereignisse und Statusantworten sollen neben dem Gestentyp auch Confidence, Tracking-Herkunft, Phase, Candidate-Scores, Reject-Reason, Spec-ID und Primitive-Hits transportieren koennen
+- fuer Swipe-Familie und `circle` soll ein separater Sequence-Matcher auf Basis kompakter per-frame Artefakte und DTW-Profilen laufen; Profile bleiben getrennt von der normalen `GestureConfig` aktivierbar und muessen erst im Shadow-Modus belastbar sein, bevor sie produktiv gewichtet werden
 - Laufzeitfehler der Kamera- oder Adapterpfade muessen im Statusmodell sichtbar bleiben und bei transienten Lesefehlern kontrolliert abgefangen werden
 - semantische UI-Aktionsauflosung soll nicht in einem modality-spezifischen Runtime-Service verankert bleiben, sondern ueber eine gemeinsame Input-Orchestrierung fuer Gesten, Voice und spaetere weitere Quellen laufen
 - ENV-Werte liefern nur die Startdefaults; die persistierte `GestureConfig` bleibt die einzige aktive Laufzeitquelle fuer Gestenparameter
@@ -120,10 +121,13 @@ flowchart LR
 - `services/gesture/push_runtime.py` kapselt den Push-Klick-Zustandsautomaten getrennt von allgemeiner Gesture-Arbitration
 - `services/gesture/runtime.py` orchestriert Tracking, Cooldown, Event-Publishing und Kalibrierungs-Snapshots; die eigentliche Begruendung einer Erkennung bleibt in Detection- und Push-Runtime-Schicht
 - `services/gesture/runtime.py` orchestriert Tracking, Cooldown, Event-Publishing und Kalibrierungs-Snapshots; sein Bewegungs- und Two-Hand-Lifecycle liegt hinter einem eigenen internen Owner mit Post-Fire-Grace statt in frei mutierten Listen
+- `services/gesture/sequence_features.py`, `services/gesture/sequence_profiles.py` und `services/gesture/sequence_matcher.py` bilden den wiederverwendbaren Sequence-Pfad fuer Kalibrierung, Shadow-Matching und Offline-Benchmarking
 - `services/gesture/offline/` haelt Swipe- und Push-Zyklusanalysen fuer Video-Tuning, Benchmarking und Validierungslaeufe getrennt von der Live-Runtime
 - Kalibrierungssamples enthalten jetzt neben Trajectory-, Push- und Zoom-Metriken auch Pose-Snapshots und echte Temporal-Window-Werte fuer spaetere Schwellwertanalyse
+- Kalibrierungssamples fuer dynamische Einhandgesten sollen zusaetzlich kompakte Sequence-Artefakte liefern; Apply und Rollback muessen das aktive Profilset getrennt von Schwellwert-Patches wiederherstellen koennen
 - die Kalibrierungsanalyse soll reviewbare Config-Patches erzeugen, aus denen Kandidaten-Snapshots, Apply und Rollback deterministisch abgeleitet werden koennen, statt nur ein mutiertes Kandidatenmodell weiterzureichen
 - Primitive-Detektion und Resolver duerfen nicht ueber getrennte versteckte Floors auseinanderlaufen; required primitives werden gegen primitive-spezifische Schwellen mit explizit konfigurierbarem globalem Mindestfloor bewertet
+- Offline-Tuner und Benchmark sollen Heuristik und Sequence-Matcher im selben Datensatz vergleichen und ein Promotion-Gate fuer den Wechsel von Shadow zu produktiver Gewichtung liefern
 
 ### Nicht-Ziele Dieser Iteration
 
@@ -132,6 +136,7 @@ flowchart LR
 - keine per-User aktive Live-Config fuer Gesten
 - kein externer Event-Broker oder Broker-zentrierter Umbau
 - kein automatisches Modelltraining oder selbsttaetiges Ueberschreiben der Live-Config
+- Push- und Zwei-Hand-Zoom bleiben vorerst spezialisierte Pfade und werden in dieser Iteration nicht in den neuen Sequence-Matcher gezwungen
 
 ### Konfigurationsdomänen
 

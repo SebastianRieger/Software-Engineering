@@ -67,3 +67,6 @@ pip-delete-this-directory.txt
 
 # Frontend
 */node_modules
+
+# Graphify generated artifacts
+graphify-out/

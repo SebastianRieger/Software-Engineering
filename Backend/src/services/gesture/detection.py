@@ -100,6 +100,10 @@ class GestureRuntimeAnalysis:
     active_phase: GesturePhase
     tracking_quality: float
     candidate_scores: dict[str, float]
+    sequence_scores: dict[str, float]
+    sequence_distances: dict[str, float]
+    sequence_margins: dict[str, float]
+    sequence_profile_ids: dict[str, str]
     reject_reason: str | None
     spec_id: str | None
     dominant_hand_pose: str | None
@@ -795,7 +799,18 @@ def analyze_runtime_gesture(
     resolver_candidate_primitive_weight: float = settings.GESTURE_RESOLVER_CANDIDATE_PRIMITIVE_WEIGHT,
     resolver_candidate_phase_weight: float = settings.GESTURE_RESOLVER_CANDIDATE_PHASE_WEIGHT,
     resolver_required_primitive_min_score: float = settings.GESTURE_RESOLVER_REQUIRED_PRIMITIVE_MIN_SCORE,
+    sequence_matching_enabled: bool = settings.GESTURE_SEQUENCE_MATCHING_ENABLED,
+    sequence_scores: dict[str, float] | None = None,
+    sequence_profile_ids: dict[str, str] | None = None,
+    sequence_distances: dict[str, float] | None = None,
+    sequence_margins: dict[str, float] | None = None,
+    sequence_min_margin: float = settings.GESTURE_SEQUENCE_MIN_MARGIN,
+    sequence_score_weight: float = settings.GESTURE_SEQUENCE_SCORE_WEIGHT,
 ) -> GestureRuntimeAnalysis:
+    resolved_sequence_scores = dict(sequence_scores or {})
+    resolved_sequence_profile_ids = dict(sequence_profile_ids or {})
+    resolved_sequence_distances = dict(sequence_distances or {})
+    resolved_sequence_margins = dict(sequence_margins or {})
     context = build_detection_context(
         trajectory=trajectory,
         trajectory_timestamps=trajectory_timestamps,
@@ -922,7 +937,32 @@ def analyze_runtime_gesture(
             + combined_primitive_score * resolver_candidate_primitive_weight
             + phase_score * hand_score * resolver_candidate_phase_weight,
         )
+        sequence_score = resolved_sequence_scores.get(candidate.gesture)
+        sequence_margin = resolved_sequence_margins.get(candidate.gesture)
+        if (
+            sequence_matching_enabled
+            and sequence_score is not None
+            and (sequence_margin is None or sequence_margin >= sequence_min_margin)
+        ):
+            total_score = min(
+                1.0,
+                total_score * max(0.0, 1.0 - sequence_score_weight)
+                + sequence_score * sequence_score_weight,
+            )
         candidate_scores[candidate.gesture] = round(total_score, 4)
+        if sequence_score is not None:
+            candidate.metrics["sequence_score"] = round(sequence_score, 4)
+        if candidate.gesture in resolved_sequence_profile_ids:
+            candidate.metrics["sequence_profile_id"] = resolved_sequence_profile_ids[candidate.gesture]
+        if candidate.gesture in resolved_sequence_distances:
+            candidate.metrics["sequence_distance"] = round(
+                resolved_sequence_distances[candidate.gesture],
+                4,
+            )
+        if sequence_margin is not None:
+            candidate.metrics["sequence_margin"] = round(sequence_margin, 4)
+            if sequence_matching_enabled and sequence_margin < sequence_min_margin:
+                candidate.metrics["sequence_margin_blocked"] = True
 
         reject_reason = None
         if not (spec.min_hand_count <= hand_count <= spec.max_hand_count):
@@ -991,6 +1031,10 @@ def analyze_runtime_gesture(
             active_phase=context.temporal_window.phase,
             tracking_quality=context.tracking_quality,
             candidate_scores=candidate_scores,
+            sequence_scores=resolved_sequence_scores,
+            sequence_distances=resolved_sequence_distances,
+            sequence_margins=resolved_sequence_margins,
+            sequence_profile_ids=resolved_sequence_profile_ids,
             reject_reason=None,
             spec_id=best_detection.spec_id,
             dominant_hand_pose=context.dominant_hand_pose,
@@ -1002,6 +1046,10 @@ def analyze_runtime_gesture(
         active_phase=context.temporal_window.phase,
         tracking_quality=context.tracking_quality,
         candidate_scores=candidate_scores,
+        sequence_scores=resolved_sequence_scores,
+        sequence_distances=resolved_sequence_distances,
+        sequence_margins=resolved_sequence_margins,
+        sequence_profile_ids=resolved_sequence_profile_ids,
         reject_reason=best_reject_reason,
         spec_id=best_reject_spec_id,
         dominant_hand_pose=context.dominant_hand_pose,

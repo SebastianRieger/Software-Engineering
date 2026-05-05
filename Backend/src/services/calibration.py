@@ -33,6 +33,7 @@ from schemas.calibration import (
     CalibrationTargetProgress,
 )
 from schemas.gestures import GestureConfig
+from services.gesture.sequence_profiles import build_sequence_profile_set
 
 
 class CalibrationServiceError(Exception):
@@ -306,6 +307,7 @@ class CalibrationService:
                 profile=request.profile,
                 captured_at=now,
                 gesture_config=repository.get_gesture_config(),
+                gesture_sequence_profile_set=repository.get_active_gesture_sequence_profile_set(),
             ),
             progress=[
                 CalibrationTargetProgress(
@@ -533,6 +535,7 @@ class CalibrationService:
             profile=session.profile,
             captured_at=now,
             gesture_config=analysis.candidate_gesture_config,
+            gesture_sequence_profile_set=analysis.gesture_sequence_profile_set,
             voice_config=analysis.candidate_voice_config,
         )
         session.active_target_id = None
@@ -564,6 +567,9 @@ class CalibrationService:
             raise CalibrationServiceError("Es liegt kein anwendbares Gestenprofil vor.", status_code=409)
 
         session.candidate_snapshot.gesture_config = candidate_gesture_config
+        session.candidate_snapshot.gesture_sequence_profile_set = (
+            session.analysis.gesture_sequence_profile_set if session.analysis is not None else None
+        )
 
         snapshot = repository.save_last_applied_calibration_snapshot(
             CalibrationAppliedSnapshot(
@@ -576,6 +582,9 @@ class CalibrationService:
             )
         )
         repository.save_gesture_config(candidate_gesture_config)
+        repository.save_active_gesture_sequence_profile_set(
+            session.candidate_snapshot.gesture_sequence_profile_set
+        )
         profile = repository.save_calibration_profile(
             CalibrationProfile(
                 modality=session.modality,
@@ -583,6 +592,7 @@ class CalibrationService:
                 source_session_id=session.session_id,
                 saved_at=_utc_now(),
                 gesture_config=candidate_gesture_config,
+                gesture_sequence_profile_set=session.candidate_snapshot.gesture_sequence_profile_set,
                 voice_config=session.candidate_snapshot.voice_config,
                 analysis=session.analysis,
             )
@@ -610,6 +620,9 @@ class CalibrationService:
             raise CalibrationServiceError("Rollback-Snapshot enthaelt keine Gestenkonfiguration.", status_code=409)
 
         repository.save_gesture_config(snapshot.original_snapshot.gesture_config)
+        repository.save_active_gesture_sequence_profile_set(
+            snapshot.original_snapshot.gesture_sequence_profile_set
+        )
         session.status = "rolled_back"
         session.rolled_back_at = _utc_now()
         repository.save_calibration_session(session)
@@ -780,12 +793,34 @@ class CalibrationService:
             target_analyses=target_analyses,
         )
         patched_candidate_config = _apply_gesture_config_patch(base_config, gesture_config_patch)
+        gesture_sequence_profile_set = build_sequence_profile_set(
+            session.samples,
+            resample_points=patched_candidate_config.sequence_resample_points,
+            window=patched_candidate_config.sequence_window,
+        )
+        if gesture_sequence_profile_set is not None:
+            profile_lookup = {
+                profile.gesture: profile for profile in gesture_sequence_profile_set.profiles
+            }
+            for target_analysis in target_analyses:
+                profile = profile_lookup.get(target_analysis.target_id)
+                if profile is None:
+                    continue
+                target_analysis.artifacts.update(
+                    {
+                        "sequence_profile_id": profile.profile_id,
+                        "sequence_sample_count": len(profile.source_sample_ids),
+                        "sequence_distance_threshold": profile.distance_threshold,
+                        "sequence_p90_distance": profile.p90_distance,
+                    }
+                )
 
         return CalibrationAnalysisResult(
             modality="gesture",
             generated_at=_utc_now(),
             targets=target_analyses,
             candidate_gesture_config=patched_candidate_config,
+            gesture_sequence_profile_set=gesture_sequence_profile_set,
             summary=f"Empfehlungen fuer {len(target_analyses)} Kalibrierungsziele berechnet.",
             gesture_config_patch=gesture_config_patch,
         )

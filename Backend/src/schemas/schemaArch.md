@@ -12,9 +12,11 @@ The schema layer now models two levels of input behavior:
 - static and runtime-facing contracts such as gesture config, gesture events and semantic UI actions
 - session-oriented calibration contracts such as target definitions, collected samples, progress, analysis results, apply and rollback responses
 
+The current gesture slice adds a third contract concern inside the same schema layer: compact sequence artifacts and persisted sequence profiles. Accepted gesture samples can now carry time-normalized per-frame sequence channels, calibration analysis can emit a `GestureSequenceProfileSet`, config snapshots can capture the active set for rollback and `GestureStatusResponse` can expose sequence-shadow diagnostics alongside the existing heuristic resolver output.
+
 The important architectural step is that calibration is modeled generically enough for a later second modality while staying concrete for the current gesture implementation. The lifecycle contracts are modality-neutral, while sample payloads, candidate config snapshots and now explicit reviewable config-patch contracts still carry gesture-specific fields where needed.
 
-`schemas/gestures.py` now carries a deliberately broad `GestureConfig` contract. It no longer models only coarse gesture thresholds, but also the runtime and offline tuning surfaces that actually steer gesture decisions: push-pose heuristics, offline cycle-segmentation gates, primitive pass thresholds, resolver weights, candidate-shape constraints and runtime lifecycle grace windows.
+`schemas/gestures.py` now carries a deliberately broad `GestureConfig` contract. It no longer models only coarse gesture thresholds, but also the runtime and offline tuning surfaces that actually steer gesture decisions: push-pose heuristics, offline cycle-segmentation gates, primitive pass thresholds, resolver weights, candidate-shape constraints, runtime lifecycle grace windows and the new sequence-shadow or promotion flags for DTW matching.
 
 ## Critical Assessment
 

@@ -231,6 +231,16 @@ export function patchWidgetSettings(activeWidgets: ActiveWidgetMap, widgetId: st
   }
 }
 
+export function removeWidget(activeWidgets: ActiveWidgetMap, widgetId: string): ActiveWidgetMap {
+  if (!activeWidgets[widgetId]) {
+    return activeWidgets
+  }
+
+  const nextWidgets = { ...activeWidgets }
+  delete nextWidgets[widgetId]
+  return nextWidgets
+}
+
 export function createFocusState(row: number, col: number, activeWidgets: ActiveWidgetMap): FocusState {
   const nextRow = clamp(row, 1, GRID_ROWS)
   const nextCol = clamp(col, 1, GRID_COLUMNS)

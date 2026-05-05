@@ -12,6 +12,12 @@ from fastapi import WebSocketDisconnect
 from core.config import settings
 from core.realtime import realtime_hub
 from main import websocket_endpoint
+from schemas.calibration import (
+    GestureSequenceArtifact,
+    GestureSequenceFrame,
+    GestureSequenceProfile,
+    GestureSequenceProfileSet,
+)
 from schemas.gestures import GestureConfig
 from schemas.interactions import InputActionConfig, InputActionMapping
 from services.gesture.detection import (
@@ -69,15 +75,20 @@ class StaticGestureConfigRepository:
         self,
         config: GestureConfig | None = None,
         input_action_config: InputActionConfig | None = None,
+        sequence_profile_set: GestureSequenceProfileSet | None = None,
     ):
         self.config = config or GestureConfig()
         self.input_action_config = input_action_config or InputActionConfig()
+        self.sequence_profile_set = sequence_profile_set
 
     def get_gesture_config(self):
         return self.config
 
     def get_input_action_config(self):
         return self.input_action_config
+
+    def get_active_gesture_sequence_profile_set(self):
+        return self.sequence_profile_set
 
 
 class MutableGestureConfigRepository(StaticGestureConfigRepository):
@@ -212,6 +223,49 @@ class FakeHandLandmarks:
 
 def filter_messages(messages, event_type: str):
     return [message for message in messages if message["eventType"] == event_type]
+
+
+def make_sequence_profile_set(gesture: str = "swipe_left") -> GestureSequenceProfileSet:
+    return GestureSequenceProfileSet(
+        generated_at=datetime(2026, 4, 28, 12, 0, tzinfo=timezone.utc),
+        resample_points=24,
+        window=6,
+        channel_names=[
+            "x",
+            "y",
+            "velocity_x",
+            "velocity_y",
+            "hand_openness",
+            "index_extension_ratio",
+            "push_depth",
+            "center_distance",
+        ],
+        profiles=[
+            GestureSequenceProfile(
+                profile_id=f"{gesture}:primary",
+                gesture=gesture,
+                source_sample_ids=[f"sample-{gesture}-1", f"sample-{gesture}-2"],
+                medoid_sample_id=f"sample-{gesture}-1",
+                distance_threshold=100.0,
+                median_distance=0.16,
+                p90_distance=0.22,
+                sequence=GestureSequenceArtifact(
+                    point_count=3,
+                    frame_count=3,
+                    anchor_index=0,
+                    anchor_phase="preparing",
+                    origin_x=0.2,
+                    origin_y=0.5,
+                    normalized_by_hand_size=True,
+                    frames=[
+                        GestureSequenceFrame(t=0.0, x=0.0, y=0.0, active_phase="preparing"),
+                        GestureSequenceFrame(t=0.1, x=0.75, y=0.0, velocity_x=7.5, velocity_y=0.0, hand_openness=0.3, index_extension_ratio=1.2, center_distance=0.14, active_phase="committing"),
+                        GestureSequenceFrame(t=0.2, x=1.5, y=0.0, velocity_x=7.5, velocity_y=0.0, hand_openness=0.3, index_extension_ratio=1.2, center_distance=0.14, active_phase="releasing"),
+                    ],
+                ),
+            )
+        ],
+    )
 
 
 def build_push_landmarks():
@@ -1100,6 +1154,76 @@ def test_append_active_calibration_capture_frame_accepts_normalized_landmark_dic
     assert len(service._active_calibration_capture.frames) == 1
 
 
+def test_stop_calibration_take_capture_builds_local_sequence_artifact():
+    service = GestureService(
+        adapter_factory=lambda: SequenceAdapter(observations=[]),
+        realtime=CapturingRealtimeHub(),
+        config_repository_factory=lambda: StaticGestureConfigRepository(),
+    )
+
+    service.begin_calibration_take_capture(
+        session_id="session-1",
+        take_id="take-1",
+        target_id="swipe_right",
+        trimmed_tail_ms=0,
+    )
+
+    frames = [
+        GestureObservation(point=(0.50, 0.50), hand="right", hand_size=0.16, tracking_source="palm_center", captured_at=0.0),
+        GestureObservation(point=(0.62, 0.50), hand="right", hand_size=0.16, tracking_source="palm_center", captured_at=0.1),
+        GestureObservation(point=(0.74, 0.50), hand="right", hand_size=0.16, tracking_source="palm_center", captured_at=0.2),
+    ]
+
+    for index, observation in enumerate(frames):
+        service._append_active_calibration_capture_frame(
+            observation=observation,
+            analysis=SimpleNamespace(
+                active_phase="preparing" if index == 0 else "committing",
+                dominant_hand_pose="open_palm",
+                detection=None,
+            ),
+            detection=None,
+            observed_at=observation.captured_at or float(index) * 0.1,
+        )
+
+    sample, advisory = service.stop_calibration_take_capture(
+        session_id="session-1",
+        take_id="take-1",
+        target_id="swipe_right",
+    )
+
+    assert advisory is None
+    assert sample.gesture_payload is not None
+    assert sample.gesture_payload.sequence is not None
+    assert sample.gesture_payload.sequence.normalized_by_hand_size is True
+    assert sample.gesture_payload.sequence.frames[0].x == pytest.approx(0.0)
+    assert sample.gesture_payload.sequence.frames[1].x == pytest.approx(0.75)
+    assert sample.gesture_payload.sequence.frames[2].velocity_x == pytest.approx(7.5)
+
+
+def test_runtime_sequence_artifact_reanchors_at_first_stable_phase():
+    service = GestureService(
+        adapter_factory=lambda: SequenceAdapter(observations=[]),
+        realtime=CapturingRealtimeHub(),
+        config_repository_factory=lambda: StaticGestureConfigRepository(),
+    )
+
+    artifact = service._build_sequence_artifact_from_runtime_window(
+        trajectory=[(0.18, 0.50), (0.30, 0.50), (0.42, 0.50), (0.54, 0.50)],
+        trajectory_timestamps=[0.00, 0.05, 0.10, 0.15],
+        hand_size=0.12,
+        active_phases=["idle", "preparing", "committing", "releasing"],
+    )
+
+    assert artifact is not None
+    assert artifact.anchor_index == 1
+    assert artifact.anchor_phase == "preparing"
+    assert artifact.origin_x == pytest.approx(0.30)
+    assert artifact.point_count == 3
+    assert artifact.frames[0].x == pytest.approx(0.0)
+    assert artifact.frames[1].x == pytest.approx(1.0)
+
+
 def test_service_retries_transient_adapter_failure_and_recovers():
     hub = CapturingRealtimeHub()
     observations = [
@@ -1316,6 +1440,53 @@ def test_service_publishes_ui_action_requested_event_for_swipe():
     action_message = filter_messages(hub.messages, "UIActionRequested")[0]
     assert action_message["payload"]["raw_input"] == "swipe_left"
     assert action_message["payload"]["action"] == "move_focus_left"
+
+
+def test_service_exposes_sequence_shadow_diagnostics_without_changing_action():
+    hub = CapturingRealtimeHub()
+    observations = [
+        GestureObservation(point=(0.2, 0.5), hand="right", hand_size=0.16, tracking_source="palm_center", captured_at=0.00),
+        GestureObservation(point=(0.3, 0.5), hand="right", hand_size=0.16, tracking_source="palm_center", captured_at=0.05),
+        GestureObservation(point=(0.4, 0.5), hand="right", hand_size=0.16, tracking_source="palm_center", captured_at=0.10),
+        GestureObservation(point=(0.5, 0.5), hand="right", hand_size=0.16, tracking_source="palm_center", captured_at=0.15),
+        GestureObservation(point=(0.6, 0.5), hand="right", hand_size=0.16, tracking_source="palm_center", captured_at=0.20),
+        GestureObservation(point=(0.8, 0.5), hand="right", hand_size=0.16, tracking_source="palm_center", captured_at=0.25),
+    ]
+    repository = StaticGestureConfigRepository(
+        config=GestureConfig(sequence_shadow_mode=True, sequence_matching_enabled=False),
+        input_action_config=InputActionConfig(
+            mappings=[
+                InputActionMapping(
+                    input_source="gesture",
+                    raw_input="swipe_left",
+                    action="move_focus_left",
+                )
+            ]
+        ),
+        sequence_profile_set=make_sequence_profile_set("swipe_left"),
+    )
+    service = GestureService(
+        adapter_factory=lambda: SequenceAdapter(observations=observations),
+        realtime=hub,
+        config_repository_factory=lambda: repository,
+    )
+
+    service.start()
+    assert wait_until(lambda: len(filter_messages(hub.messages, "UIActionRequested")) >= 1)
+    service.stop()
+
+    action_message = filter_messages(hub.messages, "UIActionRequested")[0]
+    raw_input_message = filter_messages(hub.messages, "RawInputDetected")[0]
+    status = service.get_status()
+
+    assert action_message["payload"]["raw_input"] == "swipe_left"
+    assert action_message["payload"]["action"] == "move_focus_left"
+    assert raw_input_message["payload"]["metadata"]["sequence_scores"].get("swipe_left", 0.0) > 0.0
+    assert raw_input_message["payload"]["metadata"]["sequence_profile_ids"]["swipe_left"] == "swipe_left:primary"
+    assert status["sequence_shadow_mode"] is True
+    assert status["sequence_matching_enabled"] is False
+    assert status["sequence_scores"].get("swipe_left", 0.0) > 0.0
+    assert status["sequence_profile_ids"]["swipe_left"] == "swipe_left:primary"
 
 
 def test_service_gates_ui_actions_while_calibration_is_active():
@@ -1670,6 +1841,7 @@ def test_service_post_fire_grace_blocks_immediate_reaccumulation():
         observed_at=1.10,
         hand_size=0.16,
         hand_count=1,
+        pose_features=None,
         smoothing_alpha=0.6,
         max_points=64,
     )
@@ -1678,6 +1850,7 @@ def test_service_post_fire_grace_blocks_immediate_reaccumulation():
         observed_at=1.60,
         hand_size=0.16,
         hand_count=1,
+        pose_features=None,
         smoothing_alpha=0.6,
         max_points=64,
     )

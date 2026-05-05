@@ -32,7 +32,9 @@ Die Codebasis ist jetzt ein belastbarer Kernprototyp mit echter Backend-Persiste
 - FastAPI-Backend mit klar getrennten Routern fuer Daten-, Device-, Config-, Gesture-, Voice-, Musical-Audio- und Calibration-Endpunkte
 - SQLite-basierte Persistenz ueber `app_config` fuer Layout, System, Gesture-Config, Voice-Config, Command-Profile, Musical-Audio-Config, Training-Artefakte, Input-Mappings und Kalibrierungsdaten
 - dedizierter `CalibrationService` fuer Session-Lifecycle, positive Sample-Aufnahme, Analyse, Apply, Rollback und Discard
+- derselbe `CalibrationService` erzeugt fuer Swipe-Familie und `circle` jetzt zusaetzlich DTW-faehige Sequence-Profile aus den aufgenommenen Sample-Sequenzen und aktiviert oder restauriert sie getrennt von den normalen Schwellwerten
 - Gestenruntime, die waehrend aktiver Kalibrierung erkannte Samples an den Kalibrierungsdienst weiterleitet und normale UI-Aktionen unterdrueckt
+- Gestenruntime mit Shadow-Modus fuer Sequence-Matching: live ausgewählte Bewegungsfenster werden gegen das aktive Profilset verglichen und liefern `sequence_scores`, Distanzen, Margins und Profil-IDs im Statusmodell
 - Realtime-Kanal fuer rohe Gestenerkennung, modality-generic `RawInputDetected`, `CommandMatchEvaluated`, semantische UI-Aktionen und Kalibrierungs-Events wie Start, Target-Arming, Sample-Accept, Analyse-Ready und Apply oder Rollback
 - gemeinsamer `InputOrchestrator` im Backend, der modality-generic Input-Mappings aus `InputActionConfig` aufloest, Suppression-/Disable-Entscheidungen sichtbar macht und `UIActionRequested` fuer Gesten, Voice und Musical Audio publiziert
 - dedizierter `MusicalAudioService`, der fuer Live-Erkennung zwingend `aubio` fuer Pitch/Onset und `DTAIDistance` fuer DTW-Matching nutzt, einen synchronen Runtime-Preflight ausfuehrt und Statuscodes wie `configuration_disabled`, `no_active_artifact`, `device_missing` oder `invalid_sample_rate` explizit meldet
@@ -61,9 +63,11 @@ Die Codebasis ist jetzt ein belastbarer Kernprototyp mit echter Backend-Persiste
 - erkannte Voice-Kommandos werden zu normalisierten `voice.*`-Raw-Inputs transformiert und ueber dieselbe Orchestrierung auf UI-Aktionen gemappt
 - erkannte melodische Muster werden zu `musical_audio.*`-Raw-Inputs normalisiert und ueber dieselbe Orchestrierung auf UI-Aktionen gemappt
 - dieselbe Runtime liefert jetzt zusaetzlich Kalibrierungsevidenz wie Konfidenz, Hand, Tracking-Quelle, Trajektorienzusammenfassung, Push-Tiefe, Zoom-Distanz und Dauer
+- Kalibrierungssamples enthalten fuer dynamische Einhandgesten jetzt kompakte Sequence-Artefakte mit normalisierten Punkt-, Geschwindigkeits- und Pose-Kanaelen statt nur aggregierter Summary-Metriken
 - Schwellwerte koennen aus positiven Live-Wiederholungen profilorientiert neu vorgeschlagen und explizit angewendet oder zurueckgesetzt werden
 - Kalibrierungsanalysen liefern jetzt neben Empfehlungen auch einen reviewbaren `gesture_config_patch`, aus dem der Kandidaten-Snapshot und spaeter das eigentliche Apply deterministisch abgeleitet werden
 - Primitive-Schwellen wirken jetzt auch tatsaechlich im Resolverpfad: erforderliche Primitives werden gegen ihre jeweilige konfigurierte Schwelle statt nur gegen einen losen globalen Score-Floor bewertet
+- `gesture_video_tuner.py` und `gesture_benchmark.py` koennen den heuristischen Lauf jetzt leave-one-out gegen den neuen Sequence-Matcher vergleichen und daraus ein explizites Promotion-Gate fuer den Shadow-Pfad ableiten
 
 ## Aktuelle Nicht-Ziele Der Gesture-Konsolidierung
 
@@ -95,6 +99,7 @@ Die Codebasis ist jetzt ein belastbarer Kernprototyp mit echter Backend-Persiste
 - `POST /complete`, `POST /apply`, `POST /rollback` und `POST /cancel` bilden den vollen Lifecycle fuer Review, Apply, Restore und Discard ab
 - der Gestenpfad unterstuetzt vorbereitete Takes, Recording-Start/Stop, Review, Accept und Discard vor dem eigentlichen Apply auf die aktive Config
 - die Persistenz speichert Sitzungen, Profile und deterministische Vorher-Nachher-Snapshots fuer Rollback
+- zusaetzlich wird das aktuell aktive Gesture-Sequence-Profilset separat persistiert, damit Apply und Rollback dieselben Referenzen fuer den Shadow- oder spaeteren Promotion-Pfad wiederherstellen koennen
 - normale Schreibzugriffe auf die Gesture-Config werden waehrend aktiver Kalibrierung gesperrt
 
 ## Dokumentation
