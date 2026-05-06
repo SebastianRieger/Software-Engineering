@@ -1,6 +1,5 @@
 from fastapi import APIRouter, Depends, HTTPException, Query
 
-from core.config import settings
 from repositories.weather import WeatherRepositoryError
 from schemas.weather import (
     WeatherCurrentResponse,

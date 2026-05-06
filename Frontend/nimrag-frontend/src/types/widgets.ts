@@ -9,7 +9,7 @@ export interface ModuleShopExposed {
   getCurrentModuleType: () => string | null
 }
 
-export type ModuleShopRef = ComponentPublicInstance<{}, ModuleShopExposed> | null
+export type ModuleShopRef = ComponentPublicInstance<object, ModuleShopExposed> | null
 
 export type ActiveWidgetMap = Record<string, WidgetConfig>
 

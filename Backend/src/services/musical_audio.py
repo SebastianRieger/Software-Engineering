@@ -102,7 +102,7 @@ class MusicalAudioService:
         self._last_match_score: float | None = None
         self._last_event_at: datetime | None = None
         self._last_activity_at = 0.0
-        self._last_error = self._build_unavailable_message()
+        self._last_error: str | None = self._build_unavailable_message()
         self._last_error_code: MusicalAudioStatusCode | None = "unavailable"
 
     def startup(self) -> None:

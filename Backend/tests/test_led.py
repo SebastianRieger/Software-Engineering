@@ -28,7 +28,6 @@ async def test_set_led_color(client, override_led_dependency):
     assert data["mode"] == "mock"
 
 
-
 @pytest.mark.asyncio
 async def test_set_led_brightness(client, override_led_dependency):
     _ = override_led_dependency
@@ -37,7 +36,6 @@ async def test_set_led_brightness(client, override_led_dependency):
     data = response.json()
     assert data["message"] == "LED brightness set"
     assert data["brightness"] == 0.75
-
 
 
 @pytest.mark.asyncio

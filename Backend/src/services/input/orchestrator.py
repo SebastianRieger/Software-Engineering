@@ -8,7 +8,7 @@ from typing import Any
 from core.realtime import RealtimeHub, realtime_hub
 from repositories.config import ConfigRepository
 from schemas.commands import CommandProfile
-from schemas.interactions import InputActionConfig, UIActionArguments
+from schemas.interactions import InputActionConfig, InputSourceType, UIActionArguments
 
 
 logger = logging.getLogger(__name__)
@@ -56,7 +56,7 @@ class InputOrchestrator:
     def publish_raw_input_detected(
         self,
         *,
-        input_source: str,
+        input_source: InputSourceType,
         raw_input: str,
         timestamp: datetime,
         metadata: dict[str, Any] | None = None,
@@ -76,7 +76,7 @@ class InputOrchestrator:
     def publish_command_match_evaluated(
         self,
         *,
-        input_source: str,
+        input_source: InputSourceType,
         raw_input: str,
         timestamp: datetime,
         outcome: str,
@@ -104,7 +104,7 @@ class InputOrchestrator:
     def publish_ui_action_requested(
         self,
         *,
-        input_source: str,
+        input_source: InputSourceType,
         raw_input: str,
         timestamp: datetime,
         action_args: UIActionArguments | dict[str, Any] | None = None,

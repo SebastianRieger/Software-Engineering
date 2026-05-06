@@ -1,5 +1,4 @@
 from repositories.weather import WeatherRepository
-from core.config import settings
 
 
 class WeatherService:

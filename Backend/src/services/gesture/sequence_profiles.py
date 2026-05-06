@@ -62,6 +62,9 @@ def build_sequence_profile_set(
             window=window,
         )
         source_sample, _ = prepared_samples[medoid_index]
+        source_payload = source_sample.gesture_payload
+        if source_payload is None or source_payload.sequence is None:
+            continue
         profiles.append(
             GestureSequenceProfile(
                 profile_id=f"{gesture}:primary",
@@ -71,7 +74,7 @@ def build_sequence_profile_set(
                 distance_threshold=threshold,
                 median_distance=_median(medoid_distances),
                 p90_distance=_percentile(medoid_distances, 0.90),
-                sequence=source_sample.gesture_payload.sequence,
+                sequence=source_payload.sequence,
             )
         )
 

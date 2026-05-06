@@ -1,0 +1,24 @@
+[tool.pytest.ini_options]
+testpaths = ["Backend/tests"]
+asyncio_mode = "auto"
+pythonpath = ["Backend/src"]
+
+[tool.coverage.run]
+source = ["Backend/src"]
+branch = true
+relative_files = true
+
+[tool.coverage.report]
+show_missing = true
+skip_empty = true
+omit = ["Backend/tests/*"]
+
+[tool.mypy]
+python_version = "3.12"
+files = ["Backend/src"]
+mypy_path = "Backend/src"
+explicit_package_bases = true
+ignore_missing_imports = true
+warn_redundant_casts = true
+warn_unused_ignores = true
+pretty = true

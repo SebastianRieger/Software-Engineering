@@ -73,7 +73,7 @@ Folgende Bereiche muessen besonders gut abgedeckt sein:
 
 - Vitest
   - Schnelle Unit- und Integrationstests
-  - Bereits in `vitest.config.ts` konfiguriert mit 80 Prozent Coverage-Threshold
+  - Wird im Repo fuer Coverage-Reports und Testlaeufe genutzt; die erste Quality-Ausbaustufe sammelt die Werte report-only
 - Vue Test Utils
   - Realistische Komponententests fuer Vue-3-Single-File-Components
 - Testing Library (Vue)
@@ -89,20 +89,31 @@ Folgende Bereiche muessen besonders gut abgedeckt sein:
   - Ideal fuer API- und Logiktests
 - pytest-asyncio
   - Support fuer async/await in Tests, wichtig fuer FastAPI
+- pytest-cov
+  - Erzeugt die Coverage-Berichte fuer den aktuellen Quality-Lauf
 - TestClient (FastAPI)
   - Echte HTTP-aehnliche Tests ohne Server-Overhead
 - Mock Services
   - Mocks fuer LED-Service, Weather-Service und MQTT, siehe `conftest.py`
 
+### Repo-weites Quality-Reporting
+
+- Root-Quality-Lauf ueber `npm run quality`
+  - Fuehrt Backend-, Frontend- und Duplication-Messung plus Aggregation aus
+- ESLint im Frontend
+  - Liefert Lint- und einfache Complexity-Signale fuer `src/`
+- Radon im Backend
+  - Liefert Cyclomatic Complexity, Maintainability Index, Halstead und Raw Metrics fuer `Backend/src`
+- jscpd repo-weit
+  - Misst Duplication nur auf produktivem Code in Backend und Frontend
+
 ## 5. Verwaltung der Testfaelle
 
-Unsere Tests sind vollstaendig in die CI/CD-Pipeline integriert.
+Die CI-Einbindung wird schrittweise ausgebaut. Der aktuelle Quality-Workflow erzeugt Berichte und Artefakte report-only, statt bereits harte Merge-Gates fuer alle Metriken zu erzwingen.
 
-- Jeder Commit loest automatisch alle Tests fuer Frontend und Backend aus.
-- Ein Merge in den `dev`-Branch ist nur moeglich, wenn alle Tests erfolgreich sind.
-- Fehlgeschlagene Tests blockieren den Merge.
-- Coverage-Berichte werden nach jedem Testlauf generiert.
-- Dadurch gelangen keine instabilen Aenderungen in die Hauptentwicklungslinie.
+- Pull Requests koennen einen separaten Quality-Metrics-Workflow ausloesen.
+- Coverage-, Lint-, Typecheck-, Complexity- und Duplication-Berichte werden als Artefakte erzeugt.
+- Harter Gate-Betrieb fuer Schwellwerte ist erst fuer eine spaetere Ausbaustufe vorgesehen.
 
 ## 6. Fazit
 

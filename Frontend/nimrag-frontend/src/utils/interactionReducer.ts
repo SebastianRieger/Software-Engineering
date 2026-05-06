@@ -44,7 +44,7 @@ function getFocusedWidget(state: InteractionState) {
 
 function findWidgetByType(state: InteractionState, widgetType: string) {
   return Object.values(state.activeWidgets)
-    .sort((left, right) => left.cell_id - right.cell_id)
+    .sort((left, right) => (left.cell_id ?? -1) - (right.cell_id ?? -1))
     .find((widget) => widget.widget_type === widgetType) ?? null
 }
 

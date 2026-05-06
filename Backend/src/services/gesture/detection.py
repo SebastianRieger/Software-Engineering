@@ -972,17 +972,17 @@ def analyze_runtime_gesture(
         else:
             for primitive_name in spec.required_primitives:
                 if not candidate_primitive_passes.get(primitive_name, False):
-                    primitive = context.primitives.get(primitive_name)
+                    matched_primitive = context.primitives.get(primitive_name)
                     reject_reason = (
-                        primitive.reject_reason
-                        if primitive is not None
+                        matched_primitive.reject_reason
+                        if matched_primitive is not None
                         else f"{primitive_name}_missing"
                     )
                     break
             if reject_reason is None:
                 for primitive_name in spec.forbidden_primitives:
-                    primitive = context.primitives.get(primitive_name)
-                    if primitive is not None and primitive.passed:
+                    matched_primitive = context.primitives.get(primitive_name)
+                    if matched_primitive is not None and matched_primitive.passed:
                         reject_reason = f"{primitive_name}_forbidden"
                         break
             if reject_reason is None and total_score < spec.score_threshold:

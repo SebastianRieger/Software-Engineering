@@ -39,6 +39,7 @@ function buildCommandProfiles(): CommandProfilesConfig {
               raw_input: 'melody.focus_mode',
               action: 'toggle_shop',
               enabled: true,
+              action_args: {},
               metadata: {},
             },
           ],

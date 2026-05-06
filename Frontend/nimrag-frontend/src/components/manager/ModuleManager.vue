@@ -1089,6 +1089,7 @@ const handleKeydown = (event: KeyboardEvent) => {
     input_source: 'keyboard',
     raw_input: `keyboard.${event.key.toLowerCase().replace(/\s+/g, '_')}`,
     timestamp: new Date().toISOString(),
+    action_args: {},
     metadata: { key: event.key },
   })
 }

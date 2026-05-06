@@ -77,6 +77,25 @@ sudo dnf install -y python3.12-devel aubio-devel aubio-lib
 .venv/bin/pytest -q tests
 ```
 
+## Quality-Metriken
+
+Der repo-weite Quality-Lauf wird am Root des Repos gestartet:
+
+```bash
+npm run quality
+```
+
+Einzelne Teilketten lassen sich separat ausfuehren:
+
+```bash
+npm run quality:backend
+npm run quality:frontend
+npm run quality:duplication
+npm run quality:aggregate
+```
+
+Die erzeugten Artefakte landen unter `reports/quality/`. Die erste Ausbaustufe arbeitet bewusst report-only: Test-, Coverage-, Lint-, Typecheck-, Complexity- und Duplication-Daten werden gesammelt und aggregiert, aber noch nicht als harte Merge-Gates verwendet.
+
 ## Relevante aktive Doku
 
 - [Ist-Zustand](../docs/CURRENT_STATE.md)

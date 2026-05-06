@@ -1,5 +1,5 @@
 from datetime import datetime
-from typing import Literal
+from typing import Literal, TypedDict
 
 from pydantic import BaseModel, Field
 
@@ -17,6 +17,66 @@ GestureType = Literal[
     "zoom_out_hands",
     "zoom_in_hands",
 ]
+
+
+class TrajectoryDetectionKwargs(TypedDict):
+    swipe_threshold: float
+    down_threshold: float
+    circle_sweep_min: float
+    circle_cv_max: float
+    min_detection_points: int
+    swipe_min_span: float
+    circle_min_radius: float
+    min_confidence: float
+    hand_size_reference: float
+    hand_size_scale_min: float
+    hand_size_scale_max: float
+    up_threshold: float | None
+    horizontal_dominance_ratio: float
+    horizontal_max_off_axis_span_ratio: float
+    horizontal_max_off_axis_motion_ratio: float
+    vertical_dominance_ratio: float
+    vertical_max_off_axis_span_ratio: float
+    vertical_max_off_axis_motion_ratio: float
+    circle_min_aspect_ratio: float
+
+
+class RuntimeAnalysisKwargs(TypedDict):
+    swipe_threshold: float
+    circle_sweep_min: float
+    circle_cv_max: float
+    center_tolerance: float
+    push_depth_threshold: float
+    zoom_delta_threshold: float
+    hand_size_reference: float
+    phase_hold_max_peak_speed: float
+    phase_hold_min_stability: float
+    phase_preparing_max_seconds: float
+    phase_release_max_recent_speed: float
+    phase_release_speed_ratio: float
+    phase_commit_distance_threshold: float
+    primitive_hand_centered_threshold: float
+    primitive_stable_hold_threshold: float
+    primitive_index_primary_threshold: float
+    primitive_all_fingers_open_threshold: float
+    primitive_fist_like_threshold: float
+    primitive_push_forward_threshold: float
+    primitive_palm_visible_score: float
+    primitive_palm_visible_threshold: float
+    primitive_swipe_jitter_damping: float
+    primitive_circle_motion_threshold: float
+    primitive_two_hand_threshold: float
+    resolver_push_centered_score_floor: float
+    resolver_tracking_quality_trajectory_weight: float
+    resolver_tracking_quality_pose_weight: float
+    resolver_tracking_quality_hand_weight: float
+    resolver_candidate_confidence_weight: float
+    resolver_candidate_primitive_weight: float
+    resolver_candidate_phase_weight: float
+    resolver_required_primitive_min_score: float
+    sequence_matching_enabled: bool
+    sequence_min_margin: float
+    sequence_score_weight: float
 
 
 class GestureStartRequest(BaseModel):
@@ -224,7 +284,7 @@ class GestureConfig(BaseModel):
             "inactive_grace_seconds": self.offline_push_inactive_grace_seconds,
         }
 
-    def trajectory_detection_kwargs(self) -> dict[str, float | int]:
+    def trajectory_detection_kwargs(self) -> TrajectoryDetectionKwargs:
         return {
             "swipe_threshold": self.swipe_threshold,
             "down_threshold": self.down_threshold,
@@ -247,7 +307,7 @@ class GestureConfig(BaseModel):
             "circle_min_aspect_ratio": self.candidate_circle_min_aspect_ratio,
         }
 
-    def runtime_analysis_kwargs(self) -> dict[str, float | int]:
+    def runtime_analysis_kwargs(self) -> RuntimeAnalysisKwargs:
         return {
             "swipe_threshold": self.swipe_threshold,
             "circle_sweep_min": self.circle_sweep_min,

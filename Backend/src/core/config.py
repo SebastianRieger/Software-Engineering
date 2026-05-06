@@ -1,7 +1,4 @@
 from pathlib import Path
-from typing import List
-
-from pydantic import AnyHttpUrl
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -19,7 +16,7 @@ class Settings(BaseSettings):
     API_V1_STR: str = "/api/v1"
 
     # CORS configuration
-    CORS_ORIGINS: List[AnyHttpUrl] = [
+    CORS_ORIGINS: list[str] = [
         "http://localhost:3000",  # Frontend development
         "http://localhost:8080",  # Vue.js development
         "http://localhost:5173",  # Vite development
@@ -157,13 +154,13 @@ class Settings(BaseSettings):
     VOICE_PARTIAL_RESULTS_ENABLED: bool = True
     VOICE_STOP_JOIN_TIMEOUT_SECONDS: float = 2.0
     VOICE_GRID_CELL_COUNT: int = 16
-    VOICE_COMMANDS: List[str] = [
+    VOICE_COMMANDS: list[str] = [
         "licht an",
         "licht aus",
         "naechstes widget",
         "vorheriges widget",
     ]
-    VOICE_SIGNAL_SYNONYMS: dict[str, List[str]] = {
+    VOICE_SIGNAL_SYNONYMS: dict[str, list[str]] = {
         "voice.move_focus_left": ["links", "nach links"],
         "voice.move_focus_right": ["rechts", "nach rechts"],
         "voice.move_focus_up": ["oben", "hoch", "nach oben"],
@@ -177,7 +174,7 @@ class Settings(BaseSettings):
         "voice.resize_expand": ["groesser", "vergroessern"],
         "voice.resize_shrink": ["kleiner", "verkleinern"],
     }
-    VOICE_WIDGET_ALIASES: dict[str, List[str]] = {
+    VOICE_WIDGET_ALIASES: dict[str, list[str]] = {
         "weather": ["wetter"],
         "clock": ["uhr", "zeit"],
         "template": ["hardware"],

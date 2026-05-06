@@ -94,7 +94,7 @@ class VoiceService:
         self._last_command: str | None = None
         self._last_command_at: datetime | None = None
         self._last_command_time_by_name: dict[str, float] = {}
-        self._last_error = self._build_unavailable_message()
+        self._last_error: str | None = self._build_unavailable_message()
 
     def startup(self) -> None:
         self.reload_config()
@@ -613,6 +613,7 @@ class VoiceService:
                 return value
 
         return None
+
     def _build_unavailable_message(self) -> str:
         with self._lock:
             enabled = self._active_config.enabled

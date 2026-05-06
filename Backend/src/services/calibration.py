@@ -6,7 +6,7 @@ import random
 from collections.abc import Callable
 from datetime import datetime, timedelta, timezone
 from statistics import mean, median
-from typing import Any
+from typing import Any, cast
 
 from core.realtime import RealtimeHub, realtime_hub
 from repositories.config import ConfigRepository
@@ -32,7 +32,7 @@ from schemas.calibration import (
     CalibrationTargetDefinition,
     CalibrationTargetProgress,
 )
-from schemas.gestures import GestureConfig
+from schemas.gestures import GestureConfig, GestureType
 from services.gesture.sequence_profiles import build_sequence_profile_set
 
 
@@ -803,7 +803,7 @@ class CalibrationService:
                 profile.gesture: profile for profile in gesture_sequence_profile_set.profiles
             }
             for target_analysis in target_analyses:
-                profile = profile_lookup.get(target_analysis.target_id)
+                profile = profile_lookup.get(cast(GestureType, target_analysis.target_id))
                 if profile is None:
                     continue
                 target_analysis.artifacts.update(

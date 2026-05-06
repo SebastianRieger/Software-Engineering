@@ -8,10 +8,19 @@
     "dev": "node setup.js --dev",
     "start": "node setup.js --start",
     "dev:backend": "node setup.js --backend-only",
-    "dev:frontend": "node setup.js --frontend-only"
+    "dev:frontend": "node setup.js --frontend-only",
+    "quality": "npm run quality:backend && npm run quality:frontend && npm run quality:duplication && npm run quality:gesture && npm run quality:aggregate",
+    "quality:backend": "node scripts/run_quality.js backend",
+    "quality:frontend": "node scripts/run_quality.js frontend",
+    "quality:duplication": "node scripts/run_quality.js duplication",
+    "quality:gesture": "node scripts/run_quality.js gesture",
+    "quality:aggregate": "node scripts/collect_quality_metrics.js",
+    "quality:gates": "node scripts/check_quality_gates.js"
   },
   "dependencies": {},
-  "devDependencies": {},
+  "devDependencies": {
+    "jscpd": "^4.0.5"
+  },
   "keywords": ["smart-mirror", "setup", "cross-platform"],
   "author": "Smart Mirror Team",
   "license": "MIT"

@@ -1,0 +1,52 @@
+{
+  "mode": "phase-2-cautious-gates",
+  "coverage": {
+    "backend": {
+      "linesTarget": 70
+    },
+    "frontend": {
+      "linesTarget": 70
+    }
+  },
+  "complexity": {
+    "frontendWarningAbove": 10,
+    "backendPreferredRank": "B"
+  },
+  "duplication": {
+    "targetMaxPercent": 5
+  },
+  "gestures": {
+    "reportOnly": true,
+    "videoAccuracyTarget": 0.9,
+    "notes": [
+      "Gesture benchmark execution is visible in the quality summary, but gesture accuracy remains report-only in Phase 1 because the current corpus is still small and environment-specific.",
+      "Sequence-promotion readiness and negative false-positive findings are summarized for review, but they do not gate CI in the current phase."
+    ]
+  },
+  "gates": {
+    "phase2": {
+      "enabled": true,
+      "requiredSteps": {
+        "backend": ["pytest", "mypy", "flake8"],
+        "frontend": ["vitest", "typecheck", "build", "eslint"],
+        "duplication": ["jscpd"]
+      },
+      "coverage": {
+        "backend": {
+          "linesMin": 75
+        }
+      },
+      "duplication": {
+        "maxPercent": 5
+      },
+      "eslint": {
+        "maxErrors": 0
+      },
+      "notes": [
+        "Frontend coverage remains report-only in Phase 2 because the current baseline is still too low for a stable CI gate.",
+        "Frontend ESLint warnings and complexity warnings remain report-only; only hard ESLint errors gate CI in this phase.",
+        "Backend branch coverage is now collected in the shared summary, but it remains report-only until the new baseline is stable enough for a low-noise gate."
+      ]
+    }
+  }
+}

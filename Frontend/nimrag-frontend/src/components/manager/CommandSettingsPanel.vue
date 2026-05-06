@@ -178,7 +178,8 @@ async function getMicrophonePermissionState(): Promise<MusicalTrainingPermission
   }
 
   try {
-    const result = await navigator.permissions.query({ name: 'microphone' as PermissionName })
+      const descriptor = { name: 'microphone' } as Parameters<typeof navigator.permissions.query>[0]
+      const result = await navigator.permissions.query(descriptor)
     return result.state
   } catch {
     return 'unsupported'
@@ -366,6 +367,7 @@ function addMapping(): void {
     raw_input: 'melody.new_pattern',
     action: 'toggle_shop',
     enabled: true,
+    action_args: {},
     metadata: {},
   })
 }
@@ -567,7 +569,13 @@ async function startTrainingRecording(): Promise<void> {
     return
   }
 
-  const audioConstraints: MediaTrackConstraints = {
+  const audioConstraints: {
+    channelCount: number
+    echoCancellation: boolean
+    noiseSuppression: boolean
+    autoGainControl: boolean
+    deviceId?: { exact: string }
+  } = {
     channelCount: 1,
     echoCancellation: false,
     noiseSuppression: false,
