@@ -31,6 +31,11 @@ build/
 *.swo
 .DS_Store
 
+# Local GitHub editor/copilot config
+.github/*
+!.github/workflows/
+!.github/workflows/**
+
 # Byte-compiled / optimized / DLL files
 *.pyc
 *.pyo
