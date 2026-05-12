@@ -1,0 +1,84 @@
+# Backend Src Architecture Analysis
+
+## Scope And Metric Basis
+
+- Snapshot date: 2026-04-30
+- Productive Python code in `Backend/src` has grown substantially since the previous snapshot; the earlier 30-file / 5244-line figure is no longer current and should be treated as historical context only.
+- Backend tests are not part of this file, but the current snapshot is backed by calibration, gesture, config and websocket tests
+
+## Module Metrics
+
+| Scope | Files | Lines | Reading |
+| --- | ---: | ---: | --- |
+| `main.py` | 1 | ~100 | App bootstrap, lifespan and shared websocket entry point |
+| `api/` | 4 | 800+ | Thin HTTP layer for config, runtime, calibration and device control |
+| `core/` | 4 | 200+ | Config, DB bootstrap, logging and realtime hub |
+| `repositories/` | 3 | 800+ | Config and weather persistence, now including calibration and command-profile storage |
+| `schemas/` | 11 | 1200+ | Pydantic contracts for gestures, calibration, interactions, commands, voice and musical audio |
+| `services/` | 14 | 7000+ | Gesture runtime, tracking, detection, contracts, offline analysis, calibration, multimodal input orchestration and other domain services |
+
+## Current Logic Model
+
+The backend remains a modular monolith. The major architectural step in this snapshot is that gesture tuning is no longer just static configuration. It is now a runtime capability:
+
+- the gesture subsystem now lives directly under `services/gesture/` instead of a flat compatibility layer.
+- `services/gesture/runtime.py` owns live gesture orchestration, while `services/gesture/detection.py`, `services/gesture/tracking.py`, `services/gesture/contracts.py` and `services/gesture/push_runtime.py` carry the extracted gesture-specific logic.
+- `services/gesture/offline/` contains the tuner-facing cycle analysis for swipe and push validation runs.
+- `services/gesture/sequence_features.py`, `services/gesture/sequence_profiles.py` and `services/gesture/sequence_matcher.py` now add the new DTW-based sequence path for swipe-family and circle comparison.
+- `services/calibration.py` owns active calibration sessions, accepted sample capture, heuristic analysis, apply, rollback and discard.
+- calibration analysis now produces both heuristic config recommendations and a persisted gesture-sequence profile set that can be activated independently of the normal `GestureConfig` thresholds.
+- `services/input/orchestrator.py` is now the canonical location of the shared input-to-command path that gestures, voice and musical audio use.
+- `repositories/config.py` persists both normal config and calibration artifacts, including the active gesture sequence profile set used by runtime shadow matching.
+- `api/system_endpoints.py` exposes the full calibration lifecycle over HTTP.
+- `core/realtime.py` carries calibration feedback over the same websocket channel as the existing interaction events.
+
+This keeps the stack coherent: no parallel storage, no parallel event channel and no one-off offline tuning path.
+
+For the current gesture consolidation iteration, the intended backend ownership boundaries are:
+
+- `services/gesture/tracking.py` provides normalized runtime observations and pose features.
+- `services/gesture/detection.py` is the only backend owner of candidate evaluation, gesture arbitration, pose gating, explicit detection context assembly and contract-derived runtime specs.
+- `services/gesture/runtime.py` stays an orchestration boundary for the live loop, cooldowns, publication and capture integration; trajectory and two-hand histories are now hidden behind an internal lifecycle owner with post-fire grace handling.
+- `services/gesture/runtime.py` also carries the sequence-shadow bridge: live motion windows are turned into compact sequence artifacts and compared against the active profile set without forcing production promotion.
+- `services/gesture/push_runtime.py` remains a separate specialized push detector.
+- `services/gesture/sequence_profiles.py` is the only owner of calibration-to-profile conversion, while `services/gesture/sequence_matcher.py` owns DTW distance evaluation against those saved references.
+- `services/gesture/contracts.py` remains the canonical gesture-definition source; runtime specs may only be derived from it.
+- `services/calibration.py` stays the feedback-loop owner for reviewable changes, apply and rollback. Its analysis now emits an explicit `gesture_config_patch` instead of relying only on a mutable candidate snapshot.
+
+The matching configuration rule is also explicit: `core/config.py` supplies defaults, but persisted `GestureConfig` is the active runtime configuration after load and should be treated as the only source of live gesture parameters.
+
+## Critical Assessment
+
+- The backend structure is materially stronger because calibration was added as a first-class slice rather than a side script.
+- The root-module imbalance is not the main problem. The real issue is that `services/` now contains several subsystems in one flat namespace.
+- The main hotspot is now shared between gesture runtime, gesture analysis, calibration orchestration and command/input behavior. This is a good sign of product focus, but the flat `services/` layout now hides those boundaries.
+- The current best next step is not to create new top-level backend layers, but to continue structuring `services/` internally into gesture and input subpackages while keeping the overall modular-monolith layering intact.
+- The modality-generic contracts are a deliberate investment for future voice calibration, but they also introduce some dormant surface area that is not implemented yet.
+- Placeholder calendar and smart-home domains remain clearly behind the delivered maturity of the input stack.
+
+## Intended But Missing Elements
+
+- voice calibration implementation on top of the already generic session lifecycle
+- further internal splitting of `services/calibration.py` and richer policy extraction inside `services/input/`
+- real calendar and smart-home integrations
+- stronger migration and retention strategy for long-lived calibration history
+- auth, roles and production-grade operational hardening
+
+## Iteration Non-Goals
+
+This iteration is not intended to add:
+
+- a second parallel gesture architecture beside `services/gesture/`
+- a generic global FSM that absorbs the push runtime
+- per-user runtime gesture configuration ownership
+- a broker-first event topology
+- automatic gesture-model training or autonomous application of suggested thresholds
+
+## Navigation
+
+- Parent analysis: `../../repoArch.md`
+- API module: `api/apiArch.md`
+- Core module: `core/coreArch.md`
+- Repository module: `repositories/repoArch.md`
+- Schema module: `schemas/schemaArch.md`
+- Service module: `services/serviceArch.md`
