@@ -22,7 +22,8 @@ wheels/
 .pytest_cache/
 .coverage
 htmlcov/
-venv_py312/
+.venv/
+venv*/
 
 # Virtual Environment
 venv/
@@ -40,6 +41,10 @@ ENV/
 # Database
 *.db
 *.sqlite3
+.http_cache/
+
+# Runtime model assets
+models/*.task
 
 # Logs
 *.log
