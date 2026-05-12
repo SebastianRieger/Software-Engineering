@@ -68,8 +68,14 @@ setupKeyboardListener({
     <!-- Edit Mode Banner -->
     <Transition name="slide-down">
       <div v-if="isEditMode" class="edit-mode-banner">
-        <span class="edit-mode-text">Editor Modus</span>
-        <span class="edit-mode-hint">Drücke F zum Beenden</span>
+        <div class="edit-mode-content">
+          <span class="edit-mode-text">Editor Modus aktiv</span>
+          <div class="edit-mode-shortcuts">
+            <span class="shortcut">E – Shop</span>
+            <span class="shortcut">F – Beenden</span>
+            <span class="shortcut">Klick ⤡ – Größe ändern</span>
+          </div>
+        </div>
       </div>
     </Transition>
 
@@ -98,7 +104,7 @@ setupKeyboardListener({
   transform: translateX(-50%);
   background: linear-gradient(135deg, #6366f1 0%, #8b5cf6 100%);
   color: white;
-  padding: 12px 24px;
+  padding: 16px 24px;
   border-radius: 12px;
   box-shadow: 0 4px 16px rgba(99, 102, 241, 0.4);
   z-index: 999;
@@ -108,16 +114,30 @@ setupKeyboardListener({
   font-weight: 600;
 }
 
-.edit-mode-text {
-  font-size: 16px;
+.edit-mode-content {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
 }
 
-.edit-mode-hint {
+.edit-mode-text {
+  font-size: 16px;
+  font-weight: 700;
+}
+
+.edit-mode-shortcuts {
+  display: flex;
+  gap: 12px;
   font-size: 12px;
+  flex-wrap: wrap;
+}
+
+.shortcut {
   opacity: 0.9;
   background: rgba(255, 255, 255, 0.2);
-  padding: 4px 8px;
+  padding: 4px 10px;
   border-radius: 6px;
+  white-space: nowrap;
 }
 
 .slide-down-enter-active,
@@ -167,6 +187,11 @@ setupKeyboardListener({
   color: white;
   font-size: 24px;
   cursor: pointer;
+  transition: all 0.2s;
 }
 
+.close-btn:hover {
+  transform: scale(1.2);
+  color: #ef4444;
+}
 </style>
