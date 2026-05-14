@@ -1,10 +1,14 @@
-import { createApp } from 'vue'
+import { createApp, ref } from 'vue'
 import { useWidgetResize } from './useWidgetResize'
 
 const { cellSizes } = useWidgetResize()
 
-// Tracks all running app instances per cell for clean unmounting
 const mountedApps = new Map<number, ReturnType<typeof createApp>>()
+const occupiedCells = ref<number[]>([])
+
+function _syncOccupied(): void {
+  occupiedCells.value = [...mountedApps.keys()]
+}
 
 /**
  * Composable for widget lifecycle management.
@@ -48,6 +52,7 @@ export function useWidgetManager() {
 
     app.mount(mount)
     mountedApps.set(cellId, app)
+    _syncOccupied()
   }
 
   /**
@@ -92,6 +97,7 @@ export function useWidgetManager() {
     else            mountedApps.delete(targetCellId)
     if (targetApp)  mountedApps.set(sourceCellId, targetApp)
     else            mountedApps.delete(sourceCellId)
+    _syncOccupied()
   }
 
   /**
@@ -100,6 +106,7 @@ export function useWidgetManager() {
   const clearCell = (cellId: number): void => {
     _unmountCell(cellId)
     _restorePlaceholder(cellId)
+    _syncOccupied()
   }
 
   // ── Private helpers ───────────────────────────────────────────────────────
@@ -127,5 +134,6 @@ export function useWidgetManager() {
     insertWidgetIntoCell,
     moveWidgets,
     clearCell,
+    occupiedCells,
   }
 }
