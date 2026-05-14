@@ -3,23 +3,11 @@ import { ref, computed, onMounted, onUnmounted, inject } from 'vue'
 import type { Ref } from 'vue'
 import type { CellSize } from '../../composables/useWidgetResize.ts'
 
-// ─── Config ──────────────────────────────────────────────────────────────────
-// Hier zentral anpassen, was das Widget anzeigen soll.
-
 const config = {
-  ressort: undefined as Ressort | undefined,  // undefined = kein Filter
-  regions: [1] as number[],                    // Leeres Array = kein Filter
-  //  1=Baden-Württemberg  2=Bayern         3=Berlin        4=Brandenburg
-  //  5=Bremen             6=Hamburg        7=Hessen        8=Mecklenburg-Vorpommern
-  //  9=Niedersachsen      10=NRW           11=Rheinland-Pfalz 12=Saarland
-  //  13=Sachsen           14=Sachsen-Anhalt 15=Schleswig-Holstein 16=Thüringen
-  maxItems: { small: 4, medium: 5, large: 6 },
+  ressort: undefined as Ressort | undefined,
+  regions: [1] as number[],
   refreshIntervalMs: 3_600_000,
 }
-
-// ─── API Layer ────────────────────────────────────────────────────────────────
-// Alles zwischen diesen Kommentaren kann 1:1 durch einen Backend-Call ersetzt
-// werden (z.B. fetch('/api/news')), ohne den Rest der Komponente anzufassen.
 
 type Ressort = 'inland' | 'ausland' | 'wirtschaft' | 'sport' | 'video' | 'investigativ' | 'wissen'
 
@@ -39,10 +27,7 @@ interface NewsItem {
   }
 }
 
-async function fetchNews(options?: {
-  ressort?: Ressort
-  regions?: number[]
-}): Promise<NewsItem[]> {
+async function fetchNews(options?: { ressort?: Ressort; regions?: number[] }): Promise<NewsItem[]> {
   const params = new URLSearchParams()
   if (options?.ressort) params.set('ressort', options.ressort)
   if (options?.regions?.length) params.set('regions', options.regions.join(','))
@@ -58,10 +43,7 @@ async function fetchNews(options?: {
   return (parsed.news ?? []) as NewsItem[]
 }
 
-// ─── Component Logic ──────────────────────────────────────────────────────────
-
-// Größe aus Grid-Kontext ableiten
-const cellId   = inject<number>('cellId', 0)
+const cellId    = inject<number>('cellId', 0)
 const cellSizes = inject<Ref<Record<number, CellSize>>>('cellSizes', ref({}))
 
 const size = computed(() => {
@@ -72,35 +54,24 @@ const size = computed(() => {
   }
 })
 
-const news     = ref<NewsItem[]>([])
+const news      = ref<NewsItem[]>([])
 const isLoading = ref(true)
-const error    = ref<string | null>(null)
+const error     = ref<string | null>(null)
 let intervalId: ReturnType<typeof setInterval> | null = null
 
+// small: 2 | medium: 4 (horizontale Zeilen) | large: 2 (mit Bildern)
 const visibleNews = computed(() =>
-    news.value.slice(0, config.maxItems[size.value])
+  news.value.slice(0, size.value === 'medium' ? 4 : 2)
 )
 
 function formatDate(iso: string): string {
-  const d = new Date(iso)
-  return d.toLocaleTimeString('de-DE', { hour: '2-digit', minute: '2-digit' })
+  return new Date(iso).toLocaleTimeString('de-DE', { hour: '2-digit', minute: '2-digit' })
 }
 
 function getImage(item: NewsItem): string | null {
-  const variants = item.teaserImage?.imageVariants
-  if (!variants) return null
-  // bevorzuge mittlere Auflösung
-  return (
-      variants['16x9-960'] ??
-      variants['16x9-640'] ??
-      variants['16x9-480'] ??
-      Object.values(variants)[0] ??
-      null
-  )
-}
-
-function openArticle(url: string) {
-  window.open(url, '_blank', 'noopener,noreferrer')
+  const v = item.teaserImage?.imageVariants
+  if (!v) return null
+  return v['16x9-960'] ?? v['16x9-640'] ?? v['16x9-480'] ?? Object.values(v)[0] ?? null
 }
 
 async function load() {
@@ -131,59 +102,79 @@ onUnmounted(() => {
     <!-- Header -->
     <header class="ts-header">
       <span class="ts-logo">tagesschau</span>
-      <span v-if="isLoading" class="ts-status ts-status--loading">
-        <span class="ts-dot" />
-      </span>
+      <span v-if="isLoading" class="ts-status ts-status--loading"><span class="ts-dot" /></span>
       <span v-else-if="error" class="ts-status ts-status--error" :title="error">!</span>
-      <span v-else class="ts-status ts-status--ok">{{ formatDate(new Date().toISOString()) }}</span>
+      <span v-else class="ts-status">{{ formatDate(new Date().toISOString()) }}</span>
     </header>
 
-    <!-- News List -->
-    <ul v-if="!error && visibleNews.length" class="ts-list">
+    <!-- Systemzustände -->
+    <div v-if="error" class="ts-empty">Nachrichten nicht verfügbar</div>
+    <div v-else-if="isLoading" class="ts-empty">Lädt…</div>
+    <div v-else-if="!visibleNews.length" class="ts-empty">Keine Meldungen</div>
+
+    <!-- SMALL: 2 Meldungen, kompakte Liste -->
+    <ul v-else-if="size === 'small'" class="ts-list">
       <li
-          v-for="item in visibleNews"
-          :key="item.sophoraId"
-          class="ts-item"
-          :class="{ 'ts-item--breaking': item.breakingNews }"
-          @click="openArticle(item.shareURL)"
+        v-for="item in visibleNews"
+        :key="item.sophoraId"
+        class="ts-item"
+        :class="{ 'ts-item--breaking': item.breakingNews }"
       >
-
-        <!-- LARGE: Bild oben -->
-        <div v-if="size === 'large' && getImage(item)" class="ts-image-wrap">
-          <img :src="getImage(item)!" :alt="item.teaserImage?.alttext ?? item.title" class="ts-image" />
-          <span v-if="item.breakingNews" class="ts-breaking-badge">Eilmeldung</span>
-        </div>
-
-        <div class="ts-content">
-          <!-- Topline -->
-          <span v-if="item.topline" class="ts-topline">{{ item.topline }}</span>
-
-          <!-- Titel -->
-          <p class="ts-title">{{ item.title }}</p>
-
-          <!-- firstSentence + Meta: nur medium & large -->
-          <template v-if="size !== 'small'">
-            <p v-if="item.firstSentence" class="ts-teaser">{{ item.firstSentence }}</p>
-            <div class="ts-meta">
-              <span v-if="item.ressort" class="ts-ressort">{{ item.ressort }}</span>
-              <span v-if="item.date" class="ts-time">{{ formatDate(item.date) }}</span>
-            </div>
-          </template>
-        </div>
-
+        <span v-if="item.topline" class="ts-topline">{{ item.topline }}</span>
+        <p class="ts-title">{{ item.title }}</p>
       </li>
     </ul>
 
-    <!-- Fehlerzustand -->
-    <div v-else-if="error" class="ts-empty">Nachrichten nicht verfügbar</div>
-    <div v-else-if="isLoading" class="ts-empty">Lädt…</div>
-    <div v-else class="ts-empty">Keine Meldungen</div>
+    <!-- MEDIUM: 3 horizontale Zeilen mit Badge + Titel + Teaser -->
+    <div v-else-if="size === 'medium'" class="ts-rows">
+      <div
+        v-for="item in visibleNews"
+        :key="item.sophoraId"
+        class="ts-row"
+        :class="{ 'ts-row--breaking': item.breakingNews }"
+      >
+        <span class="ts-badge">{{ item.ressort ?? item.topline ?? '—' }}</span>
+        <div class="ts-row-text">
+          <p class="ts-title">{{ item.title }}</p>
+        </div>
+      </div>
+    </div>
+
+    <!-- LARGE: 2 Meldungen mit Bild -->
+    <div v-else-if="size === 'large'" class="ts-large-grid">
+      <div
+        v-for="item in visibleNews"
+        :key="item.sophoraId"
+        class="ts-large-card"
+        :class="{ 'ts-large-card--breaking': item.breakingNews }"
+      >
+        <div class="ts-image-wrap">
+          <img
+            v-if="getImage(item)"
+            :src="getImage(item)!"
+            :alt="item.teaserImage?.alttext ?? item.title"
+            class="ts-image"
+          />
+          <div v-else class="ts-image-placeholder" />
+          <span v-if="item.breakingNews" class="ts-breaking-badge">Eilmeldung</span>
+        </div>
+        <div class="ts-content">
+          <span v-if="item.topline" class="ts-topline">{{ item.topline }}</span>
+          <p class="ts-title ts-title--large">{{ item.title }}</p>
+          <p v-if="item.firstSentence" class="ts-teaser ts-teaser--large">{{ item.firstSentence }}</p>
+          <div class="ts-meta">
+            <span v-if="item.ressort" class="ts-ressort">{{ item.ressort }}</span>
+            <span v-if="item.date" class="ts-time">{{ formatDate(item.date) }}</span>
+          </div>
+        </div>
+      </div>
+    </div>
 
   </div>
 </template>
 
 <style scoped>
-/* ── Reset & Container ─────────────────────────────── */
+/* ── Variablen & Container ─────────────────────────── */
 .ts-widget {
   --c-bg:       #111;
   --c-surface:  #1a1a1a;
@@ -192,8 +183,6 @@ onUnmounted(() => {
   --c-muted:    #666;
   --c-topline:  #999;
   --c-breaking: #c0392b;
-  --c-logo:     #fff;
-  --radius:     4px;
   --font-head:  'Georgia', 'Times New Roman', serif;
   --font-ui:    'DM Mono', 'Courier New', monospace;
 
@@ -206,6 +195,7 @@ onUnmounted(() => {
   overflow: hidden;
   box-sizing: border-box;
   font-family: var(--font-head);
+  user-select: none;
 }
 
 /* ── Header ────────────────────────────────────────── */
@@ -213,7 +203,7 @@ onUnmounted(() => {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 10px 14px 8px;
+  padding: 6px 10px;
   border-bottom: 1px solid var(--c-border);
   flex-shrink: 0;
 }
@@ -223,7 +213,7 @@ onUnmounted(() => {
   font-size: 11px;
   letter-spacing: 0.18em;
   text-transform: uppercase;
-  color: var(--c-logo);
+  color: #fff;
   opacity: 0.9;
 }
 
@@ -233,10 +223,7 @@ onUnmounted(() => {
   color: var(--c-muted);
 }
 
-.ts-status--error {
-  color: var(--c-breaking);
-  font-weight: 700;
-}
+.ts-status--error { color: var(--c-breaking); font-weight: 700; }
 
 .ts-dot {
   display: inline-block;
@@ -252,53 +239,143 @@ onUnmounted(() => {
   50%       { opacity: 1; }
 }
 
-/* ── List ──────────────────────────────────────────── */
+/* ── Leer / Fehler ─────────────────────────────────── */
+.ts-empty {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-family: var(--font-ui);
+  font-size: 11px;
+  color: var(--c-muted);
+  letter-spacing: 0.08em;
+}
+
+/* ── SMALL: 2 Meldungen als Liste ──────────────────── */
 .ts-list {
   list-style: none;
   margin: 0;
   padding: 0;
-  overflow-y: auto;
   flex: 1;
-  scrollbar-width: none;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
 }
-.ts-list::-webkit-scrollbar { display: none; }
 
-/* ── Item ──────────────────────────────────────────── */
 .ts-item {
-  cursor: pointer;
+  flex: 1;
+  padding: 5px 8px;
   border-bottom: 1px solid var(--c-border);
-  transition: background 0.15s ease;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  overflow: hidden;
 }
 
 .ts-item:last-child { border-bottom: none; }
 
-.ts-item:hover {
+.ts-item--breaking { border-left: 2px solid var(--c-breaking); }
+
+/* ── MEDIUM: Horizontale Zeilen ────────────────────── */
+.ts-rows {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.ts-row {
+  flex: 1;
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  padding: 9px 12px;
+  border-bottom: 1px solid var(--c-border);
+  overflow: hidden;
+  min-height: 0;
+}
+
+.ts-row:last-child { border-bottom: none; }
+
+.ts-row--breaking { border-left: 2px solid var(--c-breaking); }
+
+.ts-badge {
+  font-family: var(--font-ui);
+  font-size: 8px;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--c-muted);
+  border: 1px solid var(--c-border);
+  padding: 2px 6px;
+  border-radius: 2px;
+  flex-shrink: 0;
+  white-space: nowrap;
+  max-width: 72px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  margin-top: 1px;
+}
+
+.ts-row-text {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  overflow: hidden;
+}
+
+.ts-widget--medium .ts-title {
+  font-size: 12px;
+  line-height: 1.35;
+  -webkit-line-clamp: 1;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  display: block;
+}
+
+/* ── LARGE: 2 Karten nebeneinander mit Bild ────────── */
+.ts-large-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+  padding: 10px;
+  flex: 1;
+  min-height: 0;
+  overflow: hidden;
+}
+
+.ts-large-card {
+  display: flex;
+  flex-direction: column;
   background: var(--c-surface);
+  border-radius: 6px;
+  overflow: hidden;
+  border: 1px solid var(--c-border);
+  min-height: 0;
 }
 
-/* Breaking-News-Akzent: linke rote Linie */
-.ts-item--breaking {
-  border-left: 2px solid var(--c-breaking);
-}
+.ts-large-card--breaking { border-left: 3px solid var(--c-breaking); }
 
-/* ── Image (large only) ────────────────────────────── */
 .ts-image-wrap {
   position: relative;
-  width: 100%;
+  flex: 0 0 50%;
   overflow: hidden;
 }
 
 .ts-image {
   width: 100%;
+  height: 100%;
   display: block;
   object-fit: cover;
-  max-height: 130px;
-  filter: brightness(0.88) saturate(0.7);
-  transition: filter 0.2s ease;
+  filter: brightness(0.85) saturate(0.65);
 }
 
-.ts-item:hover .ts-image {
-  filter: brightness(0.95) saturate(0.85);
+.ts-image-placeholder {
+  width: 100%;
+  height: 100%;
+  background: var(--c-surface);
 }
 
 .ts-breaking-badge {
@@ -315,47 +392,69 @@ onUnmounted(() => {
   border-radius: 2px;
 }
 
-/* ── Content ───────────────────────────────────────── */
 .ts-content {
-  padding: 9px 14px;
+  flex: 1;
+  padding: 9px 11px;
   display: flex;
   flex-direction: column;
   gap: 3px;
+  overflow: hidden;
+  min-height: 0;
 }
 
+/* ── Gemeinsame Text-Elemente ──────────────────────── */
 .ts-topline {
   font-family: var(--font-ui);
-  font-size: 9px;
-  letter-spacing: 0.14em;
+  font-size: 8px;
+  letter-spacing: 0.12em;
   text-transform: uppercase;
   color: var(--c-topline);
+  flex-shrink: 0;
+  line-height: 1.3;
 }
 
 .ts-title {
   margin: 0;
-  font-size: 13px;
+  font-size: 11px;
   font-weight: 600;
-  line-height: 1.35;
+  line-height: 1.3;
   color: var(--c-text);
-}
-
-.ts-teaser {
-  margin: 2px 0 0;
-  font-size: 11.5px;
-  line-height: 1.5;
-  color: var(--c-muted);
-  font-family: var(--font-ui);
   display: -webkit-box;
   -webkit-line-clamp: 2;
   -webkit-box-orient: vertical;
   overflow: hidden;
 }
 
+.ts-title--large {
+  font-size: 13px;
+  line-height: 1.35;
+  -webkit-line-clamp: 2;
+}
+
+.ts-teaser {
+  margin: 0;
+  font-size: 10px;
+  line-height: 1.4;
+  color: var(--c-muted);
+  font-family: var(--font-ui);
+  display: -webkit-box;
+  -webkit-line-clamp: 1;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+.ts-teaser--large {
+  font-size: 11px;
+  line-height: 1.45;
+  -webkit-line-clamp: 2;
+}
+
 .ts-meta {
   display: flex;
   align-items: center;
   gap: 8px;
-  margin-top: 4px;
+  margin-top: auto;
+  padding-top: 4px;
 }
 
 .ts-ressort {
@@ -366,72 +465,12 @@ onUnmounted(() => {
   color: var(--c-muted);
   border: 1px solid var(--c-border);
   padding: 1px 5px;
-  border-radius: var(--radius);
+  border-radius: 2px;
 }
 
 .ts-time {
   font-family: var(--font-ui);
   font-size: 9px;
   color: var(--c-muted);
-}
-
-/* ── Empty / Error ─────────────────────────────────── */
-.ts-empty {
-  flex: 1;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  font-family: var(--font-ui);
-  font-size: 11px;
-  color: var(--c-muted);
-  letter-spacing: 0.08em;
-}
-
-/* ── Size-spezifische Anpassungen ──────────────────── */
-
-/* small: sehr kompakt */
-.ts-widget--small .ts-header {
-  padding: 7px 10px 6px;
-}
-.ts-widget--small .ts-logo {
-  font-size: 10px;
-}
-.ts-widget--small .ts-content {
-  padding: 7px 10px;
-  gap: 2px;
-}
-.ts-widget--small .ts-title {
-  font-size: 11.5px;
-  -webkit-line-clamp: 2;
-  display: -webkit-box;
-  -webkit-box-orient: vertical;
-  overflow: hidden;
-}
-.ts-widget--small .ts-topline {
-  font-size: 8px;
-}
-
-/* medium: standard */
-.ts-widget--medium .ts-title {
-  font-size: 12.5px;
-}
-
-/* large: mehr Luft, größere Schrift */
-.ts-widget--large .ts-header {
-  padding: 12px 16px 10px;
-}
-.ts-widget--large .ts-content {
-  padding: 10px 16px 12px;
-  gap: 5px;
-}
-.ts-widget--large .ts-title {
-  font-size: 14px;
-}
-.ts-widget--large .ts-teaser {
-  font-size: 12px;
-  -webkit-line-clamp: 3;
-}
-.ts-widget--large .ts-image {
-  max-height: 160px;
 }
 </style>
