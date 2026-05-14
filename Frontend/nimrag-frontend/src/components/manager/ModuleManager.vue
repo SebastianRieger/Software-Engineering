@@ -1,9 +1,10 @@
 <script setup lang="ts">
-import { ref } from 'vue';
+import { ref, computed } from 'vue';
 import type { ComponentPublicInstance } from 'vue';
 import GridBoard from './GridBoard.vue';
 import ModuleShop from './ModuleShop.vue';
 import { useWidgetManager } from '../../composables/useWidgetManager';
+import { useWidgetResize } from '../../composables/useWidgetResize';
 import { useEditMode } from '../../composables/useEditMode';
 import { useModuleShop } from '../../composables/useModuleShop';
 
@@ -14,7 +15,13 @@ interface ModuleShopExposed {
 }
 
 // Composables initialisieren
-const { insertWidgetIntoCell, clearCell, moveWidgets } = useWidgetManager();
+const { insertWidgetIntoCell, clearCell, moveWidgets, occupiedCells } = useWidgetManager();
+const { getVisibleCells } = useWidgetResize();
+
+const availableCells = computed(() => {
+  const occupied = new Set(occupiedCells.value)
+  return getVisibleCells().filter(id => !occupied.has(id))
+});
 const { isEditMode, setupKeyboardListener } = useEditMode();
 const { isShopOpen, toggleShop } = useModuleShop();
 
@@ -83,7 +90,7 @@ setupKeyboardListener({
     <div v-if="isShopOpen" class="shop-overlay" @click.self="isShopOpen = false">
       <div class="shop-modal">
         <button class="close-btn" @click="isShopOpen = false">×</button>
-        <ModuleShop ref="moduleShopRef" @addWidget="handleAddWidget" />
+        <ModuleShop ref="moduleShopRef" :available-cells="availableCells" @addWidget="handleAddWidget" />
       </div>
     </div>
 

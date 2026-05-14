@@ -17,7 +17,7 @@ const resizingCell = ref<number | null>(null);
 
 // Grid-Zellen initialisieren
 onMounted(() => {
-  for (let i = 1; i <= 16; i++) {
+  for (let i = 1; i <= 16; i++) {2
     initializeCell(i);
   }
 });
@@ -73,38 +73,15 @@ function onDrop(e: DragEvent, targetIndex: number) {
 
   if (Number.isNaN(sourceCellId) || sourceCellId === targetCellId) return
 
-  const sourceMount = document.getElementById(`cell-content-${sourceCellId}`)
-  const targetMount = document.getElementById(`cell-content-${targetCellId}`)
-  if (!sourceMount || !targetMount) return
-
-  // DOM-Nodes wirklich verschieben (nicht innerHTML kopieren!)
-  // → Vue-App-Instanzen bleiben an ihrem Container-Div hängen
-  const sourceChild = sourceMount.firstElementChild
-  const targetChild = targetMount.firstElementChild
-
-  if (sourceChild && targetChild) {
-    const anchor = document.createComment('swap')
-    targetMount.replaceChild(anchor, targetChild)   // targetChild kurz rausnehmen
-    sourceMount.replaceChild(targetChild, sourceChild)  // sourceChild → targetChild
-    targetMount.replaceChild(sourceChild, anchor)   // anchor → sourceChild
-  } else if (sourceChild) {
-    targetMount.appendChild(sourceChild)  // leere Zelle: einfach rüberbewegen
-  } else if (targetChild) {
-    sourceMount.appendChild(targetChild)
-  }
-
-  const sourceCell = sourceMount.parentElement as HTMLElement | null
+  const sourceCell = document.getElementById(sourceCellId.toString())
   if (sourceCell) sourceCell.style.opacity = '1'
 
   widgetVersion.value++
-
   emit('widgetsMoved', { sourceCellId, targetCellId })
 }
 
-function onDragEnd(e: DragEvent, index: number) {
-  e; //damit kein Fehler in IDE angezeigt wird
-  const cellId = index
-  const cell = document.getElementById(cellId.toString())
+function onDragEnd(_e: DragEvent, index: number) {
+  const cell = document.getElementById(index.toString())
   if (cell) cell.style.opacity = '1'
 }
 

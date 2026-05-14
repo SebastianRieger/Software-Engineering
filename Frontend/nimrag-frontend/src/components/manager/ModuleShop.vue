@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { ref, onMounted, defineEmits, defineExpose, computed } from 'vue'
 
+const props = defineProps<{ availableCells: number[] }>()
 const emit = defineEmits(['addWidget'])
 const modules = import.meta.glob("../widgets/*.vue")
 
@@ -161,10 +162,11 @@ defineExpose({
         v-if="moduleList.length > 0"
         class="cell-selection"
     >
-      <p>Add to cell:</p>
+      <p v-if="props.availableCells.length > 0">In Zelle einfügen:</p>
+      <p v-else class="no-cells-msg">Alle Zellen belegt – Widget löschen, um Platz zu schaffen.</p>
       <div class="cell-buttons">
         <button
-            v-for="cellId in [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16]"
+            v-for="cellId in props.availableCells"
             :key="cellId"
             @click="addCurrentWidgetToCell(cellId)"
             class="cell-btn"
@@ -508,6 +510,12 @@ defineExpose({
   font-size: 0.95rem;
   letter-spacing: 0.05em;
   color: #b0b0b0;
+}
+
+.no-cells-msg {
+  color: #888;
+  font-size: 0.85rem;
+  font-style: italic;
 }
 
 .cell-buttons {

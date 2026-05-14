@@ -49,13 +49,12 @@ async function fetchNews(options?: {
 
   const base = 'https://www.tagesschau.de/api2u/news/'
   const url = params.toString() ? `${base}?${params}` : base
-  const proxy = `https://api.allorigins.win/get?url=${encodeURIComponent(url)}`
+  const proxy = `https://corsproxy.io/?${encodeURIComponent(url)}`
 
   const res = await fetch(proxy)
   if (!res.ok) throw new Error(`HTTP ${res.status}`)
 
-  const data = await res.json()
-  const parsed = JSON.parse(data.contents)
+  const parsed = await res.json()
   return (parsed.news ?? []) as NewsItem[]
 }
 
@@ -100,6 +99,10 @@ function getImage(item: NewsItem): string | null {
   )
 }
 
+function openArticle(url: string) {
+  window.open(url, '_blank', 'noopener,noreferrer')
+}
+
 async function load() {
   try {
     isLoading.value = true
@@ -142,7 +145,7 @@ onUnmounted(() => {
           :key="item.sophoraId"
           class="ts-item"
           :class="{ 'ts-item--breaking': item.breakingNews }"
-          @click="window.open(item.shareURL, '_blank')"
+          @click="openArticle(item.shareURL)"
       >
 
         <!-- LARGE: Bild oben -->
