@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach, afterEach } from 'vitest'
+import { describe, it, expect, afterEach } from 'vitest'
 import { defineComponent, h } from 'vue'
 import { useWidgetManager } from '@/composables/useWidgetManager'
 
@@ -55,7 +55,7 @@ describe('useWidgetManager', () => {
       insertWidgetIntoCell(id, SimpleWidget)
       insertWidgetIntoCell(id, SimpleWidget)
       // Still one occurrence in occupiedCells
-      expect(occupiedCells.value.filter(c => c === id)).toHaveLength(1)
+      expect(occupiedCells.value.filter((c: number) => c === id)).toHaveLength(1)
     })
 
     it('does nothing when the mount element does not exist', () => {
@@ -160,7 +160,7 @@ describe('useWidgetManager', () => {
       createMount(srcId) // empty
       createMount(tgtId)
 
-      const { insertWidgetIntoCell, moveWidgets, occupiedCells } = useWidgetManager()
+      const { insertWidgetIntoCell, moveWidgets } = useWidgetManager()
       insertWidgetIntoCell(tgtId, SimpleWidget)
 
       moveWidgets({ sourceCellId: srcId, targetCellId: tgtId })

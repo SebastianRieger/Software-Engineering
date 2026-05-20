@@ -44,9 +44,9 @@ describe('GridBoard', () => {
 
     // Simulate drag-start on cell 1 (index 0) then drop on cell 2 (index 1)
     const dt = { getData: vi.fn().mockReturnValue('1'), setData: vi.fn(), effectAllowed: '', dropEffect: '', setDragImage: vi.fn() }
-    await cells[0].trigger('dragstart', { dataTransfer: dt })
-    await cells[1].trigger('dragover', { dataTransfer: dt, preventDefault: vi.fn() })
-    await cells[1].trigger('drop', { dataTransfer: dt, preventDefault: vi.fn() })
+    await cells[0]!.trigger('dragstart', { dataTransfer: dt })
+    await cells[1]!.trigger('dragover', { dataTransfer: dt, preventDefault: vi.fn() })
+    await cells[1]!.trigger('drop', { dataTransfer: dt, preventDefault: vi.fn() })
 
     const emitted = wrapper.emitted('widgetsMoved')
     if (emitted) {
