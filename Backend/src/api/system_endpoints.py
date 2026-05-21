@@ -1,3 +1,4 @@
+from datetime import datetime, timezone
 from pathlib import Path
 
 from fastapi import APIRouter, Depends, HTTPException, Query
@@ -30,6 +31,7 @@ from schemas.gestures import (
     GestureVideoProcessingResponse,
 )
 from schemas.interactions import InputActionConfig, InputActionConfigEnvelope
+from schemas.interactions import SimulatedInputRequest, SimulatedInputResponse
 from schemas.musical_audio import (
     MusicalAudioConfig,
     MusicalAudioConfigEnvelope,
@@ -41,6 +43,7 @@ from schemas.system import SystemStatusResponse
 from schemas.voice import VoiceConfig, VoiceConfigEnvelope
 from services.calibration import CalibrationService, CalibrationServiceError, calibration_service
 from services.gesture import GestureService, GestureServiceError, gesture_service
+from services.interactions import InputOrchestrator, input_orchestrator
 from services.musical_audio import MusicalAudioService
 from services.voice import VoiceService
 
@@ -61,6 +64,10 @@ async def get_gesture_service() -> GestureService:
 
 async def get_calibration_service() -> CalibrationService:
     return calibration_service
+
+
+async def get_input_orchestrator() -> InputOrchestrator:
+    return input_orchestrator
 
 
 def _select_gesture_camera_index(service: GestureService, requested_camera_index: int | None = None) -> int:
@@ -364,6 +371,46 @@ async def get_system_status():
         "config_entries": config_repository.count_entries(),
         "weather_cache_entries": weather_repository.count_cache_entries(),
     }
+
+
+@system_router.post("/dev/simulate-input", response_model=SimulatedInputResponse)
+async def simulate_input_event(
+    payload: SimulatedInputRequest,
+    orchestrator: InputOrchestrator = Depends(get_input_orchestrator),
+):
+    orchestrator.reload_config()
+    timestamp = datetime.now(timezone.utc)
+    emitted_events: list[str] = []
+
+    if payload.emit_raw_input_event:
+        orchestrator.publish_raw_input_detected(
+            input_source=payload.input_source,
+            raw_input=payload.raw_input,
+            timestamp=timestamp,
+            metadata=payload.metadata,
+        )
+        emitted_events.append("RawInputDetected")
+
+    accepted = orchestrator.publish_ui_action_requested(
+        input_source=payload.input_source,
+        raw_input=payload.raw_input,
+        timestamp=timestamp,
+        action_args=payload.action_args,
+        metadata=payload.metadata,
+    )
+
+    emitted_events.append("CommandMatchEvaluated")
+    if accepted:
+        emitted_events.append("UIActionRequested")
+
+    return SimulatedInputResponse(
+        accepted=accepted,
+        input_source=payload.input_source,
+        raw_input=payload.raw_input,
+        action_args=payload.action_args,
+        metadata=payload.metadata,
+        emitted_events=emitted_events,
+    )
 
 
 @gesture_router.get("/status", response_model=GestureStatusResponse)

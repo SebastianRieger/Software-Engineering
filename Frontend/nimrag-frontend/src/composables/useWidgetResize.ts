@@ -12,6 +12,7 @@ const cellSizes = ref<Record<number, CellSize>>({})
  *   1 = 1×1  |  2 = 2×1  |  4 = 2×2
  */
 export function useWidgetResize() {
+  const sequence: CellSize[] = [1, 2, 4]
 
   /**
    * Initializes a cell with default size 1×1 (idempotent).
@@ -26,9 +27,22 @@ export function useWidgetResize() {
    * Cycles through available sizes: 1×1 → 2×1 → 2×2 → 1×1
    */
   const cycleCellSize = (cellId: number): CellSize => {
-    const sequence: CellSize[] = [1, 2, 4]
     const current = cellSizes.value[cellId] ?? 1
     const next = sequence[(sequence.indexOf(current) + 1) % sequence.length]!
+    cellSizes.value[cellId] = next
+    return next
+  }
+
+  /**
+   * Resizes a cell in an explicit direction without cycling past the bounds.
+   */
+  const resizeCell = (cellId: number, direction: 'expand' | 'shrink'): CellSize => {
+    const current = cellSizes.value[cellId] ?? 1
+    const currentIndex = sequence.indexOf(current)
+    const nextIndex = direction === 'expand'
+      ? Math.min(currentIndex + 1, sequence.length - 1)
+      : Math.max(currentIndex - 1, 0)
+    const next = sequence[nextIndex]!
     cellSizes.value[cellId] = next
     return next
   }
@@ -77,6 +91,7 @@ export function useWidgetResize() {
     cellSizes,   // Exposed directly so it can be passed via provide
     initializeCell,
     cycleCellSize,
+    resizeCell,
     getGridClass,
     getSizeLabel,
     getVisibleCells,

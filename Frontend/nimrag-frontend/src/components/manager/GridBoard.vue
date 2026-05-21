@@ -1,14 +1,15 @@
 <script setup lang="ts">
-import { defineEmits, defineProps, toRefs, ref, onMounted } from 'vue';
+import { toRefs, ref, onMounted } from 'vue';
 import { useWidgetResize } from '../../composables/useWidgetResize';
 
 const emit = defineEmits(['widgetsMoved', 'deleteWidget']);
 
 const props = defineProps<{
   isEditMode: boolean
+  focusedCellId?: number | null
 }>();
 
-const { isEditMode } = toRefs(props);
+const { isEditMode, focusedCellId } = toRefs(props);
 const { getGridClass, cycleCellSize, getSizeLabel, initializeCell, getVisibleCells } = useWidgetResize();
 
 // Reaktiver "Refresh-Trigger" für die Delete-Buttons
@@ -128,7 +129,9 @@ function onResizeClick(cellId: number) {
         v-for="i in getVisibleCells()"
         :key="i"
         :id="String(i)"
-        :class="['grid-cell', getGridClass(i)]"
+        :data-cell-id="i"
+        :class="['grid-cell', getGridClass(i), { 'grid-cell-focused': focusedCellId === i }]"
+        :aria-selected="focusedCellId === i"
         draggable="true"
         @dragstart="onDragStart($event, i)"
         @dragover="onDragOver"
@@ -179,6 +182,12 @@ function onResizeClick(cellId: number) {
   background: #262626;
   border-radius: 0.75rem;
   box-shadow: inset 0 1px 2px 0 rgba(0, 0, 0, 0.5);
+}
+
+.grid-cell-focused {
+  box-shadow:
+    inset 0 0 0 2px rgba(96, 165, 250, 0.95),
+    0 0 0 4px rgba(59, 130, 246, 0.2);
 }
 
 /* Grid-Spanning für verschiedene Größen */

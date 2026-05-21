@@ -8,11 +8,15 @@ import { ref, onMounted, onBeforeUnmount } from 'vue';
 export function useEditMode() {
   const isEditMode = ref(false);
 
+  const setEditMode = (value: boolean) => {
+    isEditMode.value = value;
+  };
+
   /**
    * Toggled den Edit-Modus
    */
   const toggleEditMode = () => {
-    isEditMode.value = !isEditMode.value;
+    setEditMode(!isEditMode.value);
   };
 
   /**
@@ -66,6 +70,7 @@ export function useEditMode() {
 
   return {
     isEditMode,
+    setEditMode,
     toggleEditMode,
     setupKeyboardListener,
   };

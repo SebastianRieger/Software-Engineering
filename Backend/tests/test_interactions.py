@@ -2,6 +2,10 @@ from datetime import datetime, timezone
 
 from concurrent.futures import Future
 
+import pytest
+
+from api.system_endpoints import get_input_orchestrator
+from main import app
 from schemas.commands import CommandModalitySettings, CommandProfile
 from schemas.interactions import InputActionConfig, InputActionMapping
 from services.interactions import InputOrchestrator
@@ -37,6 +41,38 @@ class StaticInteractionConfigRepository:
 
     def get_active_command_profile(self):
         return self.profile
+
+
+@pytest.fixture
+def override_input_orchestrator_dependency():
+    hub = CapturingRealtimeHub()
+    repository = StaticInteractionConfigRepository(
+        InputActionConfig(
+            mappings=[
+                InputActionMapping(input_source="gesture", raw_input="circle", action="toggle_shop"),
+                InputActionMapping(input_source="voice", raw_input="voice.open_shop", action="open_shop"),
+                InputActionMapping(
+                    input_source="voice",
+                    raw_input="voice.focus_grid_cell",
+                    action="focus_grid_cell",
+                    action_args={"mode": "grid"},
+                ),
+            ],
+            global_cooldown_seconds=0.0,
+            repeat_same_action_window_seconds=0.0,
+        )
+    )
+    orchestrator = InputOrchestrator(
+        realtime=hub,
+        config_repository_factory=lambda: repository,
+    )
+
+    async def _override_input_orchestrator():
+        return orchestrator
+
+    app.dependency_overrides[get_input_orchestrator] = _override_input_orchestrator
+    yield orchestrator, hub
+    app.dependency_overrides.pop(get_input_orchestrator, None)
 
 
 def test_input_orchestrator_blocks_lower_priority_action_inside_global_cooldown():
@@ -229,3 +265,54 @@ def test_input_orchestrator_merges_structured_action_arguments_into_ui_action_pa
     assert ui_action_payload["action"] == "focus_grid_cell"
     assert ui_action_payload["action_args"] == {"cell_index": 4, "mode": "grid"}
     assert ui_action_payload["metadata"] == {"transcript": "feld vier"}
+
+
+@pytest.mark.asyncio
+async def test_dev_simulate_input_endpoint_publishes_backend_events(client, override_input_orchestrator_dependency):
+    _, hub = override_input_orchestrator_dependency
+
+    response = await client.post(
+        "/api/v1/system/dev/simulate-input",
+        json={
+            "input_source": "gesture",
+            "raw_input": "circle",
+            "metadata": {"simulated_by": "terminal"},
+        },
+    )
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["accepted"] is True
+    assert payload["emitted_events"] == ["RawInputDetected", "CommandMatchEvaluated", "UIActionRequested"]
+    assert [message["eventType"] for message in hub.messages] == [
+        "RawInputDetected",
+        "CommandMatchEvaluated",
+        "UIActionRequested",
+    ]
+    assert hub.messages[2]["payload"]["action"] == "toggle_shop"
+    assert hub.messages[2]["payload"]["metadata"] == {"simulated_by": "terminal"}
+
+
+@pytest.mark.asyncio
+async def test_dev_simulate_input_endpoint_reports_unmapped_inputs(client, override_input_orchestrator_dependency):
+    _, hub = override_input_orchestrator_dependency
+
+    response = await client.post(
+        "/api/v1/system/dev/simulate-input",
+        json={
+            "input_source": "voice",
+            "raw_input": "voice.unknown",
+            "action_args": {"cell_index": 4},
+        },
+    )
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["accepted"] is False
+    assert payload["emitted_events"] == ["RawInputDetected", "CommandMatchEvaluated"]
+    assert [message["eventType"] for message in hub.messages] == [
+        "RawInputDetected",
+        "CommandMatchEvaluated",
+    ]
+    assert hub.messages[1]["payload"]["outcome"] == "unmapped"
+    assert hub.messages[1]["payload"]["reason"] == "no_mapping"
