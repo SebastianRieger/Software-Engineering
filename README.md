@@ -11,7 +11,7 @@ Ein intelligenter Spiegel mit modularer Software-Architektur, entwickelt für Ra
 node setup.js
 ```
 
-Das war's! Das Skript installiert automatisch alle Dependencies und startet das Frontend.
+Das Root-Skript installiert die Frontend-Dependencies und erstellt fuer das Backend automatisch `Backend/.venv` mit einem unterstuetzten Python-Interpreter. Eine manuelle Venv-Aktivierung ist nicht noetig.
 
 ## Systemanforderungen
 
@@ -23,7 +23,7 @@ Das war's! Das Skript installiert automatisch alle Dependencies und startet das 
 
 ### Software:
 - **Node.js** (Version 16+) - [Download](https://nodejs.org/)
-- **Python** (für Backend) - [Download](https://python.org/)
+- **Python 3.11 bis 3.13** (fuer Backend, 3.12 bevorzugt) - [Download](https://python.org/)
 - **Git** - [Download](https://git-scm.com/)
 
 ## Installation & Setup
@@ -37,15 +37,17 @@ node setup.js
 npm run setup
 ```
 
+Der Backend-Bootstrapper sucht automatisch nach einem passenden Python-Interpreter. Unterstuetzt sind Python 3.11 bis 3.13, empfohlen ist 3.12. Wenn die automatische Suche nicht greift, kann der Interpreter ueber `SMART_MIRROR_PYTHON` gesetzt werden.
+
 ### Option 2: Manuell
 ```bash
 # Frontend Dependencies
 cd Frontend/nimrag-frontend
 npm install
 
-# Backend Dependencies (optional)
-cd Backend
-pip install -r requirements.txt
+# Zurueck ins Repo-Root und Backend vorbereiten
+cd ../..
+npm run setup:backend
 ```
 
 ## Entwicklung starten
@@ -53,7 +55,7 @@ pip install -r requirements.txt
 ### Frontend Development Server:
 ```bash
 # Automatisch
-node setup.js --dev
+npm run dev
 
 # Oder manuell
 cd Frontend/nimrag-frontend
@@ -62,9 +64,10 @@ npm run dev
 
 ### Backend starten:
 ```bash
-cd Backend/src
-python main.py
+npm run dev:backend
 ```
+
+Das startet das Backend immer mit `Backend/.venv`, ohne separate Aktivierungsschritte. Falls du den Python-Pfad manuell vorgeben musst, setze vorher `SMART_MIRROR_PYTHON`.
 
 ## Projekt-Struktur
 
@@ -84,8 +87,6 @@ Smart-Mirror-Project/
 ├── pics/                      # Bilder & Mockups
 ├── docs/                      # Dokumentation
 ├── setup.js                  # Universal Setup Script
-├── setup.bat                 # Windows Batch Script
-├── setup.sh                  # Linux/macOS Shell Script
 ├── package.json              # NPM Scripts
 └── README.md                 # Diese Datei
 ```
@@ -108,14 +109,11 @@ Smart-Mirror-Project/
 # Setup & Installation
 node setup.js              # Vollständiges Setup
 npm run setup              # Alternative mit NPM
+npm run setup:backend      # Nur Backend-Venv und Python-Dependencies
 
 # Development
-node setup.js --dev        # Frontend Dev Server starten
-npm run dev                # Alternative mit NPM
-
-# Platform-specific
-.\setup.bat                # Windows Batch
-./setup.sh                 # Linux/macOS Shell
+npm run dev                # Frontend Dev Server starten
+npm run dev:backend        # Backend mit Projekt-Venv starten
 ```
 
 ## Software-Architektur
@@ -171,11 +169,14 @@ npm run dev
 
 ### Backend-Probleme:
 ```bash
-cd Backend
-pip install --upgrade pip
-pip install -r requirements.txt
-python main.py
+# Root-Bootstrapper fuer Backend erneut ausfuehren
+npm run setup:backend -- --force
+
+# Danach Backend starten
+npm run dev:backend
 ```
+
+Wenn nur ein nicht unterstuetzter System-Python gefunden wird, installiere Python 3.12 oder 3.11 und pruefe `python --version` beziehungsweise unter Windows `py -3.12 --version`.
 
 ### Raspberry Pi GPIO:
 - Stellen Sie sicher, dass GPIO aktiviert ist
@@ -188,7 +189,7 @@ python main.py
 ```bash
 git clone https://github.com/SebastianRieger/Software-Engineering.git
 cd Software-Engineering
-node setup.js
+npm run setup
 ```
 
 ### Branches:
