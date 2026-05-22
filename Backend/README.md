@@ -70,7 +70,7 @@ Der Musical-Audio-Pfad nutzt aubio bewusst als Pflichtkomponente fuer Live-Pitch
 sudo dnf install -y python3.12-devel aubio-devel aubio-lib
 ```
 
-`python3.12-devel` liefert `Python.h` fuer native Builds, `aubio-devel` liefert `aubio.pc` fuer `pkg-config`, und `aubio-lib` stellt die Laufzeitbibliothek bereit. Unter Windows sollte Python 3.12 inklusive Python Launcher installiert sein, damit `py -3.12` vom Root-Bootstrapper gefunden wird. Falls die automatische Interpreter-Erkennung nicht greift, kann der Pfad ueber `SMART_MIRROR_PYTHON` gesetzt werden.
+`python3.12-devel` liefert `Python.h` fuer native Builds, `aubio-devel` liefert `aubio.pc` fuer `pkg-config`, und `aubio-lib` stellt die Laufzeitbibliothek bereit. Unter Windows sollte Python 3.12 inklusive Python Launcher installiert sein, damit `py -3.12` vom Root-Bootstrapper gefunden wird. Der Root-Bootstrapper ueberspringt `aubio` auf Windows bewusst, wenn keine nativen Build-Werkzeuge vorhanden sind; das Backend startet trotzdem, waehrend der optionale Musical-Audio-Pfad dann als nicht verfuegbar markiert bleibt. Falls die automatische Interpreter-Erkennung nicht greift, kann der Pfad ueber `SMART_MIRROR_PYTHON` gesetzt werden.
 
 ## Tests
 

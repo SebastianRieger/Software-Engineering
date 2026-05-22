@@ -12,6 +12,7 @@ node setup.js
 ```
 
 Das Root-Skript installiert die Frontend-Dependencies und erstellt fuer das Backend automatisch `Backend/.venv` mit einem unterstuetzten Python-Interpreter. Eine manuelle Venv-Aktivierung ist nicht noetig.
+Unter einer frischen Windows-PowerShell ist dieser `node setup.js`-Pfad dem nackten `npm`-Aufruf vorzuziehen, weil `npm.ps1` je nach Execution Policy geblockt sein kann.
 
 ## Systemanforderungen
 
@@ -55,7 +56,7 @@ npm run setup:backend
 ### Frontend Development Server:
 ```bash
 # Automatisch
-npm run dev
+node setup.js --dev-frontend
 
 # Oder manuell
 cd Frontend/nimrag-frontend
@@ -64,7 +65,7 @@ npm run dev
 
 ### Backend starten:
 ```bash
-npm run dev:backend
+node setup.js --dev-backend
 ```
 
 Das startet das Backend immer mit `Backend/.venv`, ohne separate Aktivierungsschritte. Falls du den Python-Pfad manuell vorgeben musst, setze vorher `SMART_MIRROR_PYTHON`.
@@ -175,6 +176,8 @@ npm run setup:backend -- --force
 # Danach Backend starten
 npm run dev:backend
 ```
+
+Unter Windows ueberspringt der Root-Bootstrapper `aubio`, falls keine nativen Build-Tools vorhanden sind. Das Backend bleibt dadurch startbar; nur der optionale Musical-Audio-Pfad meldet sich dann als nicht verfuegbar.
 
 Wenn nur ein nicht unterstuetzter System-Python gefunden wird, installiere Python 3.12 oder 3.11 und pruefe `python --version` beziehungsweise unter Windows `py -3.12 --version`.
 

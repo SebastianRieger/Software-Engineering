@@ -68,11 +68,16 @@ class SmartMirrorSetup {
             : path.join(this.backendVenvDir, 'bin', 'python');
     }
 
+    requiresShell(command) {
+        return this.isWindows && /\.(cmd|bat)$/i.test(command);
+    }
+
     runCommandCapture(command, args = [], options = {}) {
         const result = spawnSync(command, args, {
             cwd: options.cwd || this.rootDir,
             env: { ...process.env, ...(options.env || {}) },
             encoding: 'utf8',
+            shell: this.requiresShell(command),
         });
 
         if (result.error) {
@@ -91,6 +96,7 @@ class SmartMirrorSetup {
                 cwd: options.cwd || this.rootDir,
                 env: { ...process.env, ...(options.env || {}) },
                 stdio: options.stdio || 'inherit',
+                shell: this.requiresShell(command),
             });
 
             child.on('error', reject);
@@ -182,8 +188,10 @@ class SmartMirrorSetup {
             await this.installBackendPythonPackages(backendPython, [numpyRequirement]);
         }
 
-        if (aubioRequirement) {
+        if (aubioRequirement && !this.isWindows) {
             await this.installBackendPythonPackages(backendPython, ['--no-build-isolation', aubioRequirement]);
+        } else if (aubioRequirement && this.isWindows) {
+            this.info('Skipping aubio on Windows; the musical-audio feature remains unavailable until its native dependencies are installed manually.');
         }
 
         fs.writeFileSync(tempRequirementsPath, filteredRequirementLines.join('\n'));
