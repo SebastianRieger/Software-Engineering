@@ -1,6 +1,8 @@
 <script setup lang="ts">
 import { defineEmits, defineProps, toRefs, ref, onMounted } from 'vue';
 import { useWidgetResize } from '../../composables/useWidgetResize';
+import { useWidgetManager } from '../../composables/useWidgetManager';
+import CellSlot from './CellSlot.vue';
 
 const emit = defineEmits(['widgetsMoved', 'deleteWidget']);
 
@@ -10,103 +12,74 @@ const props = defineProps<{
 
 const { isEditMode } = toRefs(props);
 const { getGridClass, cycleCellSize, getSizeLabel, initializeCell, getVisibleCells } = useWidgetResize();
+const { widgetMap } = useWidgetManager();
 
-// Reaktiver "Refresh-Trigger" für die Delete-Buttons
-const widgetVersion = ref(0);
+const draggingCell = ref<number | null>(null);
 const resizingCell = ref<number | null>(null);
 
-// Grid-Zellen initialisieren
 onMounted(() => {
-  for (let i = 1; i <= 16; i++) {2
+  for (let i = 1; i <= 16; i++) {
     initializeCell(i);
   }
 });
 
-// Hilfsfunktion um zu prüfen ob eine Zelle ein Widget hat
-function hasWidget(cellId: number): boolean {
-  const mount = document.getElementById(`cell-content-${cellId}`)
-  if (!mount) return false
-
-  const hasPlaceholder = mount.querySelector('.opacity-70')
-  return !hasPlaceholder
-}
-
-// 4x4 Grid -> 16 Zellen
 function onDragStart(e: DragEvent, index: number) {
-  const cellId = index
-  const cell = document.getElementById(cellId.toString())
-  if (!cell) return
+  if (!widgetMap.value[index]) return;
 
-  const hasPlaceholder = cell.querySelector('.opacity-70')
-  if (hasPlaceholder) return
-
-  e.dataTransfer?.setData('text/plain', String(cellId))
+  e.dataTransfer?.setData('text/plain', String(index));
   if (e.dataTransfer) {
-    e.dataTransfer.effectAllowed = 'move'
+    e.dataTransfer.effectAllowed = 'move';
   }
 
-  const ghost = document.createElement('div')
-  ghost.style.width = '1px'
-  ghost.style.height = '1px'
-  ghost.style.opacity = '0'
-  document.body.appendChild(ghost)
-  e.dataTransfer?.setDragImage(ghost, 0, 0)
-  setTimeout(() => ghost.remove(), 0)
+  const ghost = document.createElement('div');
+  ghost.style.width = '1px';
+  ghost.style.height = '1px';
+  ghost.style.opacity = '0';
+  document.body.appendChild(ghost);
+  e.dataTransfer?.setDragImage(ghost, 0, 0);
+  setTimeout(() => ghost.remove(), 0);
 
-  cell.style.opacity = '0.5'
+  draggingCell.value = index;
 }
 
 function onDragOver(e: DragEvent) {
-  e.preventDefault()
+  e.preventDefault();
   if (e.dataTransfer) {
-    e.dataTransfer.dropEffect = 'move'
+    e.dataTransfer.dropEffect = 'move';
   }
 }
 
 function onDrop(e: DragEvent, targetIndex: number) {
-  e.preventDefault()
-  const data = e.dataTransfer?.getData('text/plain')
-  if (data == null) return
+  e.preventDefault();
+  const data = e.dataTransfer?.getData('text/plain');
+  if (data == null) return;
 
-  const sourceCellId = Number(data)
-  const targetCellId = targetIndex
+  const sourceCellId = Number(data);
+  const targetCellId = targetIndex;
 
-  if (Number.isNaN(sourceCellId) || sourceCellId === targetCellId) return
+  if (Number.isNaN(sourceCellId) || sourceCellId === targetCellId) return;
 
-  const sourceCell = document.getElementById(sourceCellId.toString())
-  if (sourceCell) sourceCell.style.opacity = '1'
-
-  widgetVersion.value++
-  emit('widgetsMoved', { sourceCellId, targetCellId })
+  draggingCell.value = null;
+  emit('widgetsMoved', { sourceCellId, targetCellId });
 }
 
 function onDragEnd(_e: DragEvent, index: number) {
-  const cell = document.getElementById(index.toString())
-  if (cell) cell.style.opacity = '1'
+  if (draggingCell.value === index) {
+    draggingCell.value = null;
+  }
 }
 
-// Delete-Button-Click kapseln, damit wir refreshen können
 function onDeleteClick(cellId: number) {
-  emit('deleteWidget', cellId)
-
-  // Parent räumt DOM auf (Platzhalter rein) → danach neu prüfen
-  setTimeout(() => {
-    widgetVersion.value++
-  }, 0)
+  emit('deleteWidget', cellId);
 }
 
-// Resize-Button-Click Handler
 function onResizeClick(cellId: number) {
   cycleCellSize(cellId);
 
-  // Visuelles Feedback
   resizingCell.value = cellId;
   setTimeout(() => {
     resizingCell.value = null;
   }, 200);
-
-  // Force UI-Update für getVisibleCells()
-  widgetVersion.value++;
 }
 </script>
 
@@ -123,32 +96,31 @@ function onResizeClick(cellId: number) {
         overflow: hidden;
       "
   >
-    <!-- generiert Zellen basierend auf verfügbarem Platz -->
     <div
         v-for="i in getVisibleCells()"
         :key="i"
         :id="String(i)"
-        :class="['grid-cell', getGridClass(i)]"
+        :class="['grid-cell', getGridClass(i), { 'cell-dragging': draggingCell === i }]"
         draggable="true"
         @dragstart="onDragStart($event, i)"
         @dragover="onDragOver"
         @drop="onDrop($event, i)"
         @dragend="onDragEnd($event, i)"
     >
-      <!-- Mount-Container für Widget-Inhalt -->
-      <div
+      <!-- Widget oder Platzhalter -->
+      <CellSlot
+          v-if="widgetMap[i]"
+          :cell-id="i"
+          :component="widgetMap[i]"
           class="w-full h-full"
-          :id="`cell-content-${i}`"
-      >
-        <!--Platzhalter, bis ein Widget gemountet wird -->
-        <div class="w-full h-full grid place-items-center text-2xl font-semibold opacity-70">
-          {{ String(i).padStart(2, '0') }}
-        </div>
+      />
+      <div v-else class="w-full h-full grid place-items-center text-2xl font-semibold opacity-70">
+        {{ String(i).padStart(2, '0') }}
       </div>
 
       <!-- Delete-Button: Obere rechte Ecke -->
       <button
-          v-if="isEditMode && widgetVersion >= 0 && hasWidget(i)"
+          v-if="isEditMode && widgetMap[i]"
           class="delete-widget-btn"
           @click.stop="onDeleteClick(i)"
           title="Widget löschen"
@@ -158,7 +130,7 @@ function onResizeClick(cellId: number) {
 
       <!-- Resize-Button: Untere rechte Ecke -->
       <button
-          v-if="isEditMode && hasWidget(i)"
+          v-if="isEditMode && widgetMap[i]"
           :class="['resize-widget-btn', { 'resize-active': resizingCell === i }]"
           @click.stop="onResizeClick(i)"
           :title="`Größe: ${getSizeLabel(i)}`"

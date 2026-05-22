@@ -1,12 +1,20 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { mount } from '@vue/test-utils'
+import { defineComponent, h, markRaw } from 'vue'
 import GridBoard from '@/components/manager/GridBoard.vue'
 import { useWidgetResize } from '@/composables/useWidgetResize'
+import { useWidgetManager } from '@/composables/useWidgetManager'
 
-// Ensure cells 1–16 are initialised at size 1 before each test
+const DummyWidget = defineComponent({
+  name: 'DummyWidget',
+  render() { return h('div', { class: 'dummy-widget' }, 'Widget') },
+})
+
 beforeEach(() => {
   const { cellSizes } = useWidgetResize()
   for (let i = 1; i <= 16; i++) cellSizes.value[i] = 1
+  const { widgetMap } = useWidgetManager()
+  widgetMap.value = {}
 })
 
 afterEach(() => {
@@ -42,7 +50,6 @@ describe('GridBoard', () => {
     const wrapper = mount(GridBoard, { props: { isEditMode: false } })
     const cells = wrapper.findAll('.grid-cell')
 
-    // Simulate drag-start on cell 1 (index 0) then drop on cell 2 (index 1)
     const dt = { getData: vi.fn().mockReturnValue('1'), setData: vi.fn(), effectAllowed: '', dropEffect: '', setDragImage: vi.fn() }
     await cells[0]!.trigger('dragstart', { dataTransfer: dt })
     await cells[1]!.trigger('dragover', { dataTransfer: dt, preventDefault: vi.fn() })
@@ -54,31 +61,34 @@ describe('GridBoard', () => {
     }
   })
 
-  it('resets cell opacity on dragend', async () => {
+  it('resets dragging state on dragend without errors', async () => {
     const wrapper = mount(GridBoard, { props: { isEditMode: false } })
     const cell = wrapper.find('.grid-cell')
     await cell.trigger('dragend')
-    // Just verify no errors are thrown
     expect(wrapper.exists()).toBe(true)
   })
 
-  it('emits deleteWidget when delete button is clicked', async () => {
-    // Insert a widget DOM-side so hasWidget returns true
+  it('shows delete and resize buttons in edit mode when a widget is present', async () => {
+    const { widgetMap } = useWidgetManager()
+    widgetMap.value = { 1: markRaw(DummyWidget) }
+
     const wrapper = mount(GridBoard, { props: { isEditMode: true } })
     await wrapper.vm.$nextTick()
 
-    const mountEl = document.getElementById('cell-content-1')
-    if (mountEl) {
-      // Remove the placeholder so hasWidget(1) returns true
-      mountEl.innerHTML = '<div class="real-widget">widget</div>'
-      await wrapper.vm.$nextTick()
+    expect(wrapper.find('.delete-widget-btn').exists()).toBe(true)
+    expect(wrapper.find('.resize-widget-btn').exists()).toBe(true)
+  })
 
-      // Force re-render by triggering widgetVersion bump via delete click
-      const deleteBtn = wrapper.find('.delete-widget-btn')
-      if (deleteBtn.exists()) {
-        await deleteBtn.trigger('click')
-        expect(wrapper.emitted('deleteWidget')).toBeTruthy()
-      }
-    }
+  it('emits deleteWidget when delete button is clicked', async () => {
+    const { widgetMap } = useWidgetManager()
+    widgetMap.value = { 1: markRaw(DummyWidget) }
+
+    const wrapper = mount(GridBoard, { props: { isEditMode: true } })
+    await wrapper.vm.$nextTick()
+
+    const deleteBtn = wrapper.find('.delete-widget-btn')
+    expect(deleteBtn.exists()).toBe(true)
+    await deleteBtn.trigger('click')
+    expect(wrapper.emitted('deleteWidget')).toBeTruthy()
   })
 })
