@@ -26,15 +26,19 @@ export function useEditMode() {
       onShopToggle: () => void;
       onShopNavigate: (key: string) => void;
       onEditModeToggle?: () => void;
+      onClockToggle?: () => void;
     }
   ) => {
-    if (event.key === 'e') {
+    if (event.key === 'e' || event.key === 'E') {
       // E zum Öffnen/Schließen des Shops
       callbacks.onShopToggle();
     } else if (event.key === 'f' || event.key === 'F') {
       // F für Edit-Modus
       toggleEditMode();
       callbacks.onEditModeToggle?.();
+    } else if (event.key === 'a' || event.key === 'A') {
+      // A zum Umschalten der Uhr
+      callbacks.onClockToggle?.();
     } else if (event.key === 'Escape') {
       // Escape zum Schließen des Shops
       callbacks.onShopToggle();
@@ -52,6 +56,7 @@ export function useEditMode() {
     onShopToggle: () => void;
     onShopNavigate: (key: string) => void;
     onEditModeToggle?: () => void;
+    onClockToggle?: () => void;
   }) => {
     const listener = (event: KeyboardEvent) => handleKeydown(event, callbacks);
 

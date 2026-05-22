@@ -7,6 +7,7 @@ import { useWidgetManager } from '../../composables/useWidgetManager';
 import { useWidgetResize } from '../../composables/useWidgetResize';
 import { useEditMode } from '../../composables/useEditMode';
 import { useModuleShop } from '../../composables/useModuleShop';
+import { useClockWidgetMode } from '../../composables/useClockWidgetMode';
 
 // Interface für die Methoden des ModuleShop
 interface ModuleShopExposed {
@@ -24,6 +25,7 @@ const availableCells = computed(() => {
 });
 const { isEditMode, setupKeyboardListener } = useEditMode();
 const { isShopOpen, toggleShop } = useModuleShop();
+const { clockAnalogMode, toggleClockMode } = useClockWidgetMode();
 
 const moduleShopRef = ref<ComponentPublicInstance<{}, ModuleShopExposed> | null>(null);
 
@@ -66,6 +68,7 @@ const handleShopNavigation = (key: string) => {
 setupKeyboardListener({
   onShopToggle: toggleShop,
   onShopNavigate: handleShopNavigation,
+  onClockToggle: toggleClockMode,
 });
 
 </script>
@@ -81,6 +84,13 @@ setupKeyboardListener({
             <span class="shortcut">E – Shop</span>
             <span class="shortcut">F – Beenden</span>
             <span class="shortcut">Klick ⤡ – Größe ändern</span>
+            <button
+              class="shortcut shortcut-btn"
+              @click="toggleClockMode"
+              :title="clockAnalogMode ? 'Digitale Uhr' : 'Analoge Uhr'"
+            >
+              {{ clockAnalogMode ? '🔢 Digital' : '🕐 Analog' }} – A
+            </button>
           </div>
         </div>
       </div>
@@ -127,6 +137,33 @@ setupKeyboardListener({
   gap: 8px;
 }
 
+.shortcut {
+  opacity: 0.9;
+  background: rgba(255, 255, 255, 0.2);
+  padding: 4px 10px;
+  border-radius: 6px;
+  white-space: nowrap;
+}
+
+.shortcut-btn {
+  border: none;
+  color: white;
+  cursor: pointer;
+  font-size: 12px;
+  font-weight: 600;
+  transition: all 0.2s ease;
+  display: inline-block;
+}
+
+.shortcut-btn:hover {
+  background: rgba(255, 255, 255, 0.3) !important;
+  transform: scale(1.05);
+}
+
+.shortcut-btn:active {
+  transform: scale(0.95);
+}
+
 .edit-mode-text {
   font-size: 16px;
   font-weight: 700;
@@ -137,14 +174,6 @@ setupKeyboardListener({
   gap: 12px;
   font-size: 12px;
   flex-wrap: wrap;
-}
-
-.shortcut {
-  opacity: 0.9;
-  background: rgba(255, 255, 255, 0.2);
-  padding: 4px 10px;
-  border-radius: 6px;
-  white-space: nowrap;
 }
 
 .slide-down-enter-active,
@@ -180,9 +209,13 @@ setupKeyboardListener({
   background: #222;
   border-radius: 8px;
   padding: 20px;
-  max-width: 80%;
-  max-height: 80%;
+  width: 95vw;
+  height: 95vh;
+  max-width: 1200px;
+  max-height: 800px;
   overflow: auto;
+  display: flex;
+  flex-direction: column;
 }
 
 .close-btn {
