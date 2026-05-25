@@ -13,6 +13,8 @@ const OtherWidget = defineComponent({
 })
 
 beforeEach(() => {
+  // Clear localStorage so no persisted state bleeds between tests
+  localStorage.clear()
   const { widgetMap } = useWidgetManager()
   widgetMap.value = {}
 })
