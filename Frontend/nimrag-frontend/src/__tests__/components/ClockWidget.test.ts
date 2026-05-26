@@ -1,6 +1,10 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
-import { mount } from '@vue/test-utils'
+import { mount, shallowMount } from '@vue/test-utils'
+import { ref } from 'vue'
 import ClockWidget from '@/components/widgets/ClockWidget.vue'
+import AnalogClock from '@/components/internal/AnalogClock.vue'
+import { useClockWidgetMode } from '@/composables/useClockWidgetMode'
+import type { CellSize } from '@/composables/useWidgetResize'
 
 describe('ClockWidget', () => {
   beforeEach(() => {
@@ -46,5 +50,53 @@ describe('ClockWidget', () => {
     const wrapper = mount(ClockWidget)
     wrapper.unmount()
     expect(clearSpy).toHaveBeenCalled()
+  })
+
+  it('uses 8rem font size when cellSize is 4 (2×2 grid cell)', () => {
+    const wrapper = mount(ClockWidget, {
+      global: {
+        provide: {
+          cellId: 1,
+          cellSizes: ref({ 1: 4 as CellSize }),
+        },
+      },
+    })
+    const p = wrapper.find('p')
+    expect(p.attributes('style')).toContain('8rem')
+  })
+
+  it('uses 6rem font size when cellSize is 2 (2×1 grid cell)', () => {
+    const wrapper = mount(ClockWidget, {
+      global: {
+        provide: {
+          cellId: 1,
+          cellSizes: ref({ 1: 2 as CellSize }),
+        },
+      },
+    })
+    const p = wrapper.find('p')
+    expect(p.attributes('style')).toContain('6rem')
+  })
+
+  it('shows AnalogClock when cellId is non-zero and analog mode is active', async () => {
+    const { clockAnalogMode } = useClockWidgetMode()
+    clockAnalogMode.value = true
+
+    // shallowMount stubs AnalogClock to avoid canvas errors in jsdom
+    const wrapper = shallowMount(ClockWidget, {
+      global: {
+        provide: {
+          cellId: 1,
+          cellSizes: ref({ 1: 1 as CellSize }),
+        },
+      },
+    })
+    await wrapper.vm.$nextTick()
+
+    expect(wrapper.findComponent(AnalogClock).exists()).toBe(true)
+    expect(wrapper.find('p').exists()).toBe(false)
+
+    // Cleanup singleton state
+    clockAnalogMode.value = false
   })
 })
