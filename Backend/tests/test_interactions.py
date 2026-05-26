@@ -8,7 +8,11 @@ from api.system_endpoints import get_input_orchestrator
 from main import app
 from schemas.commands import CommandModalitySettings, CommandProfile
 from schemas.interactions import InputActionConfig, InputActionMapping
+from services.gesture import gesture_service
 from services.interactions import InputOrchestrator
+from services.input.orchestrator import input_orchestrator
+from services.musical_audio import musical_audio_service
+from services.voice import voice_service
 
 
 class CapturingRealtimeHub:
@@ -41,6 +45,12 @@ class StaticInteractionConfigRepository:
 
     def get_active_command_profile(self):
         return self.profile
+
+
+def test_runtime_singletons_share_the_same_input_orchestrator_instance():
+    assert gesture_service.input_orchestrator is input_orchestrator
+    assert voice_service.input_orchestrator is input_orchestrator
+    assert musical_audio_service.input_orchestrator is input_orchestrator
 
 
 @pytest.fixture

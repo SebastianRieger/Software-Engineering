@@ -121,4 +121,138 @@ describe('useActionDispatcher', () => {
     expect(closeShop).toHaveBeenCalledOnce()
     expect(toggleShop).toHaveBeenCalledOnce()
   })
+
+  it('returns false when focusing a missing or hidden grid cell', () => {
+    const dispatcher = useActionDispatcher({
+      isShopOpen: ref(false),
+      openShop: vi.fn(),
+      closeShop: vi.fn(),
+      toggleShop: vi.fn(),
+      isEditMode: ref(false),
+      visibleCellIds: () => [1, 2, 3],
+      isCellAvailable: () => true,
+      moduleShopRef: ref(null),
+    })
+
+    expect(dispatcher.dispatchAction(createPayloadWithArgs('focus_grid_cell', {}))).toBe(false)
+    expect(dispatcher.dispatchAction(createPayloadWithArgs('focus_grid_cell', { cell_index: 9 }))).toBe(false)
+  })
+
+  it('returns false when confirming a selection without a usable shop target', () => {
+    const closedShopDispatcher = useActionDispatcher({
+      isShopOpen: ref(false),
+      openShop: vi.fn(),
+      closeShop: vi.fn(),
+      toggleShop: vi.fn(),
+      isEditMode: ref(false),
+      visibleCellIds: () => [1, 2, 3, 4],
+      isCellAvailable: () => true,
+      moduleShopRef: ref(null),
+    })
+
+    expect(closedShopDispatcher.dispatchAction(createPayload('confirm_selection'))).toBe(false)
+
+    const unavailableCellDispatcher = useActionDispatcher({
+      isShopOpen: ref(true),
+      openShop: vi.fn(),
+      closeShop: vi.fn(),
+      toggleShop: vi.fn(),
+      isEditMode: ref(false),
+      visibleCellIds: () => [1, 2, 3, 4],
+      isCellAvailable: () => false,
+      moduleShopRef: ref({
+        addCurrentWidgetToCell: vi.fn(),
+        nextModule: vi.fn(),
+        prevModule: vi.fn(),
+      }),
+    })
+
+    expect(unavailableCellDispatcher.dispatchAction(createPayload('confirm_selection'))).toBe(false)
+
+    const missingModuleShopDispatcher = useActionDispatcher({
+      isShopOpen: ref(true),
+      openShop: vi.fn(),
+      closeShop: vi.fn(),
+      toggleShop: vi.fn(),
+      isEditMode: ref(false),
+      visibleCellIds: () => [1, 2, 3, 4],
+      isCellAvailable: () => true,
+      moduleShopRef: ref(null),
+    })
+
+    expect(missingModuleShopDispatcher.dispatchAction(createPayload('primary_click'))).toBe(false)
+  })
+
+  it('supports arrange-mode and resize actions when optional handlers exist', () => {
+    const setEditMode = vi.fn()
+    const resizeCell = vi.fn()
+
+    const dispatcher = useActionDispatcher({
+      isShopOpen: ref(false),
+      openShop: vi.fn(),
+      closeShop: vi.fn(),
+      toggleShop: vi.fn(),
+      isEditMode: ref(false),
+      setEditMode,
+      visibleCellIds: () => [1, 2, 3, 4],
+      isCellAvailable: () => true,
+      resizeCell,
+      moduleShopRef: ref(null),
+    })
+
+    expect(dispatcher.dispatchAction(createPayload('enter_arrange_mode'))).toBe(true)
+    expect(dispatcher.dispatchAction(createPayload('exit_arrange_mode'))).toBe(true)
+    expect(dispatcher.dispatchAction(createPayload('resize_expand'))).toBe(true)
+    expect(dispatcher.dispatchAction(createPayload('resize_shrink'))).toBe(true)
+
+    expect(setEditMode).toHaveBeenNthCalledWith(1, true)
+    expect(setEditMode).toHaveBeenNthCalledWith(2, false)
+    expect(resizeCell).toHaveBeenNthCalledWith(1, 1, 'expand')
+    expect(resizeCell).toHaveBeenNthCalledWith(2, 1, 'shrink')
+  })
+
+  it('returns false for optional actions when the corresponding handlers are missing', () => {
+    const dispatcher = useActionDispatcher({
+      isShopOpen: ref(false),
+      openShop: vi.fn(),
+      closeShop: vi.fn(),
+      toggleShop: vi.fn(),
+      isEditMode: ref(false),
+      visibleCellIds: () => [1, 2, 3, 4],
+      isCellAvailable: () => true,
+      moduleShopRef: ref(null),
+    })
+
+    expect(dispatcher.dispatchAction(createPayload('enter_arrange_mode'))).toBe(false)
+    expect(dispatcher.dispatchAction(createPayload('exit_arrange_mode'))).toBe(false)
+    expect(dispatcher.dispatchAction(createPayload('resize_expand'))).toBe(false)
+    expect(dispatcher.dispatchAction(createPayload('resize_shrink'))).toBe(false)
+  })
+
+  it('ignores unrelated or malformed realtime events', () => {
+    const dispatcher = useActionDispatcher({
+      isShopOpen: ref(false),
+      openShop: vi.fn(),
+      closeShop: vi.fn(),
+      toggleShop: vi.fn(),
+      isEditMode: ref(false),
+      visibleCellIds: () => [1, 2, 3, 4],
+      isCellAvailable: () => true,
+      moduleShopRef: ref(null),
+    })
+
+    expect(
+      dispatcher.handleRealtimeEvent({
+        eventType: 'Pong',
+        payload: { message: 'still alive' },
+      }),
+    ).toBe(false)
+
+    expect(
+      dispatcher.handleRealtimeEvent({
+        eventType: 'UIActionRequested',
+        payload: null,
+      }),
+    ).toBe(false)
+  })
 })

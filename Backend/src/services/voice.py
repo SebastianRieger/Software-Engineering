@@ -14,7 +14,7 @@ from core.config import settings
 from core.realtime import RealtimeHub, realtime_hub
 from repositories.config import ConfigRepository
 from schemas.voice import VoiceConfig
-from services.input.orchestrator import InputOrchestrator
+from services.input.orchestrator import InputOrchestrator, input_orchestrator
 
 try:
     import sounddevice as sd
@@ -679,4 +679,4 @@ class VoiceService:
         return f"voice.{normalized_command.replace(' ', '_')}"
 
 
-voice_service = VoiceService()
+voice_service = VoiceService(input_orchestrator_service=input_orchestrator)

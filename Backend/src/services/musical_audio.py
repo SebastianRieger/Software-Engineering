@@ -19,7 +19,7 @@ from schemas.musical_audio import (
     MusicalAudioStatusCode,
     MusicalAudioTrainingArtifact,
 )
-from services.input.orchestrator import InputOrchestrator
+from services.input.orchestrator import InputOrchestrator, input_orchestrator
 
 try:
     import sounddevice as sd
@@ -786,4 +786,4 @@ class MusicalAudioService:
         return "Musical-Audio-Service ist nicht verfuegbar."
 
 
-musical_audio_service = MusicalAudioService()
+musical_audio_service = MusicalAudioService(input_orchestrator_service=input_orchestrator)

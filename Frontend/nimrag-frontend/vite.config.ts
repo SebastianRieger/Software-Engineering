@@ -39,6 +39,7 @@ export default defineConfig(({ mode }: { mode: string }) => {
         exclude: [
           'src/main.ts',
           'src/shims-vue.d.ts',
+          'src/types/**',
           'coverage/**',
           'dist/**',
           '**/node_modules/**',

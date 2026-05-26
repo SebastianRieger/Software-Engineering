@@ -63,7 +63,7 @@ from services.gesture.tracking import (
     extract_hand_pose_features,
     smooth_point,
 )
-from services.input.orchestrator import InputOrchestrator
+from services.input.orchestrator import InputOrchestrator, input_orchestrator
 
 
 logger = logging.getLogger(__name__)
@@ -2270,7 +2270,7 @@ class GestureService:
             self._push_state = None
 
 
-gesture_service = GestureService()
+gesture_service = GestureService(input_orchestrator_service=input_orchestrator)
 
 
 __all__ = [
