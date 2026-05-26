@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach } from 'vitest'
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { defineComponent, h } from 'vue'
 import { useWidgetManager } from '@/composables/useWidgetManager'
 
@@ -101,6 +101,46 @@ describe('useWidgetManager', () => {
       expect(() => moveWidgets({ sourceCellId: 1, targetCellId: 2 })).not.toThrow()
       expect(widgetMap.value[1]).toBeUndefined()
       expect(widgetMap.value[2]).toBeUndefined()
+    })
+  })
+
+  // ── localStorage integration ────────────────────────────────────────────
+
+  describe('loadFromStorage', () => {
+    afterEach(() => {
+      localStorage.clear()
+      vi.resetModules()
+    })
+
+    it('loads a known widget from localStorage on module initialization', async () => {
+      localStorage.setItem('nimrag-widget-map', JSON.stringify({ '3': 'ClockWidget' }))
+
+      vi.resetModules()
+      const { useWidgetManager: freshUseWidgetManager } = await import('@/composables/useWidgetManager')
+      const { widgetMap } = freshUseWidgetManager()
+
+      // ClockWidget is registered – should be loaded
+      expect(widgetMap.value[3]).toBeDefined()
+    })
+
+    it('silently skips unknown widget names from localStorage', async () => {
+      localStorage.setItem('nimrag-widget-map', JSON.stringify({ '4': 'UnknownWidgetXYZ' }))
+
+      vi.resetModules()
+      const { useWidgetManager: freshUseWidgetManager } = await import('@/composables/useWidgetManager')
+      const { widgetMap } = freshUseWidgetManager()
+
+      expect(widgetMap.value[4]).toBeUndefined()
+    })
+
+    it('returns empty map when localStorage contains invalid JSON', async () => {
+      localStorage.setItem('nimrag-widget-map', 'this-is-not-valid-json')
+
+      vi.resetModules()
+      const { useWidgetManager: freshUseWidgetManager } = await import('@/composables/useWidgetManager')
+      const { widgetMap } = freshUseWidgetManager()
+
+      expect(widgetMap.value).toEqual({})
     })
   })
 })

@@ -91,4 +91,83 @@ describe('GridBoard', () => {
     await deleteBtn.trigger('click')
     expect(wrapper.emitted('deleteWidget')).toBeTruthy()
   })
+
+  it('executes full drag-start logic (ghost element) when cell contains a widget', async () => {
+    vi.useFakeTimers()
+    const { widgetMap } = useWidgetManager()
+    widgetMap.value = { 1: markRaw(DummyWidget) }
+
+    const wrapper = mount(GridBoard, { props: { isEditMode: false } })
+    await wrapper.vm.$nextTick()
+
+    const cell = wrapper.find('.grid-cell')
+    const dt = {
+      getData: vi.fn(),
+      setData: vi.fn(),
+      effectAllowed: '' as string,
+      dropEffect: '' as string,
+      setDragImage: vi.fn(),
+    }
+
+    await cell.trigger('dragstart', { dataTransfer: dt })
+    await wrapper.vm.$nextTick()
+
+    expect(dt.setData).toHaveBeenCalledWith('text/plain', '1')
+    expect(dt.setDragImage).toHaveBeenCalled()
+    expect(cell.classes()).toContain('cell-dragging')
+
+    vi.runAllTimers()
+    vi.useRealTimers()
+  })
+
+  it('does not clear draggingCell on dragend when cell index does not match', async () => {
+    vi.useFakeTimers()
+    const { widgetMap } = useWidgetManager()
+    widgetMap.value = { 1: markRaw(DummyWidget), 2: markRaw(DummyWidget) }
+
+    const wrapper = mount(GridBoard, { props: { isEditMode: false } })
+    await wrapper.vm.$nextTick()
+
+    const cells = wrapper.findAll('.grid-cell')
+    const dt = { setData: vi.fn(), effectAllowed: '' as string, setDragImage: vi.fn() }
+
+    // Start drag on cell 1 → draggingCell = 1
+    await cells[0]!.trigger('dragstart', { dataTransfer: dt })
+    await wrapper.vm.$nextTick()
+
+    // dragend fires on cell 2 (different cell) → draggingCell should remain 1
+    await cells[1]!.trigger('dragend')
+    await wrapper.vm.$nextTick()
+
+    // Cell 1 still has the dragging visual indicator
+    expect(cells[0]!.classes()).toContain('cell-dragging')
+
+    vi.runAllTimers()
+    vi.useRealTimers()
+  })
+
+  it('triggers resize animation when resize button is clicked', async () => {
+    vi.useFakeTimers()
+    const { widgetMap } = useWidgetManager()
+    widgetMap.value = { 1: markRaw(DummyWidget) }
+
+    const wrapper = mount(GridBoard, { props: { isEditMode: true } })
+    await wrapper.vm.$nextTick()
+
+    const resizeBtn = wrapper.find('.resize-widget-btn')
+    expect(resizeBtn.exists()).toBe(true)
+
+    await resizeBtn.trigger('click')
+    await wrapper.vm.$nextTick()
+
+    // resize-active class is applied immediately after click
+    expect(resizeBtn.classes()).toContain('resize-active')
+
+    // After 200ms timeout, class is removed
+    vi.advanceTimersByTime(200)
+    await wrapper.vm.$nextTick()
+    expect(resizeBtn.classes()).not.toContain('resize-active')
+
+    vi.useRealTimers()
+  })
 })

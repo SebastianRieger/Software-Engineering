@@ -130,5 +130,28 @@ describe('useEditMode', () => {
       window.dispatchEvent(new KeyboardEvent('keydown', { key: 'e' }))
       expect(onShopToggle).not.toHaveBeenCalled()
     })
+
+    it('key "a" calls onClockToggle when provided', () => {
+      const onShopToggle = vi.fn()
+      const onShopNavigate = vi.fn()
+      const onClockToggle = vi.fn()
+      const { wrapper } = mountTestComponent({ onShopToggle, onShopNavigate, onClockToggle })
+
+      window.dispatchEvent(new KeyboardEvent('keydown', { key: 'a' }))
+      expect(onClockToggle).toHaveBeenCalledOnce()
+      expect(onShopToggle).not.toHaveBeenCalled()
+      wrapper.unmount()
+    })
+
+    it('key "A" does not throw when onClockToggle is absent', () => {
+      const onShopToggle = vi.fn()
+      const onShopNavigate = vi.fn()
+      const { wrapper } = mountTestComponent({ onShopToggle, onShopNavigate })
+
+      expect(() =>
+        window.dispatchEvent(new KeyboardEvent('keydown', { key: 'A' }))
+      ).not.toThrow()
+      wrapper.unmount()
+    })
   })
 })

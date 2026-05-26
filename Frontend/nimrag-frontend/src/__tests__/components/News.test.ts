@@ -182,4 +182,127 @@ describe('News widget', () => {
 
     expect(wrapper.text()).toContain('Nachrichten nicht verfügbar')
   })
+
+  // ── Medium-size branch coverage ─────────────────────────────────────────
+
+  it('renders breaking news row styling in medium size', async () => {
+    mockFetch([
+      makeNewsItem({ breakingNews: true }),
+      makeNewsItem({ sophoraId: 'id-2', breakingNews: true }),
+    ])
+    const wrapper = mount(News, {
+      global: { provide: { cellId: 10, cellSizes: ref({ 10: 2 }) } },
+    })
+    await flushPromises()
+
+    expect(wrapper.find('.ts-row--breaking').exists()).toBe(true)
+  })
+
+  it('shows topline as badge in medium size when ressort is absent', async () => {
+    mockFetch([
+      makeNewsItem({ ressort: undefined, topline: 'Politik' }),
+      makeNewsItem({ sophoraId: 'id-2', ressort: undefined, topline: 'Sport' }),
+    ])
+    const wrapper = mount(News, {
+      global: { provide: { cellId: 10, cellSizes: ref({ 10: 2 }) } },
+    })
+    await flushPromises()
+
+    const badges = wrapper.findAll('.ts-badge')
+    expect(badges[0]!.text()).toBe('Politik')
+  })
+
+  it('shows em dash as badge in medium size when both ressort and topline are absent', async () => {
+    mockFetch([
+      makeNewsItem({ ressort: undefined, topline: undefined }),
+      makeNewsItem({ sophoraId: 'id-2', ressort: undefined, topline: undefined }),
+    ])
+    const wrapper = mount(News, {
+      global: { provide: { cellId: 10, cellSizes: ref({ 10: 2 }) } },
+    })
+    await flushPromises()
+
+    const badge = wrapper.find('.ts-badge')
+    expect(badge.text()).toBe('—')
+  })
+
+  // ── Large-size branch coverage ──────────────────────────────────────────
+
+  it('renders breaking news badge and card styling in large size', async () => {
+    mockFetch([
+      makeNewsItem({ breakingNews: true }),
+      makeNewsItem({ sophoraId: 'id-2', breakingNews: true }),
+    ])
+    const wrapper = mount(News, {
+      global: { provide: { cellId: 11, cellSizes: ref({ 11: 4 }) } },
+    })
+    await flushPromises()
+
+    expect(wrapper.find('.ts-breaking-badge').exists()).toBe(true)
+    expect(wrapper.find('.ts-large-card--breaking').exists()).toBe(true)
+  })
+
+  it('renders large size gracefully without optional fields (topline / firstSentence / ressort / date)', async () => {
+    mockFetch([
+      makeNewsItem({ topline: undefined, firstSentence: undefined, ressort: undefined, date: '' }),
+      makeNewsItem({ sophoraId: 'id-2', topline: undefined, firstSentence: undefined, ressort: undefined, date: '' }),
+    ])
+    const wrapper = mount(News, {
+      global: { provide: { cellId: 11, cellSizes: ref({ 11: 4 }) } },
+    })
+    await flushPromises()
+
+    expect(wrapper.find('.ts-large-grid').exists()).toBe(true)
+    // Optional elements must not render when their data is absent
+    expect(wrapper.find('.ts-teaser--large').exists()).toBe(false)
+    expect(wrapper.find('.ts-ressort').exists()).toBe(false)
+    expect(wrapper.find('.ts-time').exists()).toBe(false)
+  })
+
+  // ── getImage() fallback chains ──────────────────────────────────────────
+
+  it('uses 16x9-640 variant when 16x9-960 is absent', async () => {
+    mockFetch([
+      makeNewsItem({ teaserImage: { imageVariants: { '16x9-640': 'https://img.example.com/640.jpg' }, alttext: 'Alt' } }),
+      makeNewsItem({ sophoraId: 'id-2', teaserImage: { imageVariants: { '16x9-640': 'https://img.example.com/640-b.jpg' }, alttext: 'B' } }),
+    ])
+    const wrapper = mount(News, {
+      global: { provide: { cellId: 12, cellSizes: ref({ 12: 4 }) } },
+    })
+    await flushPromises()
+
+    const img = wrapper.find('.ts-image')
+    expect(img.exists()).toBe(true)
+    expect(img.attributes('src')).toBe('https://img.example.com/640.jpg')
+  })
+
+  it('uses 16x9-480 variant as third fallback', async () => {
+    mockFetch([
+      makeNewsItem({ teaserImage: { imageVariants: { '16x9-480': 'https://img.example.com/480.jpg' }, alttext: 'Alt' } }),
+      makeNewsItem({ sophoraId: 'id-2', teaserImage: { imageVariants: { '16x9-480': 'https://img.example.com/480-b.jpg' }, alttext: 'B' } }),
+    ])
+    const wrapper = mount(News, {
+      global: { provide: { cellId: 12, cellSizes: ref({ 12: 4 }) } },
+    })
+    await flushPromises()
+
+    const img = wrapper.find('.ts-image')
+    expect(img.exists()).toBe(true)
+    expect(img.attributes('src')).toBe('https://img.example.com/480.jpg')
+  })
+
+  it('uses first available variant key as last-resort fallback', async () => {
+    mockFetch([
+      makeNewsItem({ teaserImage: { imageVariants: { 'custom-key': 'https://img.example.com/custom.jpg' }, alttext: 'Alt' } }),
+      makeNewsItem({ sophoraId: 'id-2', teaserImage: { imageVariants: { 'custom-key': 'https://img.example.com/custom-b.jpg' }, alttext: 'B' } }),
+    ])
+    const wrapper = mount(News, {
+      global: { provide: { cellId: 12, cellSizes: ref({ 12: 4 }) } },
+    })
+    await flushPromises()
+
+    const img = wrapper.find('.ts-image')
+    expect(img.exists()).toBe(true)
+    expect(img.attributes('src')).toBe('https://img.example.com/custom.jpg')
+  })
 })

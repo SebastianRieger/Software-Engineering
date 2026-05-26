@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach } from 'vitest'
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { useWidgetResize } from '@/composables/useWidgetResize'
 
 // cellSizes is a module-level singleton; use IDs >= 200 to avoid overlap
@@ -154,6 +154,51 @@ describe('useWidgetResize', () => {
       expect(visible).toHaveLength(4)
       // Cleanup
       for (let i = 1; i <= 4; i++) cellSizes.value[i] = 1
+    })
+  })
+
+  // ── localStorage integration ────────────────────────────────────────────
+
+  describe('loadFromStorage', () => {
+    afterEach(() => {
+      localStorage.clear()
+      vi.resetModules()
+    })
+
+    it('loads valid cell sizes (1 | 2 | 4) from localStorage on module init', async () => {
+      localStorage.setItem('nimrag-cell-sizes', JSON.stringify({ '5': 2, '6': 4 }))
+
+      vi.resetModules()
+      const { useWidgetResize: freshUseWidgetResize } = await import('@/composables/useWidgetResize')
+      const { cellSizes } = freshUseWidgetResize()
+
+      expect(cellSizes.value[5]).toBe(2)
+      expect(cellSizes.value[6]).toBe(4)
+    })
+
+    it('filters out invalid size values (not 1, 2, or 4) from localStorage', async () => {
+      localStorage.setItem('nimrag-cell-sizes', JSON.stringify({ '7': 3, '8': 99, '9': 2 }))
+
+      vi.resetModules()
+      const { useWidgetResize: freshUseWidgetResize } = await import('@/composables/useWidgetResize')
+      const { cellSizes } = freshUseWidgetResize()
+
+      expect(cellSizes.value[7]).toBeUndefined() // 3 is invalid
+      expect(cellSizes.value[8]).toBeUndefined() // 99 is invalid
+      expect(cellSizes.value[9]).toBe(2)         // 2 is valid
+    })
+
+    it('returns empty sizes when localStorage contains invalid JSON', async () => {
+      localStorage.setItem('nimrag-cell-sizes', 'not-valid-json!')
+
+      vi.resetModules()
+      const { useWidgetResize: freshUseWidgetResize } = await import('@/composables/useWidgetResize')
+      const { cellSizes } = freshUseWidgetResize()
+
+      // Cells 1–16 have been set by other tests; fresh module should start empty
+      // (keys 5,6,7,8,9 from this describe block should be absent)
+      expect(cellSizes.value[5]).toBeUndefined()
+      expect(cellSizes.value[8]).toBeUndefined()
     })
   })
 })
