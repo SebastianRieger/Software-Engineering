@@ -3,7 +3,6 @@ from typing import Any, Literal
 
 from pydantic import BaseModel, Field
 
-
 UIActionType = Literal[
     "move_focus_left",
     "move_focus_right",
@@ -47,29 +46,101 @@ class InputActionMapping(BaseModel):
 
 def build_default_input_action_mappings() -> list[InputActionMapping]:
     return [
-        InputActionMapping(input_source="gesture", raw_input="swipe_left", action="move_focus_left"),
-        InputActionMapping(input_source="gesture", raw_input="swipe_right", action="move_focus_right"),
-        InputActionMapping(input_source="gesture", raw_input="swipe_up", action="move_focus_up"),
-        InputActionMapping(input_source="gesture", raw_input="swipe_down", action="move_focus_down"),
-        InputActionMapping(input_source="gesture", raw_input="circle", action="toggle_shop"),
-        InputActionMapping(input_source="gesture", raw_input="push_click_short", action="primary_click"),
-        InputActionMapping(input_source="gesture", raw_input="push_click_long", action="secondary_select"),
-        InputActionMapping(input_source="gesture", raw_input="zoom_out_hands", action="resize_shrink"),
-        InputActionMapping(input_source="gesture", raw_input="zoom_in_hands", action="resize_expand"),
-        InputActionMapping(input_source="voice", raw_input="voice.move_focus_left", action="move_focus_left"),
-        InputActionMapping(input_source="voice", raw_input="voice.move_focus_right", action="move_focus_right"),
-        InputActionMapping(input_source="voice", raw_input="voice.move_focus_up", action="move_focus_up"),
-        InputActionMapping(input_source="voice", raw_input="voice.move_focus_down", action="move_focus_down"),
-        InputActionMapping(input_source="voice", raw_input="voice.open_shop", action="open_shop"),
-        InputActionMapping(input_source="voice", raw_input="voice.close_shop", action="close_shop"),
-        InputActionMapping(input_source="voice", raw_input="voice.confirm_selection", action="confirm_selection"),
-        InputActionMapping(input_source="voice", raw_input="voice.cancel_selection", action="cancel_selection"),
-        InputActionMapping(input_source="voice", raw_input="voice.enter_arrange_mode", action="enter_arrange_mode"),
-        InputActionMapping(input_source="voice", raw_input="voice.exit_arrange_mode", action="exit_arrange_mode"),
-        InputActionMapping(input_source="voice", raw_input="voice.resize_expand", action="resize_expand"),
-        InputActionMapping(input_source="voice", raw_input="voice.resize_shrink", action="resize_shrink"),
-        InputActionMapping(input_source="voice", raw_input="voice.focus_grid_cell", action="focus_grid_cell"),
-        InputActionMapping(input_source="voice", raw_input="voice.focus_widget_type", action="focus_widget_type"),
+        InputActionMapping(
+            input_source="gesture", raw_input="swipe_left", action="move_focus_left"
+        ),
+        InputActionMapping(
+            input_source="gesture", raw_input="swipe_right", action="move_focus_right"
+        ),
+        InputActionMapping(
+            input_source="gesture", raw_input="swipe_up", action="move_focus_up"
+        ),
+        InputActionMapping(
+            input_source="gesture", raw_input="swipe_down", action="move_focus_down"
+        ),
+        InputActionMapping(
+            input_source="gesture", raw_input="circle", action="toggle_shop"
+        ),
+        InputActionMapping(
+            input_source="gesture", raw_input="push_click_short", action="primary_click"
+        ),
+        InputActionMapping(
+            input_source="gesture",
+            raw_input="push_click_long",
+            action="secondary_select",
+        ),
+        InputActionMapping(
+            input_source="gesture", raw_input="zoom_out_hands", action="resize_shrink"
+        ),
+        InputActionMapping(
+            input_source="gesture", raw_input="zoom_in_hands", action="resize_expand"
+        ),
+        InputActionMapping(
+            input_source="voice",
+            raw_input="voice.move_focus_left",
+            action="move_focus_left",
+        ),
+        InputActionMapping(
+            input_source="voice",
+            raw_input="voice.move_focus_right",
+            action="move_focus_right",
+        ),
+        InputActionMapping(
+            input_source="voice",
+            raw_input="voice.move_focus_up",
+            action="move_focus_up",
+        ),
+        InputActionMapping(
+            input_source="voice",
+            raw_input="voice.move_focus_down",
+            action="move_focus_down",
+        ),
+        InputActionMapping(
+            input_source="voice", raw_input="voice.open_shop", action="open_shop"
+        ),
+        InputActionMapping(
+            input_source="voice", raw_input="voice.close_shop", action="close_shop"
+        ),
+        InputActionMapping(
+            input_source="voice",
+            raw_input="voice.confirm_selection",
+            action="confirm_selection",
+        ),
+        InputActionMapping(
+            input_source="voice",
+            raw_input="voice.cancel_selection",
+            action="cancel_selection",
+        ),
+        InputActionMapping(
+            input_source="voice",
+            raw_input="voice.enter_arrange_mode",
+            action="enter_arrange_mode",
+        ),
+        InputActionMapping(
+            input_source="voice",
+            raw_input="voice.exit_arrange_mode",
+            action="exit_arrange_mode",
+        ),
+        InputActionMapping(
+            input_source="voice",
+            raw_input="voice.resize_expand",
+            action="resize_expand",
+        ),
+        InputActionMapping(
+            input_source="voice",
+            raw_input="voice.resize_shrink",
+            action="resize_shrink",
+        ),
+        InputActionMapping(
+            input_source="voice",
+            raw_input="voice.focus_grid_cell",
+            action="focus_grid_cell",
+        ),
+        InputActionMapping(
+            input_source="voice",
+            raw_input="voice.focus_widget_type",
+            action="focus_widget_type",
+        ),
     ]
 
 
@@ -84,10 +155,14 @@ def build_default_source_priorities() -> dict[InputSourceType, int]:
 
 
 class InputActionConfig(BaseModel):
-    mappings: list[InputActionMapping] = Field(default_factory=build_default_input_action_mappings)
+    mappings: list[InputActionMapping] = Field(
+        default_factory=build_default_input_action_mappings
+    )
     global_cooldown_seconds: float = Field(default=0.75, ge=0, le=30)
     repeat_same_action_window_seconds: float = Field(default=1.25, ge=0, le=30)
-    source_priorities: dict[InputSourceType, int] = Field(default_factory=build_default_source_priorities)
+    source_priorities: dict[InputSourceType, int] = Field(
+        default_factory=build_default_source_priorities
+    )
     updated_at: datetime | None = None
 
 
@@ -151,6 +226,6 @@ class SimulatedInputResponse(BaseModel):
     raw_input: str = Field(min_length=1)
     action_args: UIActionArguments = Field(default_factory=UIActionArguments)
     metadata: dict[str, Any] = Field(default_factory=dict)
-    emitted_events: list[Literal["RawInputDetected", "CommandMatchEvaluated", "UIActionRequested"]] = Field(
-        default_factory=list
-    )
+    emitted_events: list[
+        Literal["RawInputDetected", "CommandMatchEvaluated", "UIActionRequested"]
+    ] = Field(default_factory=list)

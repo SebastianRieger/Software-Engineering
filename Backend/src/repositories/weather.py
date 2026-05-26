@@ -13,7 +13,6 @@ from retry_requests import retry
 from core.config import settings
 from core.database import get_db_connection
 
-
 logger = logging.getLogger(__name__)
 
 
@@ -87,7 +86,9 @@ class WeatherRepository:
         lon: float | None = None,
         city: str | None = None,
     ) -> dict[str, Any]:
-        lat, lon, location_name = await self._resolve_location(lat=lat, lon=lon, city=city)
+        lat, lon, location_name = await self._resolve_location(
+            lat=lat, lon=lon, city=city
+        )
         cache_key = self._cache_key("current", lat, lon)
         cached = self._get_cached_payload(cache_key, settings.WEATHER_CACHE_TTL_SECONDS)
         if cached is not None:
@@ -97,7 +98,9 @@ class WeatherRepository:
             return cached
 
         try:
-            live_data = await self._fetch_current_weather(lat=lat, lon=lon, location_name=location_name)
+            live_data = await self._fetch_current_weather(
+                lat=lat, lon=lon, location_name=location_name
+            )
         except WeatherRepositoryError:
             stale_cache = self._get_cached_payload(cache_key, ttl_seconds=None)
             if stale_cache is not None:
@@ -118,9 +121,13 @@ class WeatherRepository:
         days: int = 5,
         city: str | None = None,
     ) -> dict[str, Any]:
-        lat, lon, location_name = await self._resolve_location(lat=lat, lon=lon, city=city)
+        lat, lon, location_name = await self._resolve_location(
+            lat=lat, lon=lon, city=city
+        )
         cache_key = self._cache_key(f"forecast:{days}", lat, lon)
-        cached = self._get_cached_payload(cache_key, settings.FORECAST_CACHE_TTL_SECONDS)
+        cached = self._get_cached_payload(
+            cache_key, settings.FORECAST_CACHE_TTL_SECONDS
+        )
         if cached is not None:
             cached["source"] = "cache"
             if location_name and not cached.get("location_name"):
@@ -184,12 +191,16 @@ class WeatherRepository:
             },
             "temperature": float(current.Variables(0).Value()),
             "humidity": int(round(current.Variables(1).Value())),
-            "condition": self._weather_condition_from_code(current.Variables(2).Value()),
+            "condition": self._weather_condition_from_code(
+                current.Variables(2).Value()
+            ),
             "wind_speed": float(current.Variables(3).Value()),
             "timestamp": datetime.fromtimestamp(
                 current.Time(),
                 tz=timezone.utc,
-            ).astimezone(response_timezone).isoformat(),
+            )
+            .astimezone(response_timezone)
+            .isoformat(),
         }
 
     async def _fetch_forecast(
@@ -230,7 +241,9 @@ class WeatherRepository:
                     "date": forecast_date,
                     "min_temp": float(min_temps[index]),
                     "max_temp": float(max_temps[index]),
-                    "condition": self._weather_condition_from_code(weather_codes[index]),
+                    "condition": self._weather_condition_from_code(
+                        weather_codes[index]
+                    ),
                 }
             )
 
@@ -352,7 +365,10 @@ class WeatherRepository:
                 datetime.fromtimestamp(
                     current_timestamp,
                     tz=timezone.utc,
-                ).astimezone(response_timezone).date().isoformat()
+                )
+                .astimezone(response_timezone)
+                .date()
+                .isoformat()
             )
             current_timestamp += interval_seconds
         return dates

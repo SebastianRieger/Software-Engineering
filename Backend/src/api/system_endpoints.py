@@ -41,12 +41,15 @@ from schemas.musical_audio import (
 )
 from schemas.system import SystemStatusResponse
 from schemas.voice import VoiceConfig, VoiceConfigEnvelope
-from services.calibration import CalibrationService, CalibrationServiceError, calibration_service
+from services.calibration import (
+    CalibrationService,
+    CalibrationServiceError,
+    calibration_service,
+)
 from services.gesture import GestureService, GestureServiceError, gesture_service
 from services.interactions import InputOrchestrator, input_orchestrator
 from services.musical_audio import MusicalAudioService
 from services.voice import VoiceService
-
 
 config_router = APIRouter()
 system_router = APIRouter()
@@ -70,7 +73,9 @@ async def get_input_orchestrator() -> InputOrchestrator:
     return input_orchestrator
 
 
-def _select_gesture_camera_index(service: GestureService, requested_camera_index: int | None = None) -> int:
+def _select_gesture_camera_index(
+    service: GestureService, requested_camera_index: int | None = None
+) -> int:
     if requested_camera_index is not None:
         return requested_camera_index
 
@@ -98,7 +103,9 @@ def _ensure_gesture_runtime_for_calibration(
     status = service.get_status()
     if bool(status.get("running")):
         return
-    service.start(camera_index=_select_gesture_camera_index(service, requested_camera_index))
+    service.start(
+        camera_index=_select_gesture_camera_index(service, requested_camera_index)
+    )
 
 
 def _reload_command_runtime_services(
@@ -258,7 +265,9 @@ async def save_musical_audio_config(
     return MusicalAudioConfigEnvelope(config=saved_config)
 
 
-@config_router.get("/musical-audio/artifacts", response_model=MusicalAudioTrainingArtifactListEnvelope)
+@config_router.get(
+    "/musical-audio/artifacts", response_model=MusicalAudioTrainingArtifactListEnvelope
+)
 async def list_musical_audio_training_artifacts(
     profile: str = Query(default="default"),
     repository: ConfigRepository = Depends(get_config_repository),
@@ -276,9 +285,13 @@ async def get_musical_audio_training_artifact(
     profile: str = Query(default="default"),
     repository: ConfigRepository = Depends(get_config_repository),
 ):
-    artifact = repository.get_musical_audio_training_artifact(artifact_id=artifact_id, profile_id=profile)
+    artifact = repository.get_musical_audio_training_artifact(
+        artifact_id=artifact_id, profile_id=profile
+    )
     if artifact is None:
-        raise HTTPException(status_code=404, detail="Musical-Audio-Artefakt wurde nicht gefunden.")
+        raise HTTPException(
+            status_code=404, detail="Musical-Audio-Artefakt wurde nicht gefunden."
+        )
     return MusicalAudioTrainingArtifactEnvelope(artifact=artifact)
 
 
@@ -292,7 +305,11 @@ async def save_musical_audio_training_artifact(
     repository: ConfigRepository = Depends(get_config_repository),
     musical_audio_runtime: MusicalAudioService = Depends(get_musical_audio_service),
 ):
-    payload = artifact if artifact.artifact_id == artifact_id else artifact.model_copy(update={"artifact_id": artifact_id})
+    payload = (
+        artifact
+        if artifact.artifact_id == artifact_id
+        else artifact.model_copy(update={"artifact_id": artifact_id})
+    )
     saved_artifact = repository.save_musical_audio_training_artifact(payload)
     musical_audio_runtime.reload_config()
     return MusicalAudioTrainingArtifactEnvelope(artifact=saved_artifact)
@@ -305,9 +322,13 @@ async def delete_musical_audio_training_artifact(
     repository: ConfigRepository = Depends(get_config_repository),
     musical_audio_runtime: MusicalAudioService = Depends(get_musical_audio_service),
 ):
-    deleted = repository.delete_musical_audio_training_artifact(artifact_id=artifact_id, profile_id=profile)
+    deleted = repository.delete_musical_audio_training_artifact(
+        artifact_id=artifact_id, profile_id=profile
+    )
     if not deleted:
-        raise HTTPException(status_code=404, detail="Musical-Audio-Artefakt wurde nicht gefunden.")
+        raise HTTPException(
+            status_code=404, detail="Musical-Audio-Artefakt wurde nicht gefunden."
+        )
     musical_audio_runtime.reload_config()
     return {"deleted": True, "artifact_id": artifact_id, "profile": profile}
 
@@ -457,7 +478,9 @@ async def get_preview_frame(
     return frame
 
 
-@gesture_router.post("/dev/process-video", response_model=GestureVideoProcessingResponse)
+@gesture_router.post(
+    "/dev/process-video", response_model=GestureVideoProcessingResponse
+)
 async def process_video(
     video_path: str = Query(..., min_length=1),
     service: GestureService = Depends(get_gesture_service),
@@ -495,10 +518,14 @@ async def start_calibration_session(
         session = service.start_session(payload)
         if session.modality == "gesture":
             try:
-                _ensure_gesture_runtime_for_calibration(gesture_runtime, payload.camera_index)
+                _ensure_gesture_runtime_for_calibration(
+                    gesture_runtime, payload.camera_index
+                )
             except GestureServiceError as exc:
                 service.cancel_session(session.session_id)
-                raise HTTPException(status_code=exc.status_code, detail=str(exc)) from exc
+                raise HTTPException(
+                    status_code=exc.status_code, detail=str(exc)
+                ) from exc
             except Exception as exc:
                 service.cancel_session(session.session_id)
                 raise HTTPException(
@@ -510,7 +537,9 @@ async def start_calibration_session(
     return CalibrationSessionResponse(session=session)
 
 
-@calibration_router.get("/sessions/{session_id}", response_model=CalibrationSessionResponse)
+@calibration_router.get(
+    "/sessions/{session_id}", response_model=CalibrationSessionResponse
+)
 async def get_calibration_session(
     session_id: str,
     service: CalibrationService = Depends(get_calibration_service),
@@ -522,7 +551,9 @@ async def get_calibration_session(
     return CalibrationSessionResponse(session=session)
 
 
-@calibration_router.post("/sessions/{session_id}/takes/prepare", response_model=CalibrationSessionResponse)
+@calibration_router.post(
+    "/sessions/{session_id}/takes/prepare", response_model=CalibrationSessionResponse
+)
 async def prepare_calibration_take(
     session_id: str,
     service: CalibrationService = Depends(get_calibration_service),
@@ -534,7 +565,9 @@ async def prepare_calibration_take(
     return CalibrationSessionResponse(session=session)
 
 
-@calibration_router.post("/sessions/{session_id}/takes/start", response_model=CalibrationSessionResponse)
+@calibration_router.post(
+    "/sessions/{session_id}/takes/start", response_model=CalibrationSessionResponse
+)
 async def start_calibration_take(
     session_id: str,
     service: CalibrationService = Depends(get_calibration_service),
@@ -557,7 +590,9 @@ async def start_calibration_take(
     return CalibrationSessionResponse(session=session)
 
 
-@calibration_router.post("/sessions/{session_id}/takes/stop", response_model=CalibrationSessionResponse)
+@calibration_router.post(
+    "/sessions/{session_id}/takes/stop", response_model=CalibrationSessionResponse
+)
 async def stop_calibration_take(
     session_id: str,
     service: CalibrationService = Depends(get_calibration_service),
@@ -566,13 +601,17 @@ async def stop_calibration_take(
     try:
         session = service.get_session(session_id)
         if session.active_take is None:
-            raise CalibrationServiceError("Es laeuft aktuell kein Recording-Take.", status_code=409)
+            raise CalibrationServiceError(
+                "Es laeuft aktuell kein Recording-Take.", status_code=409
+            )
         sample, advisory_recognition = gesture_runtime.stop_calibration_take_capture(
             session_id=session.session_id,
             take_id=session.active_take.take_id,
             target_id=session.active_take.target_id,
         )
-        session = service.finish_take_recording(session_id, sample, advisory_recognition)
+        session = service.finish_take_recording(
+            session_id, sample, advisory_recognition
+        )
     except CalibrationServiceError as exc:
         raise HTTPException(status_code=exc.status_code, detail=str(exc)) from exc
     except GestureServiceError as exc:
@@ -580,7 +619,9 @@ async def stop_calibration_take(
     return CalibrationSessionResponse(session=session)
 
 
-@calibration_router.post("/sessions/{session_id}/takes/accept", response_model=CalibrationSessionResponse)
+@calibration_router.post(
+    "/sessions/{session_id}/takes/accept", response_model=CalibrationSessionResponse
+)
 async def accept_calibration_take(
     session_id: str,
     service: CalibrationService = Depends(get_calibration_service),
@@ -592,7 +633,9 @@ async def accept_calibration_take(
     return CalibrationSessionResponse(session=session)
 
 
-@calibration_router.post("/sessions/{session_id}/takes/discard", response_model=CalibrationSessionResponse)
+@calibration_router.post(
+    "/sessions/{session_id}/takes/discard", response_model=CalibrationSessionResponse
+)
 async def discard_calibration_take(
     session_id: str,
     service: CalibrationService = Depends(get_calibration_service),
@@ -604,7 +647,9 @@ async def discard_calibration_take(
     return CalibrationSessionResponse(session=session)
 
 
-@calibration_router.post("/sessions/{session_id}/complete", response_model=CalibrationSessionResponse)
+@calibration_router.post(
+    "/sessions/{session_id}/complete", response_model=CalibrationSessionResponse
+)
 async def complete_calibration_session(
     session_id: str,
     service: CalibrationService = Depends(get_calibration_service),
@@ -616,7 +661,9 @@ async def complete_calibration_session(
     return CalibrationSessionResponse(session=session)
 
 
-@calibration_router.post("/sessions/{session_id}/apply", response_model=CalibrationApplyResponse)
+@calibration_router.post(
+    "/sessions/{session_id}/apply", response_model=CalibrationApplyResponse
+)
 async def apply_calibration_session(
     session_id: str,
     service: CalibrationService = Depends(get_calibration_service),
@@ -630,7 +677,9 @@ async def apply_calibration_session(
     return CalibrationApplyResponse(session=session, applied_profile=profile)
 
 
-@calibration_router.post("/sessions/{session_id}/rollback", response_model=CalibrationRollbackResponse)
+@calibration_router.post(
+    "/sessions/{session_id}/rollback", response_model=CalibrationRollbackResponse
+)
 async def rollback_calibration_session(
     session_id: str,
     service: CalibrationService = Depends(get_calibration_service),
@@ -644,7 +693,9 @@ async def rollback_calibration_session(
     return CalibrationRollbackResponse(session=session, restored_snapshot=snapshot)
 
 
-@calibration_router.post("/sessions/{session_id}/cancel", response_model=CalibrationSessionResponse)
+@calibration_router.post(
+    "/sessions/{session_id}/cancel", response_model=CalibrationSessionResponse
+)
 async def cancel_calibration_session(
     session_id: str,
     service: CalibrationService = Depends(get_calibration_service),

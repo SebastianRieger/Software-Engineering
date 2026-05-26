@@ -5,7 +5,9 @@ from typing import Literal
 
 from schemas.gestures import GestureType
 
-GesturePhase = Literal["idle", "preparing", "holding", "committing", "releasing", "cooldown"]
+GesturePhase = Literal[
+    "idle", "preparing", "holding", "committing", "releasing", "cooldown"
+]
 
 
 @dataclass(frozen=True, slots=True)
@@ -44,7 +46,11 @@ def default_gesture_contracts() -> dict[GestureType, GestureContract]:
                 "vor jedem swipe zuerst die mittlere startposition mit offener handflaeche einnehmen",
                 "die endpose soll die wischrichtung klar anzeigen und nicht sofort in die mitte zurueckfedern",
             ),
-            detector_bias=("open_palm_preferred", "mid_zone_start_preferred", "directional_finish_preferred"),
+            detector_bias=(
+                "open_palm_preferred",
+                "mid_zone_start_preferred",
+                "directional_finish_preferred",
+            ),
             required_primitives=("swipe_vector_left",),
             allowed_phases=("preparing", "committing", "releasing"),
             score_threshold=0.4,
@@ -63,7 +69,11 @@ def default_gesture_contracts() -> dict[GestureType, GestureContract]:
                 "vor jedem swipe zuerst die mittlere startposition mit offener handflaeche einnehmen",
                 "die endpose soll die wischrichtung klar anzeigen und nicht sofort in die mitte zurueckfedern",
             ),
-            detector_bias=("open_palm_preferred", "mid_zone_start_preferred", "directional_finish_preferred"),
+            detector_bias=(
+                "open_palm_preferred",
+                "mid_zone_start_preferred",
+                "directional_finish_preferred",
+            ),
             required_primitives=("swipe_vector_right",),
             allowed_phases=("preparing", "committing", "releasing"),
             score_threshold=0.4,
@@ -82,7 +92,11 @@ def default_gesture_contracts() -> dict[GestureType, GestureContract]:
                 "vor jedem swipe zuerst die mittlere startposition mit offener handflaeche einnehmen",
                 "das ende der geste soll eine echte richtungsentscheidung nach oben zeigen",
             ),
-            detector_bias=("open_palm_preferred", "mid_zone_start_preferred", "directional_finish_preferred"),
+            detector_bias=(
+                "open_palm_preferred",
+                "mid_zone_start_preferred",
+                "directional_finish_preferred",
+            ),
             required_primitives=("swipe_vector_up",),
             allowed_phases=("preparing", "committing", "releasing"),
             score_threshold=0.4,
@@ -101,7 +115,11 @@ def default_gesture_contracts() -> dict[GestureType, GestureContract]:
                 "vor jedem swipe zuerst die mittlere startposition mit offener handflaeche einnehmen",
                 "das ende der geste soll eine echte richtungsentscheidung nach unten zeigen",
             ),
-            detector_bias=("open_palm_preferred", "mid_zone_start_preferred", "directional_finish_preferred"),
+            detector_bias=(
+                "open_palm_preferred",
+                "mid_zone_start_preferred",
+                "directional_finish_preferred",
+            ),
             required_primitives=("swipe_vector_down",),
             allowed_phases=("preparing", "committing", "releasing"),
             score_threshold=0.4,
@@ -120,7 +138,11 @@ def default_gesture_contracts() -> dict[GestureType, GestureContract]:
                 "die faust soll vor oder spaetestens in der mittleren startposition geschlossen sein",
                 "der kreis soll geschlossen zurueck zur ursprungsposition laufen, bevor die hand geoeffnet wird",
             ),
-            detector_bias=("fist_preferred", "center_anchor_preferred", "closed_loop_required"),
+            detector_bias=(
+                "fist_preferred",
+                "center_anchor_preferred",
+                "closed_loop_required",
+            ),
             required_primitives=("circular_motion",),
             allowed_phases=("preparing", "committing", "releasing"),
             score_threshold=0.52,
@@ -139,7 +161,11 @@ def default_gesture_contracts() -> dict[GestureType, GestureContract]:
                 "die unterscheidung zum langen klick soll ueber vorwaertstempo und kurze haltedauer sichtbar sein",
                 "nach dem commit frueh loesen statt die pose stabil zu halten",
             ),
-            detector_bias=("fast_commit_preferred", "brief_hold_preferred", "release_confirmed"),
+            detector_bias=(
+                "fast_commit_preferred",
+                "brief_hold_preferred",
+                "release_confirmed",
+            ),
             required_primitives=("index_primary", "push_forward", "hand_centered"),
             forbidden_primitives=("all_fingers_open",),
             allowed_phases=("idle", "preparing", "releasing", "committing", "holding"),
@@ -159,8 +185,17 @@ def default_gesture_contracts() -> dict[GestureType, GestureContract]:
                 "die unterscheidung zum kurzen klick soll ueber ruhigere einleitung und stabile haltephase sichtbar sein",
                 "release erst nach klarer haltedauer statt sofortigem loesen",
             ),
-            detector_bias=("stable_hold_required", "slower_commit_preferred", "release_confirmed"),
-            required_primitives=("index_primary", "push_forward", "stable_hold", "hand_centered"),
+            detector_bias=(
+                "stable_hold_required",
+                "slower_commit_preferred",
+                "release_confirmed",
+            ),
+            required_primitives=(
+                "index_primary",
+                "push_forward",
+                "stable_hold",
+                "hand_centered",
+            ),
             forbidden_primitives=("all_fingers_open",),
             allowed_phases=("idle", "preparing", "holding", "releasing", "committing"),
             score_threshold=0.58,

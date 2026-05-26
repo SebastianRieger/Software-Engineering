@@ -6,11 +6,18 @@ from schemas.musical_audio import (
     MusicalAudioStartRequest,
     MusicalAudioStatusResponse,
 )
-from schemas.voice import VoiceInputDeviceListResponse, VoiceStartRequest, VoiceStatusResponse
+from schemas.voice import (
+    VoiceInputDeviceListResponse,
+    VoiceStartRequest,
+    VoiceStatusResponse,
+)
 from services.led import LEDService, led_service
-from services.musical_audio import MusicalAudioService, MusicalAudioServiceError, musical_audio_service
+from services.musical_audio import (
+    MusicalAudioService,
+    MusicalAudioServiceError,
+    musical_audio_service,
+)
 from services.voice import VoiceService, VoiceServiceError, voice_service
-
 
 led_router = APIRouter()
 voice_router = APIRouter()
@@ -77,12 +84,18 @@ async def stop_voice(service: VoiceService = Depends(get_voice_service)):
 
 
 @musical_audio_router.get("/status", response_model=MusicalAudioStatusResponse)
-async def get_musical_audio_status(service: MusicalAudioService = Depends(get_musical_audio_service)):
+async def get_musical_audio_status(
+    service: MusicalAudioService = Depends(get_musical_audio_service),
+):
     return service.get_status()
 
 
-@musical_audio_router.get("/devices", response_model=MusicalAudioInputDeviceListResponse)
-async def get_musical_audio_devices(service: MusicalAudioService = Depends(get_musical_audio_service)):
+@musical_audio_router.get(
+    "/devices", response_model=MusicalAudioInputDeviceListResponse
+)
+async def get_musical_audio_devices(
+    service: MusicalAudioService = Depends(get_musical_audio_service),
+):
     return {"devices": service.list_input_devices()}
 
 
@@ -98,5 +111,7 @@ async def start_musical_audio(
 
 
 @musical_audio_router.post("/stop", response_model=MusicalAudioStatusResponse)
-async def stop_musical_audio(service: MusicalAudioService = Depends(get_musical_audio_service)):
+async def stop_musical_audio(
+    service: MusicalAudioService = Depends(get_musical_audio_service),
+):
     return service.stop()

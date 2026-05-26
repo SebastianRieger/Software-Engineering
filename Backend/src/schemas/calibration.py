@@ -8,7 +8,6 @@ from pydantic import BaseModel, Field
 from schemas.gestures import GestureConfig, GestureType
 from schemas.voice import VoiceConfig
 
-
 CalibrationModality = Literal["gesture", "voice"]
 CalibrationSessionStatus = Literal[
     "collecting",

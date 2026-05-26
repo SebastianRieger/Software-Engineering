@@ -11,7 +11,6 @@ from statistics import mean
 from types import ModuleType
 from typing import TYPE_CHECKING, Protocol
 
-
 cv2: ModuleType | None
 try:
     import cv2 as cv2_module
@@ -164,7 +163,9 @@ def _ensure_hand_landmarker_model() -> Path:
 
     _HAND_LANDMARKER_MODEL_PATH.parent.mkdir(parents=True, exist_ok=True)
     try:
-        urllib.request.urlretrieve(_HAND_LANDMARKER_MODEL_URL, _HAND_LANDMARKER_MODEL_PATH)
+        urllib.request.urlretrieve(
+            _HAND_LANDMARKER_MODEL_URL, _HAND_LANDMARKER_MODEL_PATH
+        )
     except Exception as exc:
         if _HAND_LANDMARKER_MODEL_PATH.exists():
             _HAND_LANDMARKER_MODEL_PATH.unlink(missing_ok=True)
@@ -177,26 +178,23 @@ def _ensure_hand_landmarker_model() -> Path:
 
 
 class GestureAdapter(Protocol):
-    def is_available(self) -> bool:
-        ...
+    def is_available(self) -> bool: ...
 
-    def open(self, camera_index: int) -> None:
-        ...
+    def open(self, camera_index: int) -> None: ...
 
-    def read(self) -> GestureObservation | None:
-        ...
+    def read(self) -> GestureObservation | None: ...
 
-    def close(self) -> None:
-        ...
+    def close(self) -> None: ...
 
     def process_video(
         self,
         video_path: str,
-        classifier: Callable[[list[GesturePoint], float | None], GestureDetectionResult | None],
+        classifier: Callable[
+            [list[GesturePoint], float | None], GestureDetectionResult | None
+        ],
         smoothing_alpha: float,
         tracking_source: str,
-    ) -> dict[str, int | list[GestureName] | float | str | None]:
-        ...
+    ) -> dict[str, int | list[GestureName] | float | str | None]: ...
 
 
 def compute_hand_size_scale(
@@ -275,7 +273,9 @@ def normalize_tracked_hand_observation(
         )
 
     palm_center = compute_hand_tracking_point(landmarks)
-    hand_size = hand.hand_size if hand.hand_size is not None else estimate_hand_size(landmarks)
+    hand_size = (
+        hand.hand_size if hand.hand_size is not None else estimate_hand_size(landmarks)
+    )
     if palm_center is None or hand_size is None or hand_size <= 0:
         return NormalizedHandObservation(
             point=hand.point,
@@ -290,7 +290,10 @@ def normalize_tracked_hand_observation(
         )
 
     normalized_landmarks = {
-        name: ((point[0] - palm_center[0]) / hand_size, (point[1] - palm_center[1]) / hand_size)
+        name: (
+            (point[0] - palm_center[0]) / hand_size,
+            (point[1] - palm_center[1]) / hand_size,
+        )
         for name, point in landmarks.items()
     }
     return NormalizedHandObservation(
@@ -325,7 +328,9 @@ def build_normalized_hand_observation(
 
 
 def extract_hand_pose_features(
-    observation: GestureObservation | TrackedHandObservation | NormalizedHandObservation,
+    observation: (
+        GestureObservation | TrackedHandObservation | NormalizedHandObservation
+    ),
 ) -> HandPoseFeatures | None:
     normalized = (
         observation
@@ -361,8 +366,13 @@ def extract_hand_pose_features(
             left_point = normalized.landmarks.get(spread_pair[0])
             right_point = normalized.landmarks.get(spread_pair[1])
             if left_point is not None and right_point is not None:
-                spread_distance = math.hypot(left_point[0] - right_point[0], left_point[1] - right_point[1])
-                spread_score = max(0.0, min(1.0, spread_distance / max(normalized.palm_span or 1.0, 1e-6)))
+                spread_distance = math.hypot(
+                    left_point[0] - right_point[0], left_point[1] - right_point[1]
+                )
+                spread_score = max(
+                    0.0,
+                    min(1.0, spread_distance / max(normalized.palm_span or 1.0, 1e-6)),
+                )
 
         tip_depth_relative = None
         if normalized.landmark_depths is not None:
@@ -371,7 +381,9 @@ def extract_hand_pose_features(
             if tip_depth is not None and anchor_depth is not None:
                 tip_depth_relative = anchor_depth - tip_depth
 
-        tip_to_palm_distance = math.hypot(tip[0] - palm_center[0], tip[1] - palm_center[1])
+        tip_to_palm_distance = math.hypot(
+            tip[0] - palm_center[0], tip[1] - palm_center[1]
+        )
         label = "neutral"
         if extended_score >= 0.6:
             label = "extended"
@@ -453,7 +465,9 @@ class MediaPipeHandsAdapter:
 
         devices_by_key: dict[str, CameraDeviceInfo] = {}
         for index in candidate_indices:
-            capture, backend_name = MediaPipeHandsAdapter._open_camera_capture_for_index(index)
+            capture, backend_name = (
+                MediaPipeHandsAdapter._open_camera_capture_for_index(index)
+            )
             available = capture is not None
             if capture is not None:
                 capture.release()
@@ -512,7 +526,9 @@ class MediaPipeHandsAdapter:
             if isinstance(existing_index, int) and index < existing_index:
                 existing["index"] = index
                 existing["name"] = device_payload["name"]
-            existing["available"] = bool(existing.get("available")) or bool(device_payload["available"])
+            existing["available"] = bool(existing.get("available")) or bool(
+                device_payload["available"]
+            )
 
         return sorted(
             devices_by_key.values(),
@@ -541,7 +557,9 @@ class MediaPipeHandsAdapter:
         sysfs_path = Path(f"/sys/class/video4linux/video{index}/name")
         if os.path.exists(sysfs_path):
             try:
-                return sysfs_path.read_text(encoding="utf-8").strip() or f"Camera {index}"
+                return (
+                    sysfs_path.read_text(encoding="utf-8").strip() or f"Camera {index}"
+                )
             except OSError:
                 return f"Camera {index}"
         return f"Camera {index}"
@@ -575,7 +593,9 @@ class MediaPipeHandsAdapter:
 
         attempted_indices: list[str] = []
         for candidate_index in candidate_indices:
-            capture, _backend_name = self._open_camera_capture_for_index(candidate_index)
+            capture, _backend_name = self._open_camera_capture_for_index(
+                candidate_index
+            )
             attempted_indices.append(str(candidate_index))
             if capture is None:
                 continue
@@ -586,7 +606,9 @@ class MediaPipeHandsAdapter:
             break
 
         if self.cap is None:
-            attempted = ", ".join(attempted_indices) if attempted_indices else str(camera_index)
+            attempted = (
+                ", ".join(attempted_indices) if attempted_indices else str(camera_index)
+            )
             raise GestureAdapterError(
                 "Kamera konnte nicht geoeffnet werden. "
                 f"Gepruefte Kamera-Indizes: {attempted}. "
@@ -653,7 +675,11 @@ class MediaPipeHandsAdapter:
             return None, None
 
         for source, backend in MediaPipeHandsAdapter._camera_open_attempts(index):
-            capture = cv2.VideoCapture(source) if backend is None else cv2.VideoCapture(source, backend)
+            capture = (
+                cv2.VideoCapture(source)
+                if backend is None
+                else cv2.VideoCapture(source, backend)
+            )
             if not capture or not capture.isOpened():
                 if capture is not None:
                     capture.release()
@@ -676,7 +702,9 @@ class MediaPipeHandsAdapter:
     def process_video(
         self,
         video_path: str,
-        classifier: Callable[[list[GesturePoint], float | None], GestureDetectionResult | None],
+        classifier: Callable[
+            [list[GesturePoint], float | None], GestureDetectionResult | None
+        ],
         smoothing_alpha: float,
         tracking_source: str,
     ) -> dict[str, int | list[GestureName] | float | str | None]:
@@ -688,7 +716,9 @@ class MediaPipeHandsAdapter:
         assert cv2 is not None
         cap = cv2.VideoCapture(video_path)
         if not cap.isOpened():
-            raise GestureAdapterError(f"Video konnte nicht geoeffnet werden: {video_path}")
+            raise GestureAdapterError(
+                f"Video konnte nicht geoeffnet werden: {video_path}"
+            )
 
         hands = self._create_hands_tracker()
         trajectory: list[GesturePoint] = []
@@ -724,7 +754,11 @@ class MediaPipeHandsAdapter:
                 "frames_processed": frame_count,
                 "trajectory_points": len(trajectory),
                 "confidence": detection.confidence if detection is not None else None,
-                "tracking_source": detection.tracking_source if detection is not None else tracking_source,
+                "tracking_source": (
+                    detection.tracking_source
+                    if detection is not None
+                    else tracking_source
+                ),
             }
         finally:
             hands.close()
@@ -759,7 +793,9 @@ class MediaPipeHandsAdapter:
         except GestureAdapterError:
             raise
         except Exception as exc:
-            raise GestureAdapterError(f"MediaPipe Hands konnte nicht initialisiert werden: {exc}") from exc
+            raise GestureAdapterError(
+                f"MediaPipe Hands konnte nicht initialisiert werden: {exc}"
+            ) from exc
 
     def _extract_observation(
         self,
@@ -810,7 +846,9 @@ class MediaPipeHandsAdapter:
                 )
             )
 
-        tracked_hands.sort(key=lambda candidate: candidate.hand_size or 0.0, reverse=True)
+        tracked_hands.sort(
+            key=lambda candidate: candidate.hand_size or 0.0, reverse=True
+        )
         primary_hand = tracked_hands[0]
         return GestureObservation(
             point=primary_hand.point,

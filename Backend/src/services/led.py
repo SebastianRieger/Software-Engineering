@@ -5,7 +5,6 @@ from typing import Protocol
 
 from core.realtime import realtime_hub
 
-
 logger = logging.getLogger(__name__)
 
 
@@ -20,21 +19,21 @@ class LEDAdapterError(Exception):
 
 
 class LEDAdapter(Protocol):
-    def is_available(self) -> bool:
-        ...
+    def is_available(self) -> bool: ...
 
-    def open(self) -> None:
-        ...
+    def open(self) -> None: ...
 
-    def apply(self, red: float, green: float, blue: float, brightness: float) -> None:
-        ...
+    def apply(
+        self, red: float, green: float, blue: float, brightness: float
+    ) -> None: ...
 
-    def close(self) -> None:
-        ...
+    def close(self) -> None: ...
 
 
 class GpiozeroLEDAdapter:
-    def __init__(self, red_pin: int = 17, green_pin: int = 27, blue_pin: int = 22) -> None:
+    def __init__(
+        self, red_pin: int = 17, green_pin: int = 27, blue_pin: int = 22
+    ) -> None:
         self.red_pin = red_pin
         self.green_pin = green_pin
         self.blue_pin = blue_pin
@@ -47,14 +46,18 @@ class GpiozeroLEDAdapter:
 
     def open(self) -> None:
         if not self.is_available():
-            raise LEDAdapterError("gpiozero PWMLED ist in dieser Umgebung nicht verfuegbar.")
+            raise LEDAdapterError(
+                "gpiozero PWMLED ist in dieser Umgebung nicht verfuegbar."
+            )
 
         try:
             self.red = PWMLED(self.red_pin)
             self.green = PWMLED(self.green_pin)
             self.blue = PWMLED(self.blue_pin)
         except Exception as exc:
-            raise LEDAdapterError(f"GPIO-LED konnte nicht initialisiert werden: {exc}") from exc
+            raise LEDAdapterError(
+                f"GPIO-LED konnte nicht initialisiert werden: {exc}"
+            ) from exc
 
     def apply(self, red: float, green: float, blue: float, brightness: float) -> None:
         if self.red is None or self.green is None or self.blue is None:
@@ -65,7 +68,9 @@ class GpiozeroLEDAdapter:
             self.green.value = green * brightness
             self.blue.value = blue * brightness
         except Exception as exc:
-            raise LEDAdapterError(f"GPIO-LED Zustand konnte nicht gesetzt werden: {exc}") from exc
+            raise LEDAdapterError(
+                f"GPIO-LED Zustand konnte nicht gesetzt werden: {exc}"
+            ) from exc
 
     def close(self) -> None:
         for channel in (self.red, self.green, self.blue):
@@ -149,7 +154,9 @@ class LEDService:
                 self._adapter = None
                 self._state["available"] = False
                 self._state["mode"] = "mock"
-                self._state["last_error"] = "GPIO-LED-Hardware ist in dieser Umgebung nicht verfuegbar."
+                self._state["last_error"] = (
+                    "GPIO-LED-Hardware ist in dieser Umgebung nicht verfuegbar."
+                )
                 return
 
             adapter.open()

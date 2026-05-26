@@ -14,8 +14,12 @@ from schemas.gestures import GestureConfig
 
 
 def _load_gesture_video_tuner_module():
-    module_path = Path(__file__).resolve().parents[1] / "scripts" / "gesture_video_tuner.py"
-    spec = importlib.util.spec_from_file_location("gesture_video_tuner_under_test", module_path)
+    module_path = (
+        Path(__file__).resolve().parents[1] / "scripts" / "gesture_video_tuner.py"
+    )
+    spec = importlib.util.spec_from_file_location(
+        "gesture_video_tuner_under_test", module_path
+    )
     assert spec is not None
     assert spec.loader is not None
     module = importlib.util.module_from_spec(spec)
@@ -170,7 +174,9 @@ def test_gesture_video_tuner_swipe_evaluators_accept_runtime_detection_override(
     )
 
     evaluations = module._evaluate_swipe_cycles([cycle], GestureConfig())
-    negative_evaluations = module._evaluate_negative_swipe_cycles("sample", [cycle], GestureConfig())
+    negative_evaluations = module._evaluate_negative_swipe_cycles(
+        "sample", [cycle], GestureConfig()
+    )
 
     assert len(evaluations) == 1
     assert evaluations[0].trajectory_points == 4
@@ -192,8 +198,22 @@ def test_gesture_video_tuner_sequence_shadow_skips_leave_one_out_without_same_ge
             normalized_by_hand_size=True,
             frames=[
                 GestureSequenceFrame(t=0.0, x=0.0, y=0.0, active_phase="preparing"),
-                GestureSequenceFrame(t=0.1, x=direction_x, y=0.0, velocity_x=direction_x * 10.0, velocity_y=0.0, active_phase="committing"),
-                GestureSequenceFrame(t=0.2, x=direction_x * 2.0, y=0.0, velocity_x=direction_x * 10.0, velocity_y=0.0, active_phase="releasing"),
+                GestureSequenceFrame(
+                    t=0.1,
+                    x=direction_x,
+                    y=0.0,
+                    velocity_x=direction_x * 10.0,
+                    velocity_y=0.0,
+                    active_phase="committing",
+                ),
+                GestureSequenceFrame(
+                    t=0.2,
+                    x=direction_x * 2.0,
+                    y=0.0,
+                    velocity_x=direction_x * 10.0,
+                    velocity_y=0.0,
+                    active_phase="releasing",
+                ),
             ],
         )
         sample = module.VideoGestureSample(

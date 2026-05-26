@@ -35,9 +35,7 @@ def make_sequence_sample(
                 active_phase=(
                     "preparing"
                     if index < 2
-                    else "committing"
-                    if index < 4
-                    else "releasing"
+                    else "committing" if index < 4 else "releasing"
                 ),
             )
         )
@@ -84,10 +82,18 @@ def test_resample_sequence_artifact_returns_expected_shape():
 
 def test_build_sequence_profile_set_creates_profiles_for_supported_gestures():
     samples = [
-        make_sequence_sample("swipe_left", sample_id="sample-left-1", direction_x=-0.24),
-        make_sequence_sample("swipe_left", sample_id="sample-left-2", direction_x=-0.22),
-        make_sequence_sample("swipe_right", sample_id="sample-right-1", direction_x=0.24),
-        make_sequence_sample("swipe_right", sample_id="sample-right-2", direction_x=0.22),
+        make_sequence_sample(
+            "swipe_left", sample_id="sample-left-1", direction_x=-0.24
+        ),
+        make_sequence_sample(
+            "swipe_left", sample_id="sample-left-2", direction_x=-0.22
+        ),
+        make_sequence_sample(
+            "swipe_right", sample_id="sample-right-1", direction_x=0.24
+        ),
+        make_sequence_sample(
+            "swipe_right", sample_id="sample-right-2", direction_x=0.22
+        ),
     ]
 
     profile_set = build_sequence_profile_set(
@@ -116,10 +122,18 @@ def test_build_sequence_profile_set_creates_profiles_for_supported_gestures():
 
 def test_gesture_sequence_matcher_prefers_closest_profile():
     samples = [
-        make_sequence_sample("swipe_left", sample_id="sample-left-1", direction_x=-0.24),
-        make_sequence_sample("swipe_left", sample_id="sample-left-2", direction_x=-0.22),
-        make_sequence_sample("swipe_right", sample_id="sample-right-1", direction_x=0.24),
-        make_sequence_sample("swipe_right", sample_id="sample-right-2", direction_x=0.22),
+        make_sequence_sample(
+            "swipe_left", sample_id="sample-left-1", direction_x=-0.24
+        ),
+        make_sequence_sample(
+            "swipe_left", sample_id="sample-left-2", direction_x=-0.22
+        ),
+        make_sequence_sample(
+            "swipe_right", sample_id="sample-right-1", direction_x=0.24
+        ),
+        make_sequence_sample(
+            "swipe_right", sample_id="sample-right-2", direction_x=0.22
+        ),
     ]
     profile_set = build_sequence_profile_set(
         samples,
@@ -145,9 +159,15 @@ def test_gesture_sequence_matcher_prefers_closest_profile():
 
 def test_build_sequence_profile_set_uses_impostor_distance_for_singleton_thresholds():
     samples = [
-        make_sequence_sample("swipe_left", sample_id="sample-left-1", direction_x=-0.24),
-        make_sequence_sample("swipe_right", sample_id="sample-right-1", direction_x=0.24),
-        make_sequence_sample("swipe_up", sample_id="sample-up-1", direction_x=0.0, direction_y=-0.24),
+        make_sequence_sample(
+            "swipe_left", sample_id="sample-left-1", direction_x=-0.24
+        ),
+        make_sequence_sample(
+            "swipe_right", sample_id="sample-right-1", direction_x=0.24
+        ),
+        make_sequence_sample(
+            "swipe_up", sample_id="sample-up-1", direction_x=0.0, direction_y=-0.24
+        ),
     ]
 
     profile_set = build_sequence_profile_set(
@@ -157,7 +177,9 @@ def test_build_sequence_profile_set_uses_impostor_distance_for_singleton_thresho
     )
 
     assert profile_set is not None
-    thresholds = {profile.gesture: profile.distance_threshold for profile in profile_set.profiles}
+    thresholds = {
+        profile.gesture: profile.distance_threshold for profile in profile_set.profiles
+    }
     assert thresholds["swipe_left"] > 0.35
     assert thresholds["swipe_right"] > 0.35
     assert thresholds["swipe_up"] > 0.35

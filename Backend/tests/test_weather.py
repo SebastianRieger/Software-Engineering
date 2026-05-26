@@ -51,6 +51,10 @@ async def test_weather_query_validation(client):
 
 
 @pytest.mark.asyncio
-async def test_weather_rejects_city_and_coordinates_together(client, override_weather_dependency):
-    response = await client.get("/api/v1/weather/current?city=Stuttgart&lat=52.52&lon=13.405")
+async def test_weather_rejects_city_and_coordinates_together(
+    client, override_weather_dependency
+):
+    response = await client.get(
+        "/api/v1/weather/current?city=Stuttgart&lat=52.52&lon=13.405"
+    )
     assert response.status_code == 422

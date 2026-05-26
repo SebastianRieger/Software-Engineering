@@ -11,14 +11,26 @@ if src_path not in sys.path:
     sys.path.append(src_path)
 
 from api.data_endpoints import get_weather_service
-from api.device_endpoints import get_led_service, get_musical_audio_service, get_voice_service
-from api.system_endpoints import get_calibration_service, get_config_repository, get_gesture_service
+from api.device_endpoints import (
+    get_led_service,
+    get_musical_audio_service,
+    get_voice_service,
+)
+from api.system_endpoints import (
+    get_calibration_service,
+    get_config_repository,
+    get_gesture_service,
+)
 from core.config import settings
 from core.database import init_db
 from main import app
 from repositories.config import ConfigRepository
 from repositories.weather import WeatherRepositoryError
-from schemas.calibration import CalibrationAdvisoryRecognition, CalibrationCollectedSample, GestureCalibrationSamplePayload
+from schemas.calibration import (
+    CalibrationAdvisoryRecognition,
+    CalibrationCollectedSample,
+    GestureCalibrationSamplePayload,
+)
 from services.calibration import CalibrationService
 from services.gesture import GestureServiceError
 from services.musical_audio import MusicalAudioServiceError
@@ -224,7 +236,9 @@ def mock_voice_service():
 
         def start(self, device_index: int = 0):
             self.state["device_index"] = device_index
-            raise VoiceServiceError("VOICE_MODEL_PATH ist nicht konfiguriert.", status_code=503)
+            raise VoiceServiceError(
+                "VOICE_MODEL_PATH ist nicht konfiguriert.", status_code=503
+            )
 
         def stop(self):
             self.state["running"] = False
@@ -331,7 +345,11 @@ def mock_gesture_service():
                 "available": self.available,
                 "running": self.running,
                 "camera_index": self.camera_index,
-                "camera_name": f"Mock Camera {self.camera_index}" if self.camera_index is not None else None,
+                "camera_name": (
+                    f"Mock Camera {self.camera_index}"
+                    if self.camera_index is not None
+                    else None
+                ),
                 "last_gesture": self.last_gesture,
                 "last_gesture_at": self.last_gesture_at,
                 "debug_frame_available": self.frame is not None,
@@ -339,8 +357,18 @@ def mock_gesture_service():
 
         def list_camera_devices(self):
             return [
-                {"index": 0, "name": "Mock Camera 0", "available": True, "backend": "200"},
-                {"index": 1, "name": "Mock USB Camera", "available": True, "backend": "200"},
+                {
+                    "index": 0,
+                    "name": "Mock Camera 0",
+                    "available": True,
+                    "backend": "200",
+                },
+                {
+                    "index": 1,
+                    "name": "Mock USB Camera",
+                    "available": True,
+                    "backend": "200",
+                },
             ]
 
         def start(self, camera_index: int = 0):
@@ -365,7 +393,14 @@ def mock_gesture_service():
         def get_frame(self):
             return self.frame
 
-        def begin_calibration_take_capture(self, *, session_id: str, take_id: str, target_id: str, trimmed_tail_ms: int = 750):
+        def begin_calibration_take_capture(
+            self,
+            *,
+            session_id: str,
+            take_id: str,
+            target_id: str,
+            trimmed_tail_ms: int = 750,
+        ):
             self.active_take = {
                 "session_id": session_id,
                 "take_id": take_id,
@@ -373,14 +408,20 @@ def mock_gesture_service():
                 "trimmed_tail_ms": trimmed_tail_ms,
             }
 
-        def cancel_calibration_take_capture(self, session_id: str | None = None, take_id: str | None = None):
+        def cancel_calibration_take_capture(
+            self, session_id: str | None = None, take_id: str | None = None
+        ):
             _ = session_id
             _ = take_id
             self.active_take = None
 
-        def stop_calibration_take_capture(self, *, session_id: str, take_id: str, target_id: str):
+        def stop_calibration_take_capture(
+            self, *, session_id: str, take_id: str, target_id: str
+        ):
             if self.active_take is None:
-                raise GestureServiceError("Kein aktiver Kalibrierungs-Take vorhanden.", status_code=409)
+                raise GestureServiceError(
+                    "Kein aktiver Kalibrierungs-Take vorhanden.", status_code=409
+                )
             _ = session_id
             _ = take_id
             self.active_take = None
@@ -449,7 +490,9 @@ def unavailable_gesture_service():
             return None
 
         def process_video(self, video_path: str):
-            raise GestureServiceError("Gestenerkennung ist deaktiviert.", status_code=503)
+            raise GestureServiceError(
+                "Gestenerkennung ist deaktiviert.", status_code=503
+            )
 
     return UnavailableGestureService()
 
@@ -524,7 +567,9 @@ def override_musical_audio_dependency(mock_musical_audio_service):
     async def _override_musical_audio_service():
         return mock_musical_audio_service
 
-    app.dependency_overrides[get_musical_audio_service] = _override_musical_audio_service
+    app.dependency_overrides[get_musical_audio_service] = (
+        _override_musical_audio_service
+    )
     yield mock_musical_audio_service
     app.dependency_overrides.pop(get_musical_audio_service, None)
 
@@ -537,4 +582,3 @@ def override_unavailable_gesture_dependency(unavailable_gesture_service):
     app.dependency_overrides[get_gesture_service] = _override_gesture_service
     yield unavailable_gesture_service
     app.dependency_overrides.pop(get_gesture_service, None)
-

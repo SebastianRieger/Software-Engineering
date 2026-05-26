@@ -74,7 +74,11 @@ def compute_push_pose_snapshot(
         )
 
     folded_checks = 0
-    for finger_tip, finger_mcp in (("middle_tip", "middle_mcp"), ("ring_tip", "ring_mcp"), ("pinky_tip", "pinky_mcp")):
+    for finger_tip, finger_mcp in (
+        ("middle_tip", "middle_mcp"),
+        ("ring_tip", "ring_mcp"),
+        ("pinky_tip", "pinky_mcp"),
+    ):
         tip = landmarks.get(finger_tip)
         mcp = landmarks.get(finger_mcp)
         if tip is None or mcp is None:
@@ -82,13 +86,24 @@ def compute_push_pose_snapshot(
         if _distance(tip, wrist) <= _distance(mcp, wrist) * folded_distance_ratio:
             folded_checks += 1
 
-    relaxed_center_tolerance = min(relaxed_center_tolerance_max, center_tolerance * relaxed_center_tolerance_multiplier)
-    depth_assisted_push = pose.push_depth >= max(depth_assist_min_threshold, push_depth_threshold * depth_assist_threshold_ratio)
-    index_or_depth_valid = pose.index_extension_ratio > extension_ratio or depth_assisted_push
+    relaxed_center_tolerance = min(
+        relaxed_center_tolerance_max,
+        center_tolerance * relaxed_center_tolerance_multiplier,
+    )
+    depth_assisted_push = pose.push_depth >= max(
+        depth_assist_min_threshold, push_depth_threshold * depth_assist_threshold_ratio
+    )
+    index_or_depth_valid = (
+        pose.index_extension_ratio > extension_ratio or depth_assisted_push
+    )
 
     return PushPoseSnapshot(
         push_depth=pose.push_depth,
-        pose_valid=(folded_checks >= required_folded_fingers and pose.center_distance <= relaxed_center_tolerance and index_or_depth_valid),
+        pose_valid=(
+            folded_checks >= required_folded_fingers
+            and pose.center_distance <= relaxed_center_tolerance
+            and index_or_depth_valid
+        ),
         center_distance=pose.center_distance,
         index_extension_ratio=pose.index_extension_ratio,
     )
@@ -106,7 +121,9 @@ def is_click_pose_candidate(
     snapshot = compute_push_pose_snapshot(
         observation,
         center_tolerance=center_tolerance * center_tolerance_multiplier,
-        extension_ratio=max(extension_ratio_floor, extension_ratio * extension_ratio_multiplier),
+        extension_ratio=max(
+            extension_ratio_floor, extension_ratio * extension_ratio_multiplier
+        ),
         push_depth_threshold=0.0,
     )
     return snapshot.pose_valid
@@ -157,14 +174,21 @@ def detect_push_gesture(
         depth_assist_min_threshold=config.push_depth_assist_min_threshold,
         depth_assist_threshold_ratio=config.push_depth_assist_threshold_ratio,
     )
-    is_forward = snapshot.pose_valid and snapshot.push_depth >= config.push_depth_threshold
+    is_forward = (
+        snapshot.pose_valid and snapshot.push_depth >= config.push_depth_threshold
+    )
     is_released = snapshot.push_depth <= config.push_release_threshold
     transient_pose_gap_seconds = min(
         config.push_transient_pose_gap_max_seconds,
         config.long_click_seconds * config.push_transient_pose_gap_long_ratio,
     )
 
-    if state is not None and state.forward_started_at is not None and is_released and observed_at >= state.forward_started_at:
+    if (
+        state is not None
+        and state.forward_started_at is not None
+        and is_released
+        and observed_at >= state.forward_started_at
+    ):
         gesture_started_at = state.forward_started_at
         if gesture_started_at is None:
             return None, None
@@ -195,13 +219,16 @@ def detect_push_gesture(
 
     if snapshot.pose_valid:
         if state is None:
-            return PushGestureState(
-                pose_started_at=observed_at,
-                forward_started_at=observed_at if is_forward else None,
-                last_seen_at=observed_at,
-                stage="forward" if is_forward else "arming",
-                max_depth=snapshot.push_depth,
-            ), None
+            return (
+                PushGestureState(
+                    pose_started_at=observed_at,
+                    forward_started_at=observed_at if is_forward else None,
+                    last_seen_at=observed_at,
+                    stage="forward" if is_forward else "arming",
+                    max_depth=snapshot.push_depth,
+                ),
+                None,
+            )
 
         state.last_seen_at = observed_at
         state.max_depth = max(state.max_depth, snapshot.push_depth)
@@ -209,10 +236,19 @@ def detect_push_gesture(
             state.forward_started_at = observed_at
         if state.forward_started_at is not None:
             forward_duration = observed_at - state.forward_started_at
-            state.stage = "holding" if forward_duration >= config.long_click_seconds else "forward"
-            if forward_duration >= config.long_click_seconds and not state.long_reported:
+            state.stage = (
+                "holding"
+                if forward_duration >= config.long_click_seconds
+                else "forward"
+            )
+            if (
+                forward_duration >= config.long_click_seconds
+                and not state.long_reported
+            ):
                 state.long_reported = True
-                confidence = min(1.0, state.max_depth / max(config.push_depth_threshold, 1e-6))
+                confidence = min(
+                    1.0, state.max_depth / max(config.push_depth_threshold, 1e-6)
+                )
                 return state, _build_push_detection(
                     gesture="push_click_long",
                     confidence=confidence,
@@ -229,10 +265,17 @@ def detect_push_gesture(
     if state is None:
         return None, None
 
-    if not is_released and observed_at - state.last_seen_at <= transient_pose_gap_seconds:
+    if (
+        not is_released
+        and observed_at - state.last_seen_at <= transient_pose_gap_seconds
+    ):
         return state, None
 
-    gesture_started_at = state.forward_started_at if state.forward_started_at is not None else state.pose_started_at
+    gesture_started_at = (
+        state.forward_started_at
+        if state.forward_started_at is not None
+        else state.pose_started_at
+    )
     if state.max_depth < config.push_depth_threshold:
         return None, None
 

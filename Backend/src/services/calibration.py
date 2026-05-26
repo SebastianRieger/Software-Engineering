@@ -93,7 +93,10 @@ def _build_gesture_config_patch(
             )
             if analysis.target_id not in metadata["source_targets"]:
                 metadata["source_targets"].append(analysis.target_id)
-            if recommendation.rationale and recommendation.rationale not in metadata["rationales"]:
+            if (
+                recommendation.rationale
+                and recommendation.rationale not in metadata["rationales"]
+            ):
                 metadata["rationales"].append(recommendation.rationale)
 
     base_values = base_config.model_dump()
@@ -104,14 +107,18 @@ def _build_gesture_config_patch(
         new_value = candidate_values.get(parameter)
         if current_value == new_value:
             continue
-        metadata = recommendation_metadata.get(parameter, {"source_targets": [], "rationales": []})
+        metadata = recommendation_metadata.get(
+            parameter, {"source_targets": [], "rationales": []}
+        )
         operations.append(
             CalibrationConfigPatchOperation(
                 parameter=parameter,
                 path=f"gesture_config.{parameter}",
                 current_value=current_value,
                 new_value=new_value,
-                rationale=" ".join(metadata["rationales"]) if metadata["rationales"] else None,
+                rationale=(
+                    " ".join(metadata["rationales"]) if metadata["rationales"] else None
+                ),
                 source_targets=metadata["source_targets"],
             )
         )
@@ -252,7 +259,9 @@ class CalibrationService:
         with self._lock:
             return self._active_sessions_by_modality.get(modality) is not None
 
-    def get_active_session(self, modality: CalibrationModality = "gesture") -> CalibrationSessionRecord | None:
+    def get_active_session(
+        self, modality: CalibrationModality = "gesture"
+    ) -> CalibrationSessionRecord | None:
         with self._lock:
             session_id = self._active_sessions_by_modality.get(modality)
         if session_id is None:
@@ -268,15 +277,23 @@ class CalibrationService:
     def get_session(self, session_id: str) -> CalibrationSessionRecord:
         session = self.config_repository_factory().get_calibration_session(session_id)
         if session is None:
-            raise CalibrationServiceError("Kalibrierungssitzung nicht gefunden.", status_code=404)
+            raise CalibrationServiceError(
+                "Kalibrierungssitzung nicht gefunden.", status_code=404
+            )
         return session
 
-    def start_session(self, request: CalibrationSessionCreateRequest) -> CalibrationSessionRecord:
+    def start_session(
+        self, request: CalibrationSessionCreateRequest
+    ) -> CalibrationSessionRecord:
         if request.modality != "gesture":
-            raise CalibrationServiceError("Nur Gesten-Kalibrierung ist derzeit verfuegbar.", status_code=422)
+            raise CalibrationServiceError(
+                "Nur Gesten-Kalibrierung ist derzeit verfuegbar.", status_code=422
+            )
 
         target_ids = {definition.id for definition in self._gesture_target_definitions}
-        invalid_targets = [target for target in request.selected_targets if target not in target_ids]
+        invalid_targets = [
+            target for target in request.selected_targets if target not in target_ids
+        ]
         if invalid_targets:
             raise CalibrationServiceError(
                 f"Unbekannte Kalibrierungsziele: {', '.join(invalid_targets)}.",
@@ -339,23 +356,44 @@ class CalibrationService:
             )
         return session
 
-    def prepare_take(self, session_id: str, countdown_seconds: int = 3) -> CalibrationSessionRecord:
+    def prepare_take(
+        self, session_id: str, countdown_seconds: int = 3
+    ) -> CalibrationSessionRecord:
         repository = self.config_repository_factory()
         session = self.get_session(session_id)
         if session.status != "collecting":
-            raise CalibrationServiceError("Sitzung sammelt keine Samples mehr.", status_code=409)
+            raise CalibrationServiceError(
+                "Sitzung sammelt keine Samples mehr.", status_code=409
+            )
         if session.pending_take is not None:
-            raise CalibrationServiceError("Es wartet noch ein Take auf Review.", status_code=409)
+            raise CalibrationServiceError(
+                "Es wartet noch ein Take auf Review.", status_code=409
+            )
         if session.active_take is not None:
-            raise CalibrationServiceError("Es ist bereits ein Take vorbereitet oder aktiv.", status_code=409)
+            raise CalibrationServiceError(
+                "Es ist bereits ein Take vorbereitet oder aktiv.", status_code=409
+            )
 
-        open_target_ids = [progress.target_id for progress in session.progress if not progress.completed]
+        open_target_ids = [
+            progress.target_id
+            for progress in session.progress
+            if not progress.completed
+        ]
         if not open_target_ids:
-            raise CalibrationServiceError("Alle Ziele sind bereits vollstaendig. Bitte Analyse erzeugen.", status_code=409)
+            raise CalibrationServiceError(
+                "Alle Ziele sind bereits vollstaendig. Bitte Analyse erzeugen.",
+                status_code=409,
+            )
 
-        target_id = session.active_target_id if session.active_target_id in open_target_ids else self._select_next_target_id(open_target_ids)
+        target_id = (
+            session.active_target_id
+            if session.active_target_id in open_target_ids
+            else self._select_next_target_id(open_target_ids)
+        )
         if target_id is None:
-            raise CalibrationServiceError("Kein weiteres Kalibrierungsziel verfuegbar.", status_code=409)
+            raise CalibrationServiceError(
+                "Kein weiteres Kalibrierungsziel verfuegbar.", status_code=409
+            )
 
         now = _utc_now()
         session.active_target_id = target_id
@@ -382,11 +420,17 @@ class CalibrationService:
         repository = self.config_repository_factory()
         session = self.get_session(session_id)
         if session.status != "collecting":
-            raise CalibrationServiceError("Sitzung sammelt keine Samples mehr.", status_code=409)
+            raise CalibrationServiceError(
+                "Sitzung sammelt keine Samples mehr.", status_code=409
+            )
         if session.pending_take is not None:
-            raise CalibrationServiceError("Es wartet noch ein Take auf Review.", status_code=409)
+            raise CalibrationServiceError(
+                "Es wartet noch ein Take auf Review.", status_code=409
+            )
         if session.active_take is None or session.active_take.status != "prepared":
-            raise CalibrationServiceError("Es ist kein vorbereiteter Take vorhanden.", status_code=409)
+            raise CalibrationServiceError(
+                "Es ist kein vorbereiteter Take vorhanden.", status_code=409
+            )
 
         session.active_take = session.active_take.model_copy(
             update={
@@ -413,9 +457,13 @@ class CalibrationService:
         repository = self.config_repository_factory()
         session = self.get_session(session_id)
         if session.status != "collecting":
-            raise CalibrationServiceError("Sitzung sammelt keine Samples mehr.", status_code=409)
+            raise CalibrationServiceError(
+                "Sitzung sammelt keine Samples mehr.", status_code=409
+            )
         if session.active_take is None or session.active_take.status != "recording":
-            raise CalibrationServiceError("Es laeuft aktuell kein Recording-Take.", status_code=409)
+            raise CalibrationServiceError(
+                "Es laeuft aktuell kein Recording-Take.", status_code=409
+            )
 
         stopped_take = session.active_take.model_copy(
             update={
@@ -434,7 +482,11 @@ class CalibrationService:
             target_id=stopped_take.target_id,
             take_id=stopped_take.take_id,
             message="Recording gestoppt. Review erforderlich.",
-            confidence=advisory_recognition.confidence if advisory_recognition is not None else None,
+            confidence=(
+                advisory_recognition.confidence
+                if advisory_recognition is not None
+                else None
+            ),
             metadata=(
                 {
                     "recognized_target": advisory_recognition.recognized_target_id,
@@ -451,7 +503,9 @@ class CalibrationService:
         session = self.get_session(session_id)
         pending_take = session.pending_take
         if pending_take is None or pending_take.sample is None:
-            raise CalibrationServiceError("Es liegt kein reviewbarer Take vor.", status_code=409)
+            raise CalibrationServiceError(
+                "Es liegt kein reviewbarer Take vor.", status_code=409
+            )
 
         session.pending_take = None
         repository.save_calibration_session(session)
@@ -473,11 +527,21 @@ class CalibrationService:
         session = self.get_session(session_id)
         pending_take = session.pending_take
         if pending_take is None:
-            raise CalibrationServiceError("Es liegt kein reviewbarer Take vor.", status_code=409)
+            raise CalibrationServiceError(
+                "Es liegt kein reviewbarer Take vor.", status_code=409
+            )
 
         session.pending_take = None
-        open_target_ids = [progress.target_id for progress in session.progress if not progress.completed]
-        session.active_target_id = pending_take.target_id if pending_take.target_id in open_target_ids else self._select_next_target_id(open_target_ids)
+        open_target_ids = [
+            progress.target_id
+            for progress in session.progress
+            if not progress.completed
+        ]
+        session.active_target_id = (
+            pending_take.target_id
+            if pending_take.target_id in open_target_ids
+            else self._select_next_target_id(open_target_ids)
+        )
         repository.save_calibration_session(session)
         self._publish_event(
             "CalibrationTakeDiscarded",
@@ -495,7 +559,9 @@ class CalibrationService:
             )
         return session
 
-    def capture_gesture_sample(self, sample: CalibrationCollectedSample) -> CalibrationSessionRecord | None:
+    def capture_gesture_sample(
+        self, sample: CalibrationCollectedSample
+    ) -> CalibrationSessionRecord | None:
         session = self.get_active_session("gesture")
         if session is None:
             return None
@@ -511,13 +577,23 @@ class CalibrationService:
         repository = self.config_repository_factory()
         session = self.get_session(session_id)
         if session.status != "collecting":
-            raise CalibrationServiceError("Sitzung sammelt keine Samples mehr.", status_code=409)
+            raise CalibrationServiceError(
+                "Sitzung sammelt keine Samples mehr.", status_code=409
+            )
         if session.active_take is not None:
-            raise CalibrationServiceError("Es ist noch ein Take vorbereitet oder im Recording.", status_code=409)
+            raise CalibrationServiceError(
+                "Es ist noch ein Take vorbereitet oder im Recording.", status_code=409
+            )
         if session.pending_take is not None:
-            raise CalibrationServiceError("Es wartet noch ein Take auf Review.", status_code=409)
+            raise CalibrationServiceError(
+                "Es wartet noch ein Take auf Review.", status_code=409
+            )
 
-        incomplete_targets = [progress.target_id for progress in session.progress if not progress.completed]
+        incomplete_targets = [
+            progress.target_id
+            for progress in session.progress
+            if not progress.completed
+        ]
         if incomplete_targets:
             raise CalibrationServiceError(
                 f"Kalibrierung noch nicht vollstaendig. Offen: {', '.join(incomplete_targets)}.",
@@ -542,7 +618,10 @@ class CalibrationService:
         repository.save_calibration_session(session)
 
         with self._lock:
-            if self._active_sessions_by_modality.get(session.modality) == session.session_id:
+            if (
+                self._active_sessions_by_modality.get(session.modality)
+                == session.session_id
+            ):
                 self._active_sessions_by_modality[session.modality] = None
 
         self._publish_event(
@@ -552,23 +631,35 @@ class CalibrationService:
         )
         return session
 
-    def apply_session(self, session_id: str) -> tuple[CalibrationSessionRecord, CalibrationProfile]:
+    def apply_session(
+        self, session_id: str
+    ) -> tuple[CalibrationSessionRecord, CalibrationProfile]:
         repository = self.config_repository_factory()
         session = self.get_session(session_id)
         if session.status != "analysis_ready" or session.candidate_snapshot is None:
-            raise CalibrationServiceError("Kalibrierungsprofil ist noch nicht anwendbar.", status_code=409)
+            raise CalibrationServiceError(
+                "Kalibrierungsprofil ist noch nicht anwendbar.", status_code=409
+            )
 
-        gesture_patch = session.analysis.gesture_config_patch if session.analysis is not None else None
+        gesture_patch = (
+            session.analysis.gesture_config_patch
+            if session.analysis is not None
+            else None
+        )
         candidate_gesture_config = _apply_gesture_config_patch(
             session.original_snapshot.gesture_config or GestureConfig(),
             gesture_patch,
         )
         if session.modality != "gesture" or candidate_gesture_config is None:
-            raise CalibrationServiceError("Es liegt kein anwendbares Gestenprofil vor.", status_code=409)
+            raise CalibrationServiceError(
+                "Es liegt kein anwendbares Gestenprofil vor.", status_code=409
+            )
 
         session.candidate_snapshot.gesture_config = candidate_gesture_config
         session.candidate_snapshot.gesture_sequence_profile_set = (
-            session.analysis.gesture_sequence_profile_set if session.analysis is not None else None
+            session.analysis.gesture_sequence_profile_set
+            if session.analysis is not None
+            else None
         )
 
         snapshot = repository.save_last_applied_calibration_snapshot(
@@ -609,15 +700,24 @@ class CalibrationService:
         )
         return session, profile
 
-    def rollback_session(self, session_id: str) -> tuple[CalibrationSessionRecord, CalibrationAppliedSnapshot]:
+    def rollback_session(
+        self, session_id: str
+    ) -> tuple[CalibrationSessionRecord, CalibrationAppliedSnapshot]:
         repository = self.config_repository_factory()
         session = self.get_session(session_id)
-        snapshot = repository.get_last_applied_calibration_snapshot(session.modality, session.profile)
+        snapshot = repository.get_last_applied_calibration_snapshot(
+            session.modality, session.profile
+        )
         if snapshot is None or snapshot.source_session_id != session.session_id:
-            raise CalibrationServiceError("Kein passender Kalibrierungs-Snapshot fuer Rollback gefunden.", status_code=404)
+            raise CalibrationServiceError(
+                "Kein passender Kalibrierungs-Snapshot fuer Rollback gefunden.",
+                status_code=404,
+            )
 
         if snapshot.original_snapshot.gesture_config is None:
-            raise CalibrationServiceError("Rollback-Snapshot enthaelt keine Gestenkonfiguration.", status_code=409)
+            raise CalibrationServiceError(
+                "Rollback-Snapshot enthaelt keine Gestenkonfiguration.", status_code=409
+            )
 
         repository.save_gesture_config(snapshot.original_snapshot.gesture_config)
         repository.save_active_gesture_sequence_profile_set(
@@ -637,7 +737,9 @@ class CalibrationService:
         repository = self.config_repository_factory()
         session = self.get_session(session_id)
         if session.status not in {"collecting", "analysis_ready"}:
-            raise CalibrationServiceError("Diese Sitzung kann nicht mehr verworfen werden.", status_code=409)
+            raise CalibrationServiceError(
+                "Diese Sitzung kann nicht mehr verworfen werden.", status_code=409
+            )
 
         session.status = "cancelled"
         session.cancelled_at = _utc_now()
@@ -646,7 +748,10 @@ class CalibrationService:
         session.pending_take = None
         repository.save_calibration_session(session)
         with self._lock:
-            if self._active_sessions_by_modality.get(session.modality) == session.session_id:
+            if (
+                self._active_sessions_by_modality.get(session.modality)
+                == session.session_id
+            ):
                 self._active_sessions_by_modality[session.modality] = None
         return session
 
@@ -663,16 +768,25 @@ class CalibrationService:
         current_progress = self._get_current_progress(session)
         if current_progress is None:
             current_progress = next(
-                (progress for progress in session.progress if progress.target_id == sample.target_id and not progress.completed),
+                (
+                    progress
+                    for progress in session.progress
+                    if progress.target_id == sample.target_id and not progress.completed
+                ),
                 None,
             )
         if current_progress is None:
             return session
 
-        accepted_sample = sample.model_copy(update={"target_id": current_progress.target_id})
+        accepted_sample = sample.model_copy(
+            update={"target_id": current_progress.target_id}
+        )
         session.samples.append(accepted_sample)
         current_progress.collected_samples += 1
-        if recognized_target_id is not None and recognized_target_id != current_progress.target_id:
+        if (
+            recognized_target_id is not None
+            and recognized_target_id != current_progress.target_id
+        ):
             current_progress.last_feedback = (
                 f"{event_message_prefix} {current_progress.collected_samples}/{current_progress.target_repetitions} "
                 f"fuer {current_progress.target_id}, erkannt wurde {recognized_target_id}."
@@ -687,7 +801,11 @@ class CalibrationService:
         repository = self.config_repository_factory()
         repository.save_calibration_session(session)
         event_metadata = {
-            "hand": accepted_sample.gesture_payload.hand if accepted_sample.gesture_payload is not None else None,
+            "hand": (
+                accepted_sample.gesture_payload.hand
+                if accepted_sample.gesture_payload is not None
+                else None
+            ),
             "recognized_target": recognized_target_id,
             "source_of_truth_target": current_progress.target_id,
         }
@@ -699,7 +817,11 @@ class CalibrationService:
             target_id=current_progress.target_id,
             sample_id=accepted_sample.sample_id,
             message=current_progress.last_feedback,
-            confidence=(accepted_sample.gesture_payload.confidence if accepted_sample.gesture_payload is not None else None),
+            confidence=(
+                accepted_sample.gesture_payload.confidence
+                if accepted_sample.gesture_payload is not None
+                else None
+            ),
             metadata=event_metadata,
         )
 
@@ -713,10 +835,17 @@ class CalibrationService:
                 message=f"Ziel {current_progress.target_id} abgeschlossen.",
             )
 
-        remaining_target_ids = [progress.target_id for progress in session.progress if not progress.completed]
+        remaining_target_ids = [
+            progress.target_id
+            for progress in session.progress
+            if not progress.completed
+        ]
         session.active_target_id = self._select_next_target_id(remaining_target_ids)
         repository.save_calibration_session(session)
-        if session.active_target_id is not None and session.active_target_id != previous_target_id:
+        if (
+            session.active_target_id is not None
+            and session.active_target_id != previous_target_id
+        ):
             self._publish_event(
                 "CalibrationTargetArmed",
                 session,
@@ -725,7 +854,9 @@ class CalibrationService:
             )
         return session
 
-    def _refresh_session_quality(self, session: CalibrationSessionRecord) -> CalibrationSessionRecord:
+    def _refresh_session_quality(
+        self, session: CalibrationSessionRecord
+    ) -> CalibrationSessionRecord:
         samples_by_target: dict[str, list[CalibrationCollectedSample]] = {}
         for sample in session.samples:
             samples_by_target.setdefault(sample.target_id, []).append(sample)
@@ -738,34 +869,45 @@ class CalibrationService:
                 if sample.gesture_payload is not None
             ]
             progress.quality_metrics = {
-                "completion_ratio": progress.collected_samples / max(progress.target_repetitions, 1),
+                "completion_ratio": progress.collected_samples
+                / max(progress.target_repetitions, 1),
                 "mean_confidence": mean(confidences) if confidences else 0.0,
-                "rejection_ratio": progress.rejected_samples / max(progress.rejected_samples + progress.collected_samples, 1),
+                "rejection_ratio": progress.rejected_samples
+                / max(progress.rejected_samples + progress.collected_samples, 1),
             }
         return session
 
-    def _get_current_progress(self, session: CalibrationSessionRecord) -> CalibrationTargetProgress | None:
+    def _get_current_progress(
+        self, session: CalibrationSessionRecord
+    ) -> CalibrationTargetProgress | None:
         if session.active_target_id is not None:
             progress = next(
                 (
                     progress
                     for progress in session.progress
-                    if progress.target_id == session.active_target_id and not progress.completed
+                    if progress.target_id == session.active_target_id
+                    and not progress.completed
                 ),
                 None,
             )
             if progress is not None:
                 return progress
-        return next((progress for progress in session.progress if not progress.completed), None)
+        return next(
+            (progress for progress in session.progress if not progress.completed), None
+        )
 
     def _select_next_target_id(self, target_ids: list[str]) -> str | None:
         if not target_ids:
             return None
         return random.choice(target_ids)
 
-    def _analyze_session(self, session: CalibrationSessionRecord) -> CalibrationAnalysisResult:
+    def _analyze_session(
+        self, session: CalibrationSessionRecord
+    ) -> CalibrationAnalysisResult:
         if session.modality != "gesture":
-            raise CalibrationServiceError("Nur Gesten-Kalibrierung ist derzeit implementiert.", status_code=422)
+            raise CalibrationServiceError(
+                "Nur Gesten-Kalibrierung ist derzeit implementiert.", status_code=422
+            )
 
         base_config = session.original_snapshot.gesture_config or GestureConfig()
         candidate_config = base_config.model_copy(deep=True)
@@ -792,7 +934,9 @@ class CalibrationService:
             candidate_config=candidate_config,
             target_analyses=target_analyses,
         )
-        patched_candidate_config = _apply_gesture_config_patch(base_config, gesture_config_patch)
+        patched_candidate_config = _apply_gesture_config_patch(
+            base_config, gesture_config_patch
+        )
         gesture_sequence_profile_set = build_sequence_profile_set(
             session.samples,
             resample_points=patched_candidate_config.sequence_resample_points,
@@ -800,10 +944,13 @@ class CalibrationService:
         )
         if gesture_sequence_profile_set is not None:
             profile_lookup = {
-                profile.gesture: profile for profile in gesture_sequence_profile_set.profiles
+                profile.gesture: profile
+                for profile in gesture_sequence_profile_set.profiles
             }
             for target_analysis in target_analyses:
-                profile = profile_lookup.get(cast(GestureType, target_analysis.target_id))
+                profile = profile_lookup.get(
+                    cast(GestureType, target_analysis.target_id)
+                )
                 if profile is None:
                     continue
                 target_analysis.artifacts.update(
@@ -832,22 +979,69 @@ class CalibrationService:
     ) -> list[CalibrationTargetAnalysis]:
         analyses: list[CalibrationTargetAnalysis] = []
         grouped = {
-            "swipe_left": [sample for sample in samples if sample.target_id == "swipe_left" and sample.gesture_payload is not None and sample.gesture_payload.trajectory is not None],
-            "swipe_right": [sample for sample in samples if sample.target_id == "swipe_right" and sample.gesture_payload is not None and sample.gesture_payload.trajectory is not None],
-            "swipe_up": [sample for sample in samples if sample.target_id == "swipe_up" and sample.gesture_payload is not None and sample.gesture_payload.trajectory is not None],
-            "swipe_down": [sample for sample in samples if sample.target_id == "swipe_down" and sample.gesture_payload is not None and sample.gesture_payload.trajectory is not None],
+            "swipe_left": [
+                sample
+                for sample in samples
+                if sample.target_id == "swipe_left"
+                and sample.gesture_payload is not None
+                and sample.gesture_payload.trajectory is not None
+            ],
+            "swipe_right": [
+                sample
+                for sample in samples
+                if sample.target_id == "swipe_right"
+                and sample.gesture_payload is not None
+                and sample.gesture_payload.trajectory is not None
+            ],
+            "swipe_up": [
+                sample
+                for sample in samples
+                if sample.target_id == "swipe_up"
+                and sample.gesture_payload is not None
+                and sample.gesture_payload.trajectory is not None
+            ],
+            "swipe_down": [
+                sample
+                for sample in samples
+                if sample.target_id == "swipe_down"
+                and sample.gesture_payload is not None
+                and sample.gesture_payload.trajectory is not None
+            ],
         }
 
         horizontal_samples = grouped["swipe_left"] + grouped["swipe_right"]
-        horizontal_strengths = [abs(sample.gesture_payload.trajectory.dx_total) for sample in horizontal_samples if sample.gesture_payload is not None and sample.gesture_payload.trajectory is not None]
-        horizontal_spans = [sample.gesture_payload.trajectory.span_x for sample in horizontal_samples if sample.gesture_payload is not None and sample.gesture_payload.trajectory is not None]
+        horizontal_strengths = [
+            abs(sample.gesture_payload.trajectory.dx_total)
+            for sample in horizontal_samples
+            if sample.gesture_payload is not None
+            and sample.gesture_payload.trajectory is not None
+        ]
+        horizontal_spans = [
+            sample.gesture_payload.trajectory.span_x
+            for sample in horizontal_samples
+            if sample.gesture_payload is not None
+            and sample.gesture_payload.trajectory is not None
+        ]
         original_swipe_threshold = candidate_config.swipe_threshold
         original_swipe_min_span = candidate_config.swipe_min_span
         original_down_threshold = candidate_config.down_threshold
         original_up_threshold = candidate_config.up_threshold
         if horizontal_strengths:
-            suggested_threshold = _clamp((_percentile(horizontal_strengths, 0.10) or candidate_config.swipe_threshold) * 0.85, 0.05, 0.45)
-            suggested_span = _clamp((_percentile(horizontal_spans, 0.10) or candidate_config.swipe_min_span) * 0.85, 0.03, 0.45)
+            suggested_threshold = _clamp(
+                (
+                    _percentile(horizontal_strengths, 0.10)
+                    or candidate_config.swipe_threshold
+                )
+                * 0.85,
+                0.05,
+                0.45,
+            )
+            suggested_span = _clamp(
+                (_percentile(horizontal_spans, 0.10) or candidate_config.swipe_min_span)
+                * 0.85,
+                0.03,
+                0.45,
+            )
             candidate_config.swipe_threshold = suggested_threshold
             candidate_config.swipe_min_span = suggested_span
 
@@ -857,14 +1051,20 @@ class CalibrationService:
                 continue
 
             spans = [
-                sample.gesture_payload.trajectory.span_x if target_id in {"swipe_left", "swipe_right"} else sample.gesture_payload.trajectory.span_y
+                (
+                    sample.gesture_payload.trajectory.span_x
+                    if target_id in {"swipe_left", "swipe_right"}
+                    else sample.gesture_payload.trajectory.span_y
+                )
                 for sample in target_samples
-                if sample.gesture_payload is not None and sample.gesture_payload.trajectory is not None
+                if sample.gesture_payload is not None
+                and sample.gesture_payload.trajectory is not None
             ]
             durations = [
                 sample.gesture_payload.duration_seconds
                 for sample in target_samples
-                if sample.gesture_payload is not None and sample.gesture_payload.duration_seconds is not None
+                if sample.gesture_payload is not None
+                and sample.gesture_payload.duration_seconds is not None
             ]
             confidences = [
                 sample.gesture_payload.confidence
@@ -873,13 +1073,20 @@ class CalibrationService:
             ]
             dominance = []
             for sample in target_samples:
-                if sample.gesture_payload is None or sample.gesture_payload.trajectory is None:
+                if (
+                    sample.gesture_payload is None
+                    or sample.gesture_payload.trajectory is None
+                ):
                     continue
                 trajectory = sample.gesture_payload.trajectory
                 if target_id in {"swipe_left", "swipe_right"}:
-                    dominance.append(abs(trajectory.dx_total) / max(abs(trajectory.dy_total), 1e-6))
+                    dominance.append(
+                        abs(trajectory.dx_total) / max(abs(trajectory.dy_total), 1e-6)
+                    )
                 else:
-                    dominance.append(abs(trajectory.dy_total) / max(abs(trajectory.dx_total), 1e-6))
+                    dominance.append(
+                        abs(trajectory.dy_total) / max(abs(trajectory.dx_total), 1e-6)
+                    )
 
             recommendations: list[CalibrationRecommendation] = []
             if target_id in {"swipe_left", "swipe_right"} and horizontal_strengths:
@@ -894,9 +1101,22 @@ class CalibrationService:
                     )
                 )
             if target_id == "swipe_down":
-                down_strengths = [sample.gesture_payload.trajectory.dy_total for sample in target_samples if sample.gesture_payload is not None and sample.gesture_payload.trajectory is not None]
+                down_strengths = [
+                    sample.gesture_payload.trajectory.dy_total
+                    for sample in target_samples
+                    if sample.gesture_payload is not None
+                    and sample.gesture_payload.trajectory is not None
+                ]
                 if down_strengths:
-                    candidate_config.down_threshold = _clamp((_percentile(down_strengths, 0.10) or candidate_config.down_threshold) * 0.85, 0.05, 0.45)
+                    candidate_config.down_threshold = _clamp(
+                        (
+                            _percentile(down_strengths, 0.10)
+                            or candidate_config.down_threshold
+                        )
+                        * 0.85,
+                        0.05,
+                        0.45,
+                    )
                     recommendations.append(
                         CalibrationRecommendation(
                             parameter="down_threshold",
@@ -908,9 +1128,22 @@ class CalibrationService:
                         )
                     )
             if target_id == "swipe_up":
-                up_strengths = [abs(sample.gesture_payload.trajectory.dy_total) for sample in target_samples if sample.gesture_payload is not None and sample.gesture_payload.trajectory is not None]
+                up_strengths = [
+                    abs(sample.gesture_payload.trajectory.dy_total)
+                    for sample in target_samples
+                    if sample.gesture_payload is not None
+                    and sample.gesture_payload.trajectory is not None
+                ]
                 if up_strengths:
-                    candidate_config.up_threshold = _clamp((_percentile(up_strengths, 0.10) or candidate_config.up_threshold) * 0.85, 0.05, 0.45)
+                    candidate_config.up_threshold = _clamp(
+                        (
+                            _percentile(up_strengths, 0.10)
+                            or candidate_config.up_threshold
+                        )
+                        * 0.85,
+                        0.05,
+                        0.45,
+                    )
                     recommendations.append(
                         CalibrationRecommendation(
                             parameter="up_threshold",
@@ -939,12 +1172,24 @@ class CalibrationService:
                     sample_count=len(target_samples),
                     metrics=[
                         _metric_summary("span", [float(value) for value in spans]),
-                        _metric_summary("direction_dominance", [float(value) for value in dominance]),
-                        _metric_summary("duration_seconds", [float(value) for value in durations]),
-                        _metric_summary("confidence", [float(value) for value in confidences]),
+                        _metric_summary(
+                            "direction_dominance", [float(value) for value in dominance]
+                        ),
+                        _metric_summary(
+                            "duration_seconds", [float(value) for value in durations]
+                        ),
+                        _metric_summary(
+                            "confidence", [float(value) for value in confidences]
+                        ),
                     ],
                     recommendations=recommendations,
-                    artifacts={"orientation": "horizontal" if target_id in {"swipe_left", "swipe_right"} else "vertical"},
+                    artifacts={
+                        "orientation": (
+                            "horizontal"
+                            if target_id in {"swipe_left", "swipe_right"}
+                            else "vertical"
+                        )
+                    },
                 )
             )
         return analyses
@@ -954,28 +1199,71 @@ class CalibrationService:
         samples: list[CalibrationCollectedSample],
         candidate_config: GestureConfig,
     ) -> CalibrationTargetAnalysis | None:
-        circle_samples = [sample for sample in samples if sample.target_id == "circle" and sample.gesture_payload is not None and sample.gesture_payload.trajectory is not None]
+        circle_samples = [
+            sample
+            for sample in samples
+            if sample.target_id == "circle"
+            and sample.gesture_payload is not None
+            and sample.gesture_payload.trajectory is not None
+        ]
         if not circle_samples:
             return None
 
-        sweeps = [abs(sample.gesture_payload.trajectory.total_sweep or 0.0) for sample in circle_samples if sample.gesture_payload is not None and sample.gesture_payload.trajectory is not None]
-        radius_stability = [sample.gesture_payload.trajectory.radius_cv or 0.0 for sample in circle_samples if sample.gesture_payload is not None and sample.gesture_payload.trajectory is not None]
-        radii = [sample.gesture_payload.trajectory.radius_mean or 0.0 for sample in circle_samples if sample.gesture_payload is not None and sample.gesture_payload.trajectory is not None]
-        confidences = [sample.gesture_payload.confidence for sample in circle_samples if sample.gesture_payload is not None]
+        sweeps = [
+            abs(sample.gesture_payload.trajectory.total_sweep or 0.0)
+            for sample in circle_samples
+            if sample.gesture_payload is not None
+            and sample.gesture_payload.trajectory is not None
+        ]
+        radius_stability = [
+            sample.gesture_payload.trajectory.radius_cv or 0.0
+            for sample in circle_samples
+            if sample.gesture_payload is not None
+            and sample.gesture_payload.trajectory is not None
+        ]
+        radii = [
+            sample.gesture_payload.trajectory.radius_mean or 0.0
+            for sample in circle_samples
+            if sample.gesture_payload is not None
+            and sample.gesture_payload.trajectory is not None
+        ]
+        confidences = [
+            sample.gesture_payload.confidence
+            for sample in circle_samples
+            if sample.gesture_payload is not None
+        ]
 
         original_sweep = candidate_config.circle_sweep_min
         original_cv = candidate_config.circle_radius_cv_max
         original_radius = candidate_config.circle_min_radius
-        candidate_config.circle_sweep_min = _clamp((_percentile(sweeps, 0.10) or candidate_config.circle_sweep_min) * 0.85, 3.2, 8.5)
-        candidate_config.circle_radius_cv_max = _clamp((_percentile(radius_stability, 0.90) or candidate_config.circle_radius_cv_max) * 1.1, 0.05, 1.0)
-        candidate_config.circle_min_radius = _clamp((_percentile(radii, 0.10) or candidate_config.circle_min_radius) * 0.85, 0.01, 0.35)
+        candidate_config.circle_sweep_min = _clamp(
+            (_percentile(sweeps, 0.10) or candidate_config.circle_sweep_min) * 0.85,
+            3.2,
+            8.5,
+        )
+        candidate_config.circle_radius_cv_max = _clamp(
+            (
+                _percentile(radius_stability, 0.90)
+                or candidate_config.circle_radius_cv_max
+            )
+            * 1.1,
+            0.05,
+            1.0,
+        )
+        candidate_config.circle_min_radius = _clamp(
+            (_percentile(radii, 0.10) or candidate_config.circle_min_radius) * 0.85,
+            0.01,
+            0.35,
+        )
 
         return CalibrationTargetAnalysis(
             target_id="circle",
             sample_count=len(circle_samples),
             metrics=[
                 _metric_summary("total_sweep", [float(value) for value in sweeps]),
-                _metric_summary("radius_stability", [float(value) for value in radius_stability]),
+                _metric_summary(
+                    "radius_stability", [float(value) for value in radius_stability]
+                ),
                 _metric_summary("radius_mean", [float(value) for value in radii]),
                 _metric_summary("confidence", [float(value) for value in confidences]),
             ],
@@ -1015,17 +1303,62 @@ class CalibrationService:
     ) -> list[CalibrationTargetAnalysis]:
         analyses: list[CalibrationTargetAnalysis] = []
         for target_id in ("push_click_short", "push_click_long"):
-            target_samples = [sample for sample in samples if sample.target_id == target_id and sample.gesture_payload is not None and sample.gesture_payload.push is not None]
+            target_samples = [
+                sample
+                for sample in samples
+                if sample.target_id == target_id
+                and sample.gesture_payload is not None
+                and sample.gesture_payload.push is not None
+            ]
             if not target_samples:
                 continue
 
-            forward_depths = [sample.gesture_payload.push.forward_depth for sample in target_samples if sample.gesture_payload is not None and sample.gesture_payload.push is not None]
-            release_depths = [sample.gesture_payload.push.release_depth for sample in target_samples if sample.gesture_payload is not None and sample.gesture_payload.push is not None]
-            hold_durations = [sample.gesture_payload.push.hold_duration_seconds for sample in target_samples if sample.gesture_payload is not None and sample.gesture_payload.push is not None and sample.gesture_payload.push.hold_duration_seconds is not None]
-            confidences = [sample.gesture_payload.confidence for sample in target_samples if sample.gesture_payload is not None]
-            pose_validity = [1.0 if sample.gesture_payload.push.pose_valid else 0.0 for sample in target_samples if sample.gesture_payload is not None and sample.gesture_payload.push is not None]
-            extension_ratios = [float(sample.gesture_payload.feature_windows.get("index_extension_ratio", 0.0)) for sample in target_samples if sample.gesture_payload is not None]
-            center_distances = [float(sample.gesture_payload.feature_windows.get("center_distance", 0.0)) for sample in target_samples if sample.gesture_payload is not None]
+            forward_depths = [
+                sample.gesture_payload.push.forward_depth
+                for sample in target_samples
+                if sample.gesture_payload is not None
+                and sample.gesture_payload.push is not None
+            ]
+            release_depths = [
+                sample.gesture_payload.push.release_depth
+                for sample in target_samples
+                if sample.gesture_payload is not None
+                and sample.gesture_payload.push is not None
+            ]
+            hold_durations = [
+                sample.gesture_payload.push.hold_duration_seconds
+                for sample in target_samples
+                if sample.gesture_payload is not None
+                and sample.gesture_payload.push is not None
+                and sample.gesture_payload.push.hold_duration_seconds is not None
+            ]
+            confidences = [
+                sample.gesture_payload.confidence
+                for sample in target_samples
+                if sample.gesture_payload is not None
+            ]
+            pose_validity = [
+                1.0 if sample.gesture_payload.push.pose_valid else 0.0
+                for sample in target_samples
+                if sample.gesture_payload is not None
+                and sample.gesture_payload.push is not None
+            ]
+            extension_ratios = [
+                float(
+                    sample.gesture_payload.feature_windows.get(
+                        "index_extension_ratio", 0.0
+                    )
+                )
+                for sample in target_samples
+                if sample.gesture_payload is not None
+            ]
+            center_distances = [
+                float(
+                    sample.gesture_payload.feature_windows.get("center_distance", 0.0)
+                )
+                for sample in target_samples
+                if sample.gesture_payload is not None
+            ]
 
             original_push_depth = candidate_config.push_depth_threshold
             original_release = candidate_config.push_release_threshold
@@ -1033,25 +1366,79 @@ class CalibrationService:
             original_center = candidate_config.center_tolerance
             original_long = candidate_config.long_click_seconds
 
-            candidate_config.push_depth_threshold = _clamp((_percentile(forward_depths, 0.10) or candidate_config.push_depth_threshold) * 0.85, 0.02, 0.35)
-            candidate_config.push_release_threshold = _clamp(min((_percentile(release_depths, 0.90) or candidate_config.push_release_threshold) * 1.1, candidate_config.push_depth_threshold * 0.8), 0.0, 0.28)
+            candidate_config.push_depth_threshold = _clamp(
+                (
+                    _percentile(forward_depths, 0.10)
+                    or candidate_config.push_depth_threshold
+                )
+                * 0.85,
+                0.02,
+                0.35,
+            )
+            candidate_config.push_release_threshold = _clamp(
+                min(
+                    (
+                        _percentile(release_depths, 0.90)
+                        or candidate_config.push_release_threshold
+                    )
+                    * 1.1,
+                    candidate_config.push_depth_threshold * 0.8,
+                ),
+                0.0,
+                0.28,
+            )
             if extension_ratios:
-                candidate_config.push_pose_extension_ratio = _clamp((_percentile(extension_ratios, 0.10) or candidate_config.push_pose_extension_ratio) * 0.95, 1.05, 2.5)
+                candidate_config.push_pose_extension_ratio = _clamp(
+                    (
+                        _percentile(extension_ratios, 0.10)
+                        or candidate_config.push_pose_extension_ratio
+                    )
+                    * 0.95,
+                    1.05,
+                    2.5,
+                )
             if center_distances:
-                candidate_config.center_tolerance = _clamp((_percentile(center_distances, 0.90) or candidate_config.center_tolerance) * 1.1, 0.04, 0.35)
+                candidate_config.center_tolerance = _clamp(
+                    (
+                        _percentile(center_distances, 0.90)
+                        or candidate_config.center_tolerance
+                    )
+                    * 1.1,
+                    0.04,
+                    0.35,
+                )
             if target_id == "push_click_long" and hold_durations:
-                candidate_config.long_click_seconds = _clamp((_percentile(hold_durations, 0.10) or candidate_config.long_click_seconds) * 0.9, 0.2, 2.5)
+                candidate_config.long_click_seconds = _clamp(
+                    (
+                        _percentile(hold_durations, 0.10)
+                        or candidate_config.long_click_seconds
+                    )
+                    * 0.9,
+                    0.2,
+                    2.5,
+                )
 
             analyses.append(
                 CalibrationTargetAnalysis(
                     target_id=target_id,
                     sample_count=len(target_samples),
                     metrics=[
-                        _metric_summary("pose_valid_rate", [float(value) for value in pose_validity]),
-                        _metric_summary("forward_depth", [float(value) for value in forward_depths]),
-                        _metric_summary("release_depth", [float(value) for value in release_depths]),
-                        _metric_summary("hold_duration_seconds", [float(value) for value in hold_durations]),
-                        _metric_summary("confidence", [float(value) for value in confidences]),
+                        _metric_summary(
+                            "pose_valid_rate", [float(value) for value in pose_validity]
+                        ),
+                        _metric_summary(
+                            "forward_depth", [float(value) for value in forward_depths]
+                        ),
+                        _metric_summary(
+                            "release_depth", [float(value) for value in release_depths]
+                        ),
+                        _metric_summary(
+                            "hold_duration_seconds",
+                            [float(value) for value in hold_durations],
+                        ),
+                        _metric_summary(
+                            "confidence", [float(value) for value in confidences]
+                        ),
                     ],
                     recommendations=[
                         CalibrationRecommendation(
@@ -1107,36 +1494,106 @@ class CalibrationService:
     ) -> list[CalibrationTargetAnalysis]:
         analyses: list[CalibrationTargetAnalysis] = []
         for target_id in ("zoom_out_hands", "zoom_in_hands"):
-            target_samples = [sample for sample in samples if sample.target_id == target_id and sample.gesture_payload is not None and sample.gesture_payload.zoom is not None]
+            target_samples = [
+                sample
+                for sample in samples
+                if sample.target_id == target_id
+                and sample.gesture_payload is not None
+                and sample.gesture_payload.zoom is not None
+            ]
             if not target_samples:
                 continue
 
-            start_distances = [sample.gesture_payload.zoom.start_distance for sample in target_samples if sample.gesture_payload is not None and sample.gesture_payload.zoom is not None]
-            deltas = [abs(sample.gesture_payload.zoom.delta_distance) for sample in target_samples if sample.gesture_payload is not None and sample.gesture_payload.zoom is not None]
-            frame_counts = [float(sample.gesture_payload.zoom.frame_count) for sample in target_samples if sample.gesture_payload is not None and sample.gesture_payload.zoom is not None]
-            confidences = [sample.gesture_payload.confidence for sample in target_samples if sample.gesture_payload is not None]
+            start_distances = [
+                sample.gesture_payload.zoom.start_distance
+                for sample in target_samples
+                if sample.gesture_payload is not None
+                and sample.gesture_payload.zoom is not None
+            ]
+            deltas = [
+                abs(sample.gesture_payload.zoom.delta_distance)
+                for sample in target_samples
+                if sample.gesture_payload is not None
+                and sample.gesture_payload.zoom is not None
+            ]
+            frame_counts = [
+                float(sample.gesture_payload.zoom.frame_count)
+                for sample in target_samples
+                if sample.gesture_payload is not None
+                and sample.gesture_payload.zoom is not None
+            ]
+            confidences = [
+                sample.gesture_payload.confidence
+                for sample in target_samples
+                if sample.gesture_payload is not None
+            ]
 
             original_delta = candidate_config.zoom_distance_delta_threshold
             original_near = candidate_config.zoom_start_near_distance
             original_far = candidate_config.zoom_start_far_distance
             original_frames = candidate_config.two_hand_min_frames
 
-            candidate_config.zoom_distance_delta_threshold = _clamp((_percentile(deltas, 0.10) or candidate_config.zoom_distance_delta_threshold) * 0.85, 0.03, 0.6)
+            candidate_config.zoom_distance_delta_threshold = _clamp(
+                (
+                    _percentile(deltas, 0.10)
+                    or candidate_config.zoom_distance_delta_threshold
+                )
+                * 0.85,
+                0.03,
+                0.6,
+            )
             if target_id == "zoom_in_hands":
-                candidate_config.zoom_start_near_distance = _clamp((_percentile(start_distances, 0.90) or candidate_config.zoom_start_near_distance) * 1.05, 0.05, 0.8)
+                candidate_config.zoom_start_near_distance = _clamp(
+                    (
+                        _percentile(start_distances, 0.90)
+                        or candidate_config.zoom_start_near_distance
+                    )
+                    * 1.05,
+                    0.05,
+                    0.8,
+                )
             if target_id == "zoom_out_hands":
-                candidate_config.zoom_start_far_distance = _clamp((_percentile(start_distances, 0.10) or candidate_config.zoom_start_far_distance) * 0.95, 0.12, 1.5)
-            candidate_config.two_hand_min_frames = int(_clamp(round((_percentile(frame_counts, 0.10) or float(candidate_config.two_hand_min_frames)) - 1), 2, 32))
+                candidate_config.zoom_start_far_distance = _clamp(
+                    (
+                        _percentile(start_distances, 0.10)
+                        or candidate_config.zoom_start_far_distance
+                    )
+                    * 0.95,
+                    0.12,
+                    1.5,
+                )
+            candidate_config.two_hand_min_frames = int(
+                _clamp(
+                    round(
+                        (
+                            _percentile(frame_counts, 0.10)
+                            or float(candidate_config.two_hand_min_frames)
+                        )
+                        - 1
+                    ),
+                    2,
+                    32,
+                )
+            )
 
             analyses.append(
                 CalibrationTargetAnalysis(
                     target_id=target_id,
                     sample_count=len(target_samples),
                     metrics=[
-                        _metric_summary("start_distance", [float(value) for value in start_distances]),
-                        _metric_summary("delta_distance", [float(value) for value in deltas]),
-                        _metric_summary("frame_count", [float(value) for value in frame_counts]),
-                        _metric_summary("confidence", [float(value) for value in confidences]),
+                        _metric_summary(
+                            "start_distance",
+                            [float(value) for value in start_distances],
+                        ),
+                        _metric_summary(
+                            "delta_distance", [float(value) for value in deltas]
+                        ),
+                        _metric_summary(
+                            "frame_count", [float(value) for value in frame_counts]
+                        ),
+                        _metric_summary(
+                            "confidence", [float(value) for value in confidences]
+                        ),
                     ],
                     recommendations=[
                         CalibrationRecommendation(
@@ -1166,7 +1623,9 @@ class CalibrationService:
                         CalibrationRecommendation(
                             parameter="two_hand_min_frames",
                             current_value=float(original_frames),
-                            recommended_value=float(candidate_config.two_hand_min_frames),
+                            recommended_value=float(
+                                candidate_config.two_hand_min_frames
+                            ),
                             min_bound=2,
                             max_bound=32,
                             rationale="Minimale Frame-Anzahl wird aus stabilen Zoom-Folgen abgeleitet.",
@@ -1195,13 +1654,37 @@ class CalibrationService:
             target_id=target_id,
             take_id=take_id,
             sample_id=sample_id,
-            collected_samples=(next((progress.collected_samples for progress in session.progress if progress.target_id == target_id), None) if target_id is not None else None),
-            target_repetitions=(next((progress.target_repetitions for progress in session.progress if progress.target_id == target_id), None) if target_id is not None else None),
+            collected_samples=(
+                next(
+                    (
+                        progress.collected_samples
+                        for progress in session.progress
+                        if progress.target_id == target_id
+                    ),
+                    None,
+                )
+                if target_id is not None
+                else None
+            ),
+            target_repetitions=(
+                next(
+                    (
+                        progress.target_repetitions
+                        for progress in session.progress
+                        if progress.target_id == target_id
+                    ),
+                    None,
+                )
+                if target_id is not None
+                else None
+            ),
             message=message,
             confidence=confidence,
             metadata=metadata or {},
         )
-        self.realtime.publish_from_thread({"eventType": event_type, "payload": payload.model_dump(mode="json")})
+        self.realtime.publish_from_thread(
+            {"eventType": event_type, "payload": payload.model_dump(mode="json")}
+        )
 
 
 calibration_service = CalibrationService()

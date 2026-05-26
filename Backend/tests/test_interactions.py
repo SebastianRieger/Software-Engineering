@@ -59,8 +59,14 @@ def override_input_orchestrator_dependency():
     repository = StaticInteractionConfigRepository(
         InputActionConfig(
             mappings=[
-                InputActionMapping(input_source="gesture", raw_input="circle", action="toggle_shop"),
-                InputActionMapping(input_source="voice", raw_input="voice.open_shop", action="open_shop"),
+                InputActionMapping(
+                    input_source="gesture", raw_input="circle", action="toggle_shop"
+                ),
+                InputActionMapping(
+                    input_source="voice",
+                    raw_input="voice.open_shop",
+                    action="open_shop",
+                ),
                 InputActionMapping(
                     input_source="voice",
                     raw_input="voice.focus_grid_cell",
@@ -90,12 +96,26 @@ def test_input_orchestrator_blocks_lower_priority_action_inside_global_cooldown(
     repository = StaticInteractionConfigRepository(
         InputActionConfig(
             mappings=[
-                InputActionMapping(input_source="voice", raw_input="voice.shop_auf", action="toggle_shop"),
-                InputActionMapping(input_source="gesture", raw_input="swipe_left", action="move_focus_left"),
+                InputActionMapping(
+                    input_source="voice",
+                    raw_input="voice.shop_auf",
+                    action="toggle_shop",
+                ),
+                InputActionMapping(
+                    input_source="gesture",
+                    raw_input="swipe_left",
+                    action="move_focus_left",
+                ),
             ],
             global_cooldown_seconds=30.0,
             repeat_same_action_window_seconds=0.0,
-            source_priorities={"voice": 100, "musical_audio": 90, "gesture": 80, "keyboard": 70, "dev": 100},
+            source_priorities={
+                "voice": 100,
+                "musical_audio": 90,
+                "gesture": 80,
+                "keyboard": 70,
+                "dev": 100,
+            },
         )
     )
     orchestrator = InputOrchestrator(
@@ -105,16 +125,22 @@ def test_input_orchestrator_blocks_lower_priority_action_inside_global_cooldown(
 
     orchestrator.reload_config()
 
-    assert orchestrator.publish_ui_action_requested(
-        input_source="voice",
-        raw_input="voice.shop_auf",
-        timestamp=datetime.now(timezone.utc),
-    ) is True
-    assert orchestrator.publish_ui_action_requested(
-        input_source="gesture",
-        raw_input="swipe_left",
-        timestamp=datetime.now(timezone.utc),
-    ) is False
+    assert (
+        orchestrator.publish_ui_action_requested(
+            input_source="voice",
+            raw_input="voice.shop_auf",
+            timestamp=datetime.now(timezone.utc),
+        )
+        is True
+    )
+    assert (
+        orchestrator.publish_ui_action_requested(
+            input_source="gesture",
+            raw_input="swipe_left",
+            timestamp=datetime.now(timezone.utc),
+        )
+        is False
+    )
     assert [message["eventType"] for message in hub.messages] == [
         "CommandMatchEvaluated",
         "UIActionRequested",
@@ -131,12 +157,26 @@ def test_input_orchestrator_allows_higher_priority_action_inside_global_cooldown
     repository = StaticInteractionConfigRepository(
         InputActionConfig(
             mappings=[
-                InputActionMapping(input_source="gesture", raw_input="swipe_left", action="move_focus_left"),
-                InputActionMapping(input_source="voice", raw_input="voice.shop_auf", action="toggle_shop"),
+                InputActionMapping(
+                    input_source="gesture",
+                    raw_input="swipe_left",
+                    action="move_focus_left",
+                ),
+                InputActionMapping(
+                    input_source="voice",
+                    raw_input="voice.shop_auf",
+                    action="toggle_shop",
+                ),
             ],
             global_cooldown_seconds=30.0,
             repeat_same_action_window_seconds=0.0,
-            source_priorities={"voice": 100, "musical_audio": 90, "gesture": 80, "keyboard": 70, "dev": 100},
+            source_priorities={
+                "voice": 100,
+                "musical_audio": 90,
+                "gesture": 80,
+                "keyboard": 70,
+                "dev": 100,
+            },
         )
     )
     orchestrator = InputOrchestrator(
@@ -146,23 +186,33 @@ def test_input_orchestrator_allows_higher_priority_action_inside_global_cooldown
 
     orchestrator.reload_config()
 
-    assert orchestrator.publish_ui_action_requested(
-        input_source="gesture",
-        raw_input="swipe_left",
-        timestamp=datetime.now(timezone.utc),
-    ) is True
-    assert orchestrator.publish_ui_action_requested(
-        input_source="voice",
-        raw_input="voice.shop_auf",
-        timestamp=datetime.now(timezone.utc),
-    ) is True
+    assert (
+        orchestrator.publish_ui_action_requested(
+            input_source="gesture",
+            raw_input="swipe_left",
+            timestamp=datetime.now(timezone.utc),
+        )
+        is True
+    )
+    assert (
+        orchestrator.publish_ui_action_requested(
+            input_source="voice",
+            raw_input="voice.shop_auf",
+            timestamp=datetime.now(timezone.utc),
+        )
+        is True
+    )
     assert [message["eventType"] for message in hub.messages] == [
         "CommandMatchEvaluated",
         "UIActionRequested",
         "CommandMatchEvaluated",
         "UIActionRequested",
     ]
-    assert [message["payload"]["action"] for message in hub.messages if message["eventType"] == "UIActionRequested"] == [
+    assert [
+        message["payload"]["action"]
+        for message in hub.messages
+        if message["eventType"] == "UIActionRequested"
+    ] == [
         "move_focus_left",
         "toggle_shop",
     ]
@@ -196,18 +246,23 @@ def test_input_orchestrator_blocks_disabled_modality_from_active_command_profile
 
     orchestrator.reload_config()
 
-    assert orchestrator.publish_ui_action_requested(
-        input_source="musical_audio",
-        raw_input="melody.focus_mode",
-        timestamp=datetime.now(timezone.utc),
-    ) is False
+    assert (
+        orchestrator.publish_ui_action_requested(
+            input_source="musical_audio",
+            raw_input="melody.focus_mode",
+            timestamp=datetime.now(timezone.utc),
+        )
+        is False
+    )
     assert hub.messages == [
         {
             "eventType": "CommandMatchEvaluated",
             "payload": {
                 "input_source": "musical_audio",
                 "raw_input": "melody.focus_mode",
-                "timestamp": hub.messages[0]["payload"]["timestamp"] if hub.messages else None,
+                "timestamp": (
+                    hub.messages[0]["payload"]["timestamp"] if hub.messages else None
+                ),
                 "outcome": "disabled",
                 "action": None,
                 "reason": "modality_disabled",
@@ -228,11 +283,14 @@ def test_input_orchestrator_emits_unmapped_decision_for_unknown_raw_input():
 
     orchestrator.reload_config()
 
-    assert orchestrator.publish_ui_action_requested(
-        input_source="voice",
-        raw_input="voice.unknown",
-        timestamp=datetime.now(timezone.utc),
-    ) is False
+    assert (
+        orchestrator.publish_ui_action_requested(
+            input_source="voice",
+            raw_input="voice.unknown",
+            timestamp=datetime.now(timezone.utc),
+        )
+        is False
+    )
     assert hub.messages[0]["eventType"] == "CommandMatchEvaluated"
     assert hub.messages[0]["payload"]["outcome"] == "unmapped"
     assert hub.messages[0]["payload"]["reason"] == "no_mapping"
@@ -259,13 +317,16 @@ def test_input_orchestrator_merges_structured_action_arguments_into_ui_action_pa
 
     orchestrator.reload_config()
 
-    assert orchestrator.publish_ui_action_requested(
-        input_source="voice",
-        raw_input="voice.feld",
-        timestamp=datetime.now(timezone.utc),
-        action_args={"cell_index": 4},
-        metadata={"transcript": "feld vier"},
-    ) is True
+    assert (
+        orchestrator.publish_ui_action_requested(
+            input_source="voice",
+            raw_input="voice.feld",
+            timestamp=datetime.now(timezone.utc),
+            action_args={"cell_index": 4},
+            metadata={"transcript": "feld vier"},
+        )
+        is True
+    )
 
     command_match_payload = hub.messages[0]["payload"]
     ui_action_payload = hub.messages[1]["payload"]
@@ -278,7 +339,9 @@ def test_input_orchestrator_merges_structured_action_arguments_into_ui_action_pa
 
 
 @pytest.mark.asyncio
-async def test_dev_simulate_input_endpoint_publishes_backend_events(client, override_input_orchestrator_dependency):
+async def test_dev_simulate_input_endpoint_publishes_backend_events(
+    client, override_input_orchestrator_dependency
+):
     _, hub = override_input_orchestrator_dependency
 
     response = await client.post(
@@ -293,7 +356,11 @@ async def test_dev_simulate_input_endpoint_publishes_backend_events(client, over
     assert response.status_code == 200
     payload = response.json()
     assert payload["accepted"] is True
-    assert payload["emitted_events"] == ["RawInputDetected", "CommandMatchEvaluated", "UIActionRequested"]
+    assert payload["emitted_events"] == [
+        "RawInputDetected",
+        "CommandMatchEvaluated",
+        "UIActionRequested",
+    ]
     assert [message["eventType"] for message in hub.messages] == [
         "RawInputDetected",
         "CommandMatchEvaluated",
@@ -304,7 +371,9 @@ async def test_dev_simulate_input_endpoint_publishes_backend_events(client, over
 
 
 @pytest.mark.asyncio
-async def test_dev_simulate_input_endpoint_reports_unmapped_inputs(client, override_input_orchestrator_dependency):
+async def test_dev_simulate_input_endpoint_reports_unmapped_inputs(
+    client, override_input_orchestrator_dependency
+):
     _, hub = override_input_orchestrator_dependency
 
     response = await client.post(

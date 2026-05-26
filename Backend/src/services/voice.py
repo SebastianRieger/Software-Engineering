@@ -18,7 +18,7 @@ from services.input.orchestrator import InputOrchestrator, input_orchestrator
 
 try:
     import sounddevice as sd
-except ImportError:  # pragma: no cover - optional runtime dependency
+except (ImportError, OSError):  # pragma: no cover - optional runtime dependency
     sd = None
 
 try:
@@ -132,7 +132,9 @@ class VoiceService:
             available = self.is_available()
             mode = "direct-mic" if available else "unavailable"
             last_error = self._last_error
-            if last_error is None and (not available or not self._active_config.enabled):
+            if last_error is None and (
+                not available or not self._active_config.enabled
+            ):
                 last_error = self._build_unavailable_message()
             return {
                 "message": "Voice status",
@@ -146,7 +148,8 @@ class VoiceService:
                 "sample_rate": self._active_config.sample_rate,
                 "block_size": self._active_config.block_size,
                 "queue_max_chunks": self._active_config.queue_max_chunks,
-                "commands": list(self._active_config.commands) or [
+                "commands": list(self._active_config.commands)
+                or [
                     phrase
                     for signal in self._active_config.signals
                     for phrase in signal.phrases
@@ -173,7 +176,11 @@ class VoiceService:
 
         try:
             default_input = sd.default.device[0]
-        except (AttributeError, PORTAUDIO_ERROR, RuntimeError):  # pragma: no cover - backend dependent
+        except (
+            AttributeError,
+            PORTAUDIO_ERROR,
+            RuntimeError,
+        ):  # pragma: no cover - backend dependent
             default_input = None
 
         result: list[dict[str, object]] = []
@@ -192,7 +199,8 @@ class VoiceService:
                         if device.get("default_samplerate") is not None
                         else None
                     ),
-                    "is_default": isinstance(default_input, int) and default_input == index,
+                    "is_default": isinstance(default_input, int)
+                    and default_input == index,
                 }
             )
 
@@ -208,7 +216,9 @@ class VoiceService:
         if not config.enabled:
             with self._lock:
                 self._last_error = "Voice service ist per Konfiguration deaktiviert."
-            raise VoiceServiceError("Voice service ist per Konfiguration deaktiviert.", status_code=503)
+            raise VoiceServiceError(
+                "Voice service ist per Konfiguration deaktiviert.", status_code=503
+            )
 
         if not self.is_available():
             message = self._build_unavailable_message()
@@ -216,8 +226,12 @@ class VoiceService:
                 self._last_error = message
             raise VoiceServiceError(message, status_code=503)
 
-        requested_device_index = device_index if device_index >= 0 else config.device_index
-        resolved_device_index, resolved_device_name = self._resolve_input_device(requested_device_index)
+        requested_device_index = (
+            device_index if device_index >= 0 else config.device_index
+        )
+        resolved_device_index, resolved_device_name = self._resolve_input_device(
+            requested_device_index
+        )
         model_path = Path(settings.VOICE_MODEL_PATH).expanduser()
 
         try:
@@ -227,7 +241,10 @@ class VoiceService:
             logger.exception("Voice recognizer initialization failed")
             with self._lock:
                 self._last_error = str(exc)
-            raise VoiceServiceError(f"Voice recognizer konnte nicht initialisiert werden: {exc}", status_code=503) from exc
+            raise VoiceServiceError(
+                f"Voice recognizer konnte nicht initialisiert werden: {exc}",
+                status_code=503,
+            ) from exc
 
         with self._lock:
             self._audio_queue = queue.Queue(maxsize=config.queue_max_chunks)
@@ -307,7 +324,11 @@ class VoiceService:
                         continue
 
                     self._process_audio_chunk(chunk)
-        except (PORTAUDIO_ERROR, RuntimeError, ValueError) as exc:  # pragma: no cover - depends on audio hardware
+        except (
+            PORTAUDIO_ERROR,
+            RuntimeError,
+            ValueError,
+        ) as exc:  # pragma: no cover - depends on audio hardware
             logger.exception("Voice capture loop failed")
             with self._lock:
                 self._last_error = str(exc)
@@ -316,7 +337,9 @@ class VoiceService:
             with self._lock:
                 self._running = False
 
-    def _audio_callback(self, indata, frames, time_info, status) -> None:  # pragma: no cover - callback from audio backend
+    def _audio_callback(
+        self, indata, frames, time_info, status
+    ) -> None:  # pragma: no cover - callback from audio backend
         del frames, time_info
 
         if status:
@@ -362,7 +385,12 @@ class VoiceService:
         try:
             is_final = recognizer.AcceptWaveform(chunk)
             payload = recognizer.Result() if is_final else recognizer.PartialResult()
-        except (AttributeError, RuntimeError, TypeError, ValueError) as exc:  # pragma: no cover - depends on recognizer runtime
+        except (
+            AttributeError,
+            RuntimeError,
+            TypeError,
+            ValueError,
+        ) as exc:  # pragma: no cover - depends on recognizer runtime
             logger.exception("Voice recognizer failed")
             with self._lock:
                 self._last_error = str(exc)
@@ -439,7 +467,9 @@ class VoiceService:
         with self._lock:
             config = self._active_config.model_copy(deep=True)
 
-        targeted_resize_match = self._match_targeted_resize(normalized_transcript, config)
+        targeted_resize_match = self._match_targeted_resize(
+            normalized_transcript, config
+        )
         if targeted_resize_match is not None:
             return targeted_resize_match
 
@@ -455,7 +485,9 @@ class VoiceService:
         if signal_match is not None:
             return signal_match
 
-        legacy_command = self._match_legacy_command(normalized_transcript, config.commands)
+        legacy_command = self._match_legacy_command(
+            normalized_transcript, config.commands
+        )
         if legacy_command is None:
             return None
 
@@ -465,7 +497,9 @@ class VoiceService:
             action_args={},
         )
 
-    def _match_defined_signal(self, normalized_transcript: str, config: VoiceConfig) -> VoiceCommandMatch | None:
+    def _match_defined_signal(
+        self, normalized_transcript: str, config: VoiceConfig
+    ) -> VoiceCommandMatch | None:
         for signal in config.signals:
             for phrase in signal.phrases:
                 if normalized_transcript != self._normalize_text(phrase):
@@ -479,8 +513,12 @@ class VoiceService:
 
         return None
 
-    def _match_focus_grid_cell(self, normalized_transcript: str, config: VoiceConfig) -> VoiceCommandMatch | None:
-        cell_index = self._extract_cell_index(normalized_transcript, config.grid_cell_count)
+    def _match_focus_grid_cell(
+        self, normalized_transcript: str, config: VoiceConfig
+    ) -> VoiceCommandMatch | None:
+        cell_index = self._extract_cell_index(
+            normalized_transcript, config.grid_cell_count
+        )
         if cell_index is None:
             return None
 
@@ -490,7 +528,9 @@ class VoiceService:
             action_args={"cell_index": cell_index, "mode": "grid"},
         )
 
-    def _match_focus_widget_type(self, normalized_transcript: str, config: VoiceConfig) -> VoiceCommandMatch | None:
+    def _match_focus_widget_type(
+        self, normalized_transcript: str, config: VoiceConfig
+    ) -> VoiceCommandMatch | None:
         normalized_alias_map = {
             self._normalize_text(alias): widget_type
             for widget_type, aliases in config.widget_aliases.items()
@@ -506,7 +546,9 @@ class VoiceService:
             action_args={"widget_type": widget_type},
         )
 
-    def _match_targeted_resize(self, normalized_transcript: str, config: VoiceConfig) -> VoiceCommandMatch | None:
+    def _match_targeted_resize(
+        self, normalized_transcript: str, config: VoiceConfig
+    ) -> VoiceCommandMatch | None:
         for raw_input in ("voice.resize_expand", "voice.resize_shrink"):
             resize_phrases = [
                 self._normalize_text(phrase)
@@ -521,8 +563,12 @@ class VoiceService:
                     if not normalized_transcript.endswith(f" {resize_phrase}"):
                         continue
 
-                    number_phrase = normalized_transcript[len(prefix): -len(f" {resize_phrase}")].strip()
-                    cell_index = self._parse_number_phrase(number_phrase, config.grid_cell_count)
+                    number_phrase = normalized_transcript[
+                        len(prefix) : -len(f" {resize_phrase}")
+                    ].strip()
+                    cell_index = self._parse_number_phrase(
+                        number_phrase, config.grid_cell_count
+                    )
                     if cell_index is None:
                         continue
 
@@ -535,7 +581,9 @@ class VoiceService:
         return None
 
     @classmethod
-    def _match_legacy_command(cls, normalized_transcript: str, commands: list[str]) -> str | None:
+    def _match_legacy_command(
+        cls, normalized_transcript: str, commands: list[str]
+    ) -> str | None:
         if not normalized_transcript:
             return None
 
@@ -543,31 +591,48 @@ class VoiceService:
             normalized_command = cls._normalize_text(command)
             if not normalized_command:
                 continue
-            if normalized_transcript == normalized_command or normalized_command in normalized_transcript:
+            if (
+                normalized_transcript == normalized_command
+                or normalized_command in normalized_transcript
+            ):
                 return command
 
         return None
 
     def _resolve_input_device(self, requested_index: int) -> tuple[int, str]:
         if sd is None:
-            raise VoiceServiceError("sounddevice ist nicht installiert.", status_code=503)
+            raise VoiceServiceError(
+                "sounddevice ist nicht installiert.", status_code=503
+            )
 
         if requested_index >= 0:
             try:
                 device = sd.query_devices(requested_index, "input")
             except Exception as exc:  # pragma: no cover - hardware dependent
-                raise VoiceServiceError(f"Eingabegeraet {requested_index} konnte nicht gelesen werden: {exc}", status_code=503) from exc
+                raise VoiceServiceError(
+                    f"Eingabegeraet {requested_index} konnte nicht gelesen werden: {exc}",
+                    status_code=503,
+                ) from exc
 
             return requested_index, str(device["name"])
 
         try:
             devices = sd.query_devices()
-        except (PORTAUDIO_ERROR, RuntimeError) as exc:  # pragma: no cover - hardware dependent
-            raise VoiceServiceError(f"Eingabegeraete konnten nicht gelesen werden: {exc}", status_code=503) from exc
+        except (
+            PORTAUDIO_ERROR,
+            RuntimeError,
+        ) as exc:  # pragma: no cover - hardware dependent
+            raise VoiceServiceError(
+                f"Eingabegeraete konnten nicht gelesen werden: {exc}", status_code=503
+            ) from exc
 
         try:
             default_input = sd.default.device[0]
-        except (AttributeError, PORTAUDIO_ERROR, RuntimeError):  # pragma: no cover - backend dependent
+        except (
+            AttributeError,
+            PORTAUDIO_ERROR,
+            RuntimeError,
+        ):  # pragma: no cover - backend dependent
             default_input = None
 
         candidate_indices: list[int] = []
@@ -581,23 +646,33 @@ class VoiceService:
                 candidate_indices.append(index)
 
         if not candidate_indices:
-            raise VoiceServiceError("Kein Audio-Eingabegeraet verfuegbar.", status_code=503)
+            raise VoiceServiceError(
+                "Kein Audio-Eingabegeraet verfuegbar.", status_code=503
+            )
 
         index = candidate_indices[0]
         return index, str(devices[index]["name"])
 
     @classmethod
-    def _extract_cell_index(cls, normalized_transcript: str, grid_cell_count: int) -> int | None:
+    def _extract_cell_index(
+        cls, normalized_transcript: str, grid_cell_count: int
+    ) -> int | None:
         if normalized_transcript.startswith("feld "):
-            return cls._parse_number_phrase(normalized_transcript.removeprefix("feld ").strip(), grid_cell_count)
+            return cls._parse_number_phrase(
+                normalized_transcript.removeprefix("feld ").strip(), grid_cell_count
+            )
         if normalized_transcript.startswith("zelle "):
-            return cls._parse_number_phrase(normalized_transcript.removeprefix("zelle ").strip(), grid_cell_count)
+            return cls._parse_number_phrase(
+                normalized_transcript.removeprefix("zelle ").strip(), grid_cell_count
+            )
         if " " in normalized_transcript:
             return None
         return cls._parse_number_phrase(normalized_transcript, grid_cell_count)
 
     @classmethod
-    def _parse_number_phrase(cls, number_phrase: str, grid_cell_count: int) -> int | None:
+    def _parse_number_phrase(
+        cls, number_phrase: str, grid_cell_count: int
+    ) -> int | None:
         if not number_phrase:
             return None
 

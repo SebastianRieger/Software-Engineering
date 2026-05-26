@@ -71,7 +71,9 @@ def build_calibration_service(tmp_path, *, realtime=None) -> CalibrationService:
     return service
 
 
-def make_swipe_sample(target_id: str, *, confidence: float = 0.92) -> CalibrationCollectedSample:
+def make_swipe_sample(
+    target_id: str, *, confidence: float = 0.92
+) -> CalibrationCollectedSample:
     captured_at = datetime(2026, 4, 28, 12, 0, tzinfo=timezone.utc)
     return CalibrationCollectedSample(
         sample_id=f"sample-{target_id}-{confidence}",
@@ -100,7 +102,9 @@ def make_swipe_sample(target_id: str, *, confidence: float = 0.92) -> Calibratio
     )
 
 
-def make_sequence_profile_set(*, gesture: str = "swipe_right") -> GestureSequenceProfileSet:
+def make_sequence_profile_set(
+    *, gesture: str = "swipe_right"
+) -> GestureSequenceProfileSet:
     return GestureSequenceProfileSet(
         generated_at=datetime(2026, 4, 28, 12, 0, tzinfo=timezone.utc),
         resample_points=24,
@@ -133,9 +137,25 @@ def make_sequence_profile_set(*, gesture: str = "swipe_right") -> GestureSequenc
                     origin_y=0.5,
                     normalized_by_hand_size=True,
                     frames=[
-                        GestureSequenceFrame(t=0.0, x=0.0, y=0.0, active_phase="preparing"),
-                        GestureSequenceFrame(t=0.1, x=0.8, y=0.0, velocity_x=8.0, velocity_y=0.0, active_phase="committing"),
-                        GestureSequenceFrame(t=0.2, x=1.6, y=0.0, velocity_x=8.0, velocity_y=0.0, active_phase="releasing"),
+                        GestureSequenceFrame(
+                            t=0.0, x=0.0, y=0.0, active_phase="preparing"
+                        ),
+                        GestureSequenceFrame(
+                            t=0.1,
+                            x=0.8,
+                            y=0.0,
+                            velocity_x=8.0,
+                            velocity_y=0.0,
+                            active_phase="committing",
+                        ),
+                        GestureSequenceFrame(
+                            t=0.2,
+                            x=1.6,
+                            y=0.0,
+                            velocity_x=8.0,
+                            velocity_y=0.0,
+                            active_phase="releasing",
+                        ),
                     ],
                 ),
             )
@@ -194,9 +214,25 @@ def test_config_repository_round_trips_calibration_session(tmp_path):
                         origin_y=0.5,
                         normalized_by_hand_size=True,
                         frames=[
-                            GestureSequenceFrame(t=0.0, x=0.0, y=0.0, active_phase="preparing"),
-                            GestureSequenceFrame(t=0.1, x=-0.8, y=0.0, velocity_x=-8.0, velocity_y=0.0, active_phase="committing"),
-                            GestureSequenceFrame(t=0.2, x=-1.6, y=0.0, velocity_x=-8.0, velocity_y=0.0, active_phase="releasing"),
+                            GestureSequenceFrame(
+                                t=0.0, x=0.0, y=0.0, active_phase="preparing"
+                            ),
+                            GestureSequenceFrame(
+                                t=0.1,
+                                x=-0.8,
+                                y=0.0,
+                                velocity_x=-8.0,
+                                velocity_y=0.0,
+                                active_phase="committing",
+                            ),
+                            GestureSequenceFrame(
+                                t=0.2,
+                                x=-1.6,
+                                y=0.0,
+                                velocity_x=-8.0,
+                                velocity_y=0.0,
+                                active_phase="releasing",
+                            ),
                         ],
                     ),
                 ),
@@ -223,11 +259,15 @@ def test_config_repository_round_trips_calibration_session(tmp_path):
     assert loaded_session.samples[0].gesture_payload is not None
     assert loaded_session.samples[0].gesture_payload.gesture == "swipe_left"
     assert loaded_session.samples[0].gesture_payload.sequence is not None
-    assert loaded_session.samples[0].gesture_payload.sequence.frames[1].x == pytest.approx(-0.8)
+    assert loaded_session.samples[0].gesture_payload.sequence.frames[
+        1
+    ].x == pytest.approx(-0.8)
     assert listed_sessions[0].session_id == "gesture-session-1"
 
 
-def test_config_repository_loads_legacy_calibration_session_without_sequence_fields(tmp_path):
+def test_config_repository_loads_legacy_calibration_session_without_sequence_fields(
+    tmp_path,
+):
     repo = build_calibration_repo(tmp_path)
     captured_at = datetime(2026, 4, 28, 12, 0, tzinfo=timezone.utc)
     session = CalibrationSessionRecord(
@@ -312,7 +352,9 @@ def test_config_repository_round_trips_calibration_profiles_and_snapshots(tmp_pa
     saved_snapshot = repo.save_last_applied_calibration_snapshot(snapshot)
     loaded_profile = repo.get_calibration_profile("gesture", "default")
     loaded_snapshot = repo.get_last_applied_calibration_snapshot("gesture", "default")
-    saved_active_profile_set = repo.save_active_gesture_sequence_profile_set(sequence_profile_set)
+    saved_active_profile_set = repo.save_active_gesture_sequence_profile_set(
+        sequence_profile_set
+    )
     loaded_active_profile_set = repo.get_active_gesture_sequence_profile_set()
 
     assert saved_profile.saved_at >= captured_at
@@ -322,14 +364,24 @@ def test_config_repository_round_trips_calibration_profiles_and_snapshots(tmp_pa
     assert loaded_profile.gesture_config is not None
     assert loaded_profile.gesture_config.swipe_threshold == 0.14
     assert loaded_profile.gesture_sequence_profile_set is not None
-    assert loaded_profile.gesture_sequence_profile_set.profiles[0].profile_id == "swipe_right:primary"
+    assert (
+        loaded_profile.gesture_sequence_profile_set.profiles[0].profile_id
+        == "swipe_right:primary"
+    )
     assert loaded_snapshot is not None
     assert loaded_snapshot.original_snapshot.gesture_config is not None
     assert loaded_snapshot.original_snapshot.gesture_config.swipe_threshold == 0.18
     assert loaded_snapshot.applied_snapshot.gesture_sequence_profile_set is not None
-    assert loaded_snapshot.applied_snapshot.gesture_sequence_profile_set.profiles[0].gesture == "swipe_right"
+    assert (
+        loaded_snapshot.applied_snapshot.gesture_sequence_profile_set.profiles[
+            0
+        ].gesture
+        == "swipe_right"
+    )
     assert loaded_active_profile_set is not None
-    assert loaded_active_profile_set.profiles[0].medoid_sample_id == "sample-swipe_right-1"
+    assert (
+        loaded_active_profile_set.profiles[0].medoid_sample_id == "sample-swipe_right-1"
+    )
 
 
 def test_apply_and_rollback_session_updates_active_sequence_profile_set(tmp_path):
@@ -350,14 +402,18 @@ def test_apply_and_rollback_session_updates_active_sequence_profile_set(tmp_path
             modality="gesture",
             profile="default",
             captured_at=captured_at,
-            gesture_config=GestureConfig(sequence_matching_enabled=False, swipe_threshold=0.18),
+            gesture_config=GestureConfig(
+                sequence_matching_enabled=False, swipe_threshold=0.18
+            ),
             gesture_sequence_profile_set=None,
         ),
         candidate_snapshot=CalibrationConfigSnapshot(
             modality="gesture",
             profile="default",
             captured_at=captured_at,
-            gesture_config=GestureConfig(sequence_matching_enabled=False, swipe_threshold=0.12),
+            gesture_config=GestureConfig(
+                sequence_matching_enabled=False, swipe_threshold=0.12
+            ),
             gesture_sequence_profile_set=sequence_profile_set,
         ),
         analysis=CalibrationAnalysisResult(
@@ -369,7 +425,9 @@ def test_apply_and_rollback_session_updates_active_sequence_profile_set(tmp_path
                     sample_count=2,
                 )
             ],
-            candidate_gesture_config=GestureConfig(sequence_matching_enabled=False, swipe_threshold=0.12),
+            candidate_gesture_config=GestureConfig(
+                sequence_matching_enabled=False, swipe_threshold=0.12
+            ),
             gesture_sequence_profile_set=sequence_profile_set,
         ),
     )
@@ -380,12 +438,19 @@ def test_apply_and_rollback_session_updates_active_sequence_profile_set(tmp_path
 
     assert applied_session.status == "applied"
     assert applied_profile.gesture_sequence_profile_set is not None
-    assert applied_profile.gesture_sequence_profile_set.profiles[0].profile_id == "swipe_right:primary"
+    assert (
+        applied_profile.gesture_sequence_profile_set.profiles[0].profile_id
+        == "swipe_right:primary"
+    )
     assert active_sequence_profile_set is not None
     assert active_sequence_profile_set.profiles[0].gesture == "swipe_right"
 
-    rolled_back_session, rollback_snapshot = service.rollback_session("analysis-session-1")
-    active_sequence_profile_set_after_rollback = repo.get_active_gesture_sequence_profile_set()
+    rolled_back_session, rollback_snapshot = service.rollback_session(
+        "analysis-session-1"
+    )
+    active_sequence_profile_set_after_rollback = (
+        repo.get_active_gesture_sequence_profile_set()
+    )
 
     assert rolled_back_session.status == "rolled_back"
     assert rollback_snapshot.applied_snapshot.gesture_sequence_profile_set is not None
@@ -437,7 +502,9 @@ def test_calibration_startup_cancels_stale_collecting_sessions(tmp_path):
 
 def test_calibration_service_completes_applies_and_rolls_back(tmp_path):
     repo = build_calibration_repo(tmp_path)
-    baseline = repo.save_gesture_config(GestureConfig(swipe_threshold=0.2, swipe_min_span=0.12))
+    baseline = repo.save_gesture_config(
+        GestureConfig(swipe_threshold=0.2, swipe_min_span=0.12)
+    )
     service = build_calibration_service(tmp_path)
 
     session = service.start_session(
@@ -494,12 +561,17 @@ def test_calibration_service_analysis_produces_reviewable_gesture_patch(tmp_path
         for operation in completed.analysis.gesture_config_patch.operations
     )
     assert completed.candidate_snapshot is not None
-    assert completed.candidate_snapshot.gesture_config == completed.analysis.candidate_gesture_config
+    assert (
+        completed.candidate_snapshot.gesture_config
+        == completed.analysis.candidate_gesture_config
+    )
 
 
 def test_calibration_service_apply_session_uses_analysis_patch(tmp_path):
     repo = build_calibration_repo(tmp_path)
-    baseline = repo.save_gesture_config(GestureConfig(swipe_threshold=0.2, swipe_min_span=0.12))
+    baseline = repo.save_gesture_config(
+        GestureConfig(swipe_threshold=0.2, swipe_min_span=0.12)
+    )
     service = build_calibration_service(tmp_path)
 
     session = service.start_session(
@@ -519,7 +591,11 @@ def test_calibration_service_apply_session_uses_analysis_patch(tmp_path):
     completed.candidate_snapshot = CalibrationConfigSnapshot(
         modality="gesture",
         profile=completed.profile,
-        captured_at=completed.candidate_snapshot.captured_at if completed.candidate_snapshot is not None else completed.analysis.generated_at,
+        captured_at=(
+            completed.candidate_snapshot.captured_at
+            if completed.candidate_snapshot is not None
+            else completed.analysis.generated_at
+        ),
         gesture_config=baseline,
     )
     repo.save_calibration_session(completed)
@@ -549,7 +625,10 @@ def test_calibration_service_accepts_misrecognized_gesture_for_active_target(tmp
     assert updated is not None
     assert updated.progress[0].collected_samples == 1
     assert updated.progress[0].rejected_samples == 0
-    assert updated.progress[0].last_feedback == "Sample akzeptiert. 1/2 fuer swipe_left, erkannt wurde swipe_right."
+    assert (
+        updated.progress[0].last_feedback
+        == "Sample akzeptiert. 1/2 fuer swipe_left, erkannt wurde swipe_right."
+    )
     assert updated.samples[0].target_id == session.active_target_id
     assert updated.samples[0].gesture_payload is not None
     assert updated.samples[0].gesture_payload.gesture == "swipe_right"
@@ -573,7 +652,14 @@ def test_calibration_service_allows_multi_target_sessions_and_rotates_targets(tm
     updated = service.capture_gesture_sample(make_swipe_sample("swipe_right"))
 
     assert updated is not None
-    assert next(progress for progress in updated.progress if progress.target_id == first_target).completed is True
+    assert (
+        next(
+            progress
+            for progress in updated.progress
+            if progress.target_id == first_target
+        ).completed
+        is True
+    )
     assert updated.active_target_id in ({"swipe_left", "swipe_right"} - {first_target})
 
 
@@ -639,13 +725,18 @@ def test_calibration_service_rejects_complete_with_pending_take(tmp_path):
 
 
 @pytest.mark.asyncio
-async def test_calibration_api_session_lifecycle(client, override_calibration_dependency, override_gesture_dependency):
+async def test_calibration_api_session_lifecycle(
+    client, override_calibration_dependency, override_gesture_dependency
+):
     _ = override_calibration_dependency
     gesture_runtime = override_gesture_dependency
 
     definitions_response = await client.get("/api/v1/calibration/definitions")
     assert definitions_response.status_code == 200
-    assert any(target["id"] == "swipe_right" for target in definitions_response.json()["targets"])
+    assert any(
+        target["id"] == "swipe_right"
+        for target in definitions_response.json()["targets"]
+    )
 
     start_response = await client.post(
         "/api/v1/calibration/sessions",
@@ -662,39 +753,55 @@ async def test_calibration_api_session_lifecycle(client, override_calibration_de
     assert gesture_runtime.running is True
     assert gesture_runtime.camera_index == 1
 
-    prepare_take_response = await client.post(f"/api/v1/calibration/sessions/{session_id}/takes/prepare")
+    prepare_take_response = await client.post(
+        f"/api/v1/calibration/sessions/{session_id}/takes/prepare"
+    )
     assert prepare_take_response.status_code == 200
 
-    start_take_response = await client.post(f"/api/v1/calibration/sessions/{session_id}/takes/start")
+    start_take_response = await client.post(
+        f"/api/v1/calibration/sessions/{session_id}/takes/start"
+    )
     assert start_take_response.status_code == 200
     assert gesture_runtime.active_take is not None
 
-    stop_take_response = await client.post(f"/api/v1/calibration/sessions/{session_id}/takes/stop")
+    stop_take_response = await client.post(
+        f"/api/v1/calibration/sessions/{session_id}/takes/stop"
+    )
     assert stop_take_response.status_code == 200
     assert stop_take_response.json()["session"]["pending_take"] is not None
 
-    accept_take_response = await client.post(f"/api/v1/calibration/sessions/{session_id}/takes/accept")
+    accept_take_response = await client.post(
+        f"/api/v1/calibration/sessions/{session_id}/takes/accept"
+    )
     assert accept_take_response.status_code == 200
 
     session_response = await client.get(f"/api/v1/calibration/sessions/{session_id}")
     assert session_response.status_code == 200
     assert session_response.json()["session"]["progress"][0]["collected_samples"] == 1
 
-    complete_response = await client.post(f"/api/v1/calibration/sessions/{session_id}/complete")
+    complete_response = await client.post(
+        f"/api/v1/calibration/sessions/{session_id}/complete"
+    )
     assert complete_response.status_code == 200
     assert complete_response.json()["session"]["status"] == "analysis_ready"
 
-    apply_response = await client.post(f"/api/v1/calibration/sessions/{session_id}/apply")
+    apply_response = await client.post(
+        f"/api/v1/calibration/sessions/{session_id}/apply"
+    )
     assert apply_response.status_code == 200
     assert apply_response.json()["session"]["status"] == "applied"
 
-    rollback_response = await client.post(f"/api/v1/calibration/sessions/{session_id}/rollback")
+    rollback_response = await client.post(
+        f"/api/v1/calibration/sessions/{session_id}/rollback"
+    )
     assert rollback_response.status_code == 200
     assert rollback_response.json()["session"]["status"] == "rolled_back"
 
 
 @pytest.mark.asyncio
-async def test_gesture_config_write_blocked_during_active_calibration(client, override_calibration_dependency):
+async def test_gesture_config_write_blocked_during_active_calibration(
+    client, override_calibration_dependency
+):
     service = override_calibration_dependency
     service.start_session(
         CalibrationSessionCreateRequest(
@@ -713,7 +820,9 @@ async def test_gesture_config_write_blocked_during_active_calibration(client, ov
 
 
 @pytest.mark.asyncio
-async def test_calibration_session_can_be_cancelled(client, override_calibration_dependency):
+async def test_calibration_session_can_be_cancelled(
+    client, override_calibration_dependency
+):
     service = override_calibration_dependency
     session = service.start_session(
         CalibrationSessionCreateRequest(
@@ -724,7 +833,9 @@ async def test_calibration_session_can_be_cancelled(client, override_calibration
         )
     )
 
-    response = await client.post(f"/api/v1/calibration/sessions/{session.session_id}/cancel")
+    response = await client.post(
+        f"/api/v1/calibration/sessions/{session.session_id}/cancel"
+    )
     assert response.status_code == 200
     assert response.json()["session"]["status"] == "cancelled"
 

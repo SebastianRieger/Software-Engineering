@@ -5,7 +5,6 @@ from pydantic import BaseModel, Field
 
 from core.config import settings
 
-
 GestureType = Literal[
     "swipe_left",
     "swipe_right",
@@ -104,7 +103,10 @@ class GestureStatusResponse(BaseModel):
     last_confidence: float | None = Field(default=None, ge=0, le=1)
     last_tracking_source: str | None = None
     tracking_quality: float | None = Field(default=None, ge=0, le=1)
-    active_phase: Literal["idle", "preparing", "holding", "committing", "releasing", "cooldown"] | None = None
+    active_phase: (
+        Literal["idle", "preparing", "holding", "committing", "releasing", "cooldown"]
+        | None
+    ) = None
     candidate_scores: dict[str, float] = Field(default_factory=dict)
     sequence_scores: dict[str, float] = Field(default_factory=dict)
     sequence_distances: dict[str, float] = Field(default_factory=dict)
@@ -134,7 +136,10 @@ class GestureEventPayload(BaseModel):
     confidence: float | None = Field(default=None, ge=0, le=1)
     tracking_source: str | None = None
     tracking_quality: float | None = Field(default=None, ge=0, le=1)
-    active_phase: Literal["idle", "preparing", "holding", "committing", "releasing", "cooldown"] | None = None
+    active_phase: (
+        Literal["idle", "preparing", "holding", "committing", "releasing", "cooldown"]
+        | None
+    ) = None
     candidate_scores: dict[str, float] = Field(default_factory=dict)
     reject_reason: str | None = None
     spec_id: str | None = None
@@ -157,105 +162,291 @@ class GestureVideoProcessingResponse(BaseModel):
 
 class GestureConfig(BaseModel):
     smoothing_alpha: float = Field(default=settings.GESTURE_SMOOTHING_ALPHA, ge=0, le=1)
-    max_trajectory_points: int = Field(default=settings.GESTURE_MAX_TRAJECTORY_POINTS, ge=6, le=512)
-    cooldown_seconds: float = Field(default=settings.GESTURE_COOLDOWN_SECONDS, ge=0, le=10)
+    max_trajectory_points: int = Field(
+        default=settings.GESTURE_MAX_TRAJECTORY_POINTS, ge=6, le=512
+    )
+    cooldown_seconds: float = Field(
+        default=settings.GESTURE_COOLDOWN_SECONDS, ge=0, le=10
+    )
     swipe_threshold: float = Field(default=settings.GESTURE_SWIPE_THRESHOLD, gt=0, le=1)
     down_threshold: float = Field(default=settings.GESTURE_DOWN_THRESHOLD, gt=0, le=1)
     up_threshold: float = Field(default=settings.GESTURE_UP_THRESHOLD, gt=0, le=1)
     swipe_min_span: float = Field(default=settings.GESTURE_SWIPE_MIN_SPAN, gt=0, le=1)
     circle_sweep_min: float = Field(default=settings.GESTURE_CIRCLE_SWEEP_MIN, gt=0)
-    circle_radius_cv_max: float = Field(default=settings.GESTURE_CIRCLE_RADIUS_CV_MAX, gt=0)
-    circle_min_radius: float = Field(default=settings.GESTURE_CIRCLE_MIN_RADIUS, gt=0, le=1)
-    min_detection_points: int = Field(default=settings.GESTURE_MIN_DETECTION_POINTS, ge=4, le=128)
+    circle_radius_cv_max: float = Field(
+        default=settings.GESTURE_CIRCLE_RADIUS_CV_MAX, gt=0
+    )
+    circle_min_radius: float = Field(
+        default=settings.GESTURE_CIRCLE_MIN_RADIUS, gt=0, le=1
+    )
+    min_detection_points: int = Field(
+        default=settings.GESTURE_MIN_DETECTION_POINTS, ge=4, le=128
+    )
     min_confidence: float = Field(default=settings.GESTURE_MIN_CONFIDENCE, ge=0, le=1)
-    hand_size_reference: float = Field(default=settings.GESTURE_HAND_SIZE_REFERENCE, gt=0, le=1)
-    hand_size_scale_min: float = Field(default=settings.GESTURE_HAND_SIZE_SCALE_MIN, gt=0, le=4)
-    hand_size_scale_max: float = Field(default=settings.GESTURE_HAND_SIZE_SCALE_MAX, gt=0, le=4)
-    push_depth_threshold: float = Field(default=settings.GESTURE_PUSH_DEPTH_THRESHOLD, gt=0, le=1)
-    push_release_threshold: float = Field(default=settings.GESTURE_PUSH_RELEASE_THRESHOLD, ge=0, le=1)
-    push_pose_extension_ratio: float = Field(default=settings.GESTURE_PUSH_POSE_EXTENSION_RATIO, gt=1, le=3)
-    center_tolerance: float = Field(default=settings.GESTURE_CENTER_TOLERANCE, gt=0, le=0.5)
-    long_click_seconds: float = Field(default=settings.GESTURE_LONG_CLICK_SECONDS, gt=0, le=3)
-    push_required_folded_fingers: int = Field(default=settings.GESTURE_PUSH_REQUIRED_FOLDED_FINGERS, ge=1, le=5)
-    push_folded_distance_ratio: float = Field(default=settings.GESTURE_PUSH_FOLDED_DISTANCE_RATIO, gt=0, le=3)
-    push_relaxed_center_tolerance_multiplier: float = Field(default=settings.GESTURE_PUSH_RELAXED_CENTER_TOLERANCE_MULTIPLIER, gt=0, le=3)
-    push_relaxed_center_tolerance_max: float = Field(default=settings.GESTURE_PUSH_RELAXED_CENTER_TOLERANCE_MAX, gt=0, le=1)
-    push_depth_assist_min_threshold: float = Field(default=settings.GESTURE_PUSH_DEPTH_ASSIST_MIN_THRESHOLD, ge=0, le=1)
-    push_depth_assist_threshold_ratio: float = Field(default=settings.GESTURE_PUSH_DEPTH_ASSIST_THRESHOLD_RATIO, ge=0, le=2)
-    click_pose_center_tolerance_multiplier: float = Field(default=settings.GESTURE_CLICK_POSE_CENTER_TOLERANCE_MULTIPLIER, gt=0, le=3)
-    click_pose_extension_ratio_multiplier: float = Field(default=settings.GESTURE_CLICK_POSE_EXTENSION_RATIO_MULTIPLIER, gt=0, le=3)
-    click_pose_extension_ratio_floor: float = Field(default=settings.GESTURE_CLICK_POSE_EXTENSION_RATIO_FLOOR, gt=0, le=3)
-    push_transient_pose_gap_max_seconds: float = Field(default=settings.GESTURE_PUSH_TRANSIENT_POSE_GAP_MAX_SECONDS, ge=0, le=3)
-    push_transient_pose_gap_long_ratio: float = Field(default=settings.GESTURE_PUSH_TRANSIENT_POSE_GAP_LONG_RATIO, ge=0, le=1)
-    push_short_click_min_duration: float = Field(default=settings.GESTURE_PUSH_SHORT_CLICK_MIN_DURATION, ge=0, le=3)
-    push_long_release_max_gap_seconds: float = Field(default=settings.GESTURE_PUSH_LONG_RELEASE_MAX_GAP_SECONDS, ge=0, le=3)
-    zoom_distance_delta_threshold: float = Field(default=settings.GESTURE_ZOOM_DISTANCE_DELTA_THRESHOLD, gt=0, le=1)
-    zoom_start_near_distance: float = Field(default=settings.GESTURE_ZOOM_START_NEAR_DISTANCE, gt=0, le=1)
-    zoom_start_far_distance: float = Field(default=settings.GESTURE_ZOOM_START_FAR_DISTANCE, gt=0, le=2)
-    two_hand_min_frames: int = Field(default=settings.GESTURE_TWO_HAND_MIN_FRAMES, ge=2, le=64)
-    runtime_circle_pose_max_openness: float = Field(default=settings.GESTURE_RUNTIME_CIRCLE_POSE_MAX_OPENNESS, ge=0, le=1)
-    runtime_swipe_block_max_openness: float = Field(default=settings.GESTURE_RUNTIME_SWIPE_BLOCK_MAX_OPENNESS, ge=0, le=1)
-    runtime_circle_hold_radius_cv_ratio: float = Field(default=settings.GESTURE_RUNTIME_CIRCLE_HOLD_RADIUS_CV_RATIO, gt=0, le=2)
-    runtime_circle_hold_sweep_ratio: float = Field(default=settings.GESTURE_RUNTIME_CIRCLE_HOLD_SWEEP_RATIO, gt=0, le=2)
-    runtime_circle_hold_min_aspect_ratio: float = Field(default=settings.GESTURE_RUNTIME_CIRCLE_HOLD_MIN_ASPECT_RATIO, ge=0, le=1)
-    runtime_upstroke_start_y_min: float = Field(default=settings.GESTURE_RUNTIME_UPSTROKE_START_Y_MIN, ge=0, le=1)
-    runtime_upstroke_end_y_max: float = Field(default=settings.GESTURE_RUNTIME_UPSTROKE_END_Y_MAX, ge=0, le=1)
-    runtime_vertical_displacement_min: float = Field(default=settings.GESTURE_RUNTIME_VERTICAL_DISPLACEMENT_MIN, ge=0, le=1)
-    runtime_downstroke_start_y_max: float = Field(default=settings.GESTURE_RUNTIME_DOWNSTROKE_START_Y_MAX, ge=0, le=1)
-    runtime_downstroke_end_y_min: float = Field(default=settings.GESTURE_RUNTIME_DOWNSTROKE_END_Y_MIN, ge=0, le=1)
-    primitive_hand_centered_threshold: float = Field(default=settings.GESTURE_PRIMITIVE_HAND_CENTERED_THRESHOLD, ge=0, le=1)
-    primitive_stable_hold_threshold: float = Field(default=settings.GESTURE_PRIMITIVE_STABLE_HOLD_THRESHOLD, ge=0, le=1)
-    primitive_index_primary_threshold: float = Field(default=settings.GESTURE_PRIMITIVE_INDEX_PRIMARY_THRESHOLD, ge=0, le=1)
-    primitive_all_fingers_open_threshold: float = Field(default=settings.GESTURE_PRIMITIVE_ALL_FINGERS_OPEN_THRESHOLD, ge=0, le=1)
-    primitive_fist_like_threshold: float = Field(default=settings.GESTURE_PRIMITIVE_FIST_LIKE_THRESHOLD, ge=0, le=1)
-    primitive_push_forward_threshold: float = Field(default=settings.GESTURE_PRIMITIVE_PUSH_FORWARD_THRESHOLD, ge=0, le=2)
-    primitive_palm_visible_score: float = Field(default=settings.GESTURE_PRIMITIVE_PALM_VISIBLE_SCORE, ge=0, le=1)
-    primitive_palm_visible_threshold: float = Field(default=settings.GESTURE_PRIMITIVE_PALM_VISIBLE_THRESHOLD, ge=0, le=1)
-    primitive_swipe_jitter_damping: float = Field(default=settings.GESTURE_PRIMITIVE_SWIPE_JITTER_DAMPING, ge=0, le=2)
-    primitive_circle_motion_threshold: float = Field(default=settings.GESTURE_PRIMITIVE_CIRCLE_MOTION_THRESHOLD, ge=0, le=1)
-    primitive_two_hand_threshold: float = Field(default=settings.GESTURE_PRIMITIVE_TWO_HAND_THRESHOLD, ge=0, le=1)
-    resolver_push_centered_score_floor: float = Field(default=settings.GESTURE_RESOLVER_PUSH_CENTERED_SCORE_FLOOR, ge=0, le=1)
-    resolver_tracking_quality_trajectory_weight: float = Field(default=settings.GESTURE_RESOLVER_TRACKING_QUALITY_TRAJECTORY_WEIGHT, ge=0, le=1)
-    resolver_tracking_quality_pose_weight: float = Field(default=settings.GESTURE_RESOLVER_TRACKING_QUALITY_POSE_WEIGHT, ge=0, le=1)
-    resolver_tracking_quality_hand_weight: float = Field(default=settings.GESTURE_RESOLVER_TRACKING_QUALITY_HAND_WEIGHT, ge=0, le=1)
-    resolver_candidate_confidence_weight: float = Field(default=settings.GESTURE_RESOLVER_CANDIDATE_CONFIDENCE_WEIGHT, ge=0, le=1)
-    resolver_candidate_primitive_weight: float = Field(default=settings.GESTURE_RESOLVER_CANDIDATE_PRIMITIVE_WEIGHT, ge=0, le=1)
-    resolver_candidate_phase_weight: float = Field(default=settings.GESTURE_RESOLVER_CANDIDATE_PHASE_WEIGHT, ge=0, le=1)
-    resolver_required_primitive_min_score: float = Field(default=settings.GESTURE_RESOLVER_REQUIRED_PRIMITIVE_MIN_SCORE, ge=0, le=1)
+    hand_size_reference: float = Field(
+        default=settings.GESTURE_HAND_SIZE_REFERENCE, gt=0, le=1
+    )
+    hand_size_scale_min: float = Field(
+        default=settings.GESTURE_HAND_SIZE_SCALE_MIN, gt=0, le=4
+    )
+    hand_size_scale_max: float = Field(
+        default=settings.GESTURE_HAND_SIZE_SCALE_MAX, gt=0, le=4
+    )
+    push_depth_threshold: float = Field(
+        default=settings.GESTURE_PUSH_DEPTH_THRESHOLD, gt=0, le=1
+    )
+    push_release_threshold: float = Field(
+        default=settings.GESTURE_PUSH_RELEASE_THRESHOLD, ge=0, le=1
+    )
+    push_pose_extension_ratio: float = Field(
+        default=settings.GESTURE_PUSH_POSE_EXTENSION_RATIO, gt=1, le=3
+    )
+    center_tolerance: float = Field(
+        default=settings.GESTURE_CENTER_TOLERANCE, gt=0, le=0.5
+    )
+    long_click_seconds: float = Field(
+        default=settings.GESTURE_LONG_CLICK_SECONDS, gt=0, le=3
+    )
+    push_required_folded_fingers: int = Field(
+        default=settings.GESTURE_PUSH_REQUIRED_FOLDED_FINGERS, ge=1, le=5
+    )
+    push_folded_distance_ratio: float = Field(
+        default=settings.GESTURE_PUSH_FOLDED_DISTANCE_RATIO, gt=0, le=3
+    )
+    push_relaxed_center_tolerance_multiplier: float = Field(
+        default=settings.GESTURE_PUSH_RELAXED_CENTER_TOLERANCE_MULTIPLIER, gt=0, le=3
+    )
+    push_relaxed_center_tolerance_max: float = Field(
+        default=settings.GESTURE_PUSH_RELAXED_CENTER_TOLERANCE_MAX, gt=0, le=1
+    )
+    push_depth_assist_min_threshold: float = Field(
+        default=settings.GESTURE_PUSH_DEPTH_ASSIST_MIN_THRESHOLD, ge=0, le=1
+    )
+    push_depth_assist_threshold_ratio: float = Field(
+        default=settings.GESTURE_PUSH_DEPTH_ASSIST_THRESHOLD_RATIO, ge=0, le=2
+    )
+    click_pose_center_tolerance_multiplier: float = Field(
+        default=settings.GESTURE_CLICK_POSE_CENTER_TOLERANCE_MULTIPLIER, gt=0, le=3
+    )
+    click_pose_extension_ratio_multiplier: float = Field(
+        default=settings.GESTURE_CLICK_POSE_EXTENSION_RATIO_MULTIPLIER, gt=0, le=3
+    )
+    click_pose_extension_ratio_floor: float = Field(
+        default=settings.GESTURE_CLICK_POSE_EXTENSION_RATIO_FLOOR, gt=0, le=3
+    )
+    push_transient_pose_gap_max_seconds: float = Field(
+        default=settings.GESTURE_PUSH_TRANSIENT_POSE_GAP_MAX_SECONDS, ge=0, le=3
+    )
+    push_transient_pose_gap_long_ratio: float = Field(
+        default=settings.GESTURE_PUSH_TRANSIENT_POSE_GAP_LONG_RATIO, ge=0, le=1
+    )
+    push_short_click_min_duration: float = Field(
+        default=settings.GESTURE_PUSH_SHORT_CLICK_MIN_DURATION, ge=0, le=3
+    )
+    push_long_release_max_gap_seconds: float = Field(
+        default=settings.GESTURE_PUSH_LONG_RELEASE_MAX_GAP_SECONDS, ge=0, le=3
+    )
+    zoom_distance_delta_threshold: float = Field(
+        default=settings.GESTURE_ZOOM_DISTANCE_DELTA_THRESHOLD, gt=0, le=1
+    )
+    zoom_start_near_distance: float = Field(
+        default=settings.GESTURE_ZOOM_START_NEAR_DISTANCE, gt=0, le=1
+    )
+    zoom_start_far_distance: float = Field(
+        default=settings.GESTURE_ZOOM_START_FAR_DISTANCE, gt=0, le=2
+    )
+    two_hand_min_frames: int = Field(
+        default=settings.GESTURE_TWO_HAND_MIN_FRAMES, ge=2, le=64
+    )
+    runtime_circle_pose_max_openness: float = Field(
+        default=settings.GESTURE_RUNTIME_CIRCLE_POSE_MAX_OPENNESS, ge=0, le=1
+    )
+    runtime_swipe_block_max_openness: float = Field(
+        default=settings.GESTURE_RUNTIME_SWIPE_BLOCK_MAX_OPENNESS, ge=0, le=1
+    )
+    runtime_circle_hold_radius_cv_ratio: float = Field(
+        default=settings.GESTURE_RUNTIME_CIRCLE_HOLD_RADIUS_CV_RATIO, gt=0, le=2
+    )
+    runtime_circle_hold_sweep_ratio: float = Field(
+        default=settings.GESTURE_RUNTIME_CIRCLE_HOLD_SWEEP_RATIO, gt=0, le=2
+    )
+    runtime_circle_hold_min_aspect_ratio: float = Field(
+        default=settings.GESTURE_RUNTIME_CIRCLE_HOLD_MIN_ASPECT_RATIO, ge=0, le=1
+    )
+    runtime_upstroke_start_y_min: float = Field(
+        default=settings.GESTURE_RUNTIME_UPSTROKE_START_Y_MIN, ge=0, le=1
+    )
+    runtime_upstroke_end_y_max: float = Field(
+        default=settings.GESTURE_RUNTIME_UPSTROKE_END_Y_MAX, ge=0, le=1
+    )
+    runtime_vertical_displacement_min: float = Field(
+        default=settings.GESTURE_RUNTIME_VERTICAL_DISPLACEMENT_MIN, ge=0, le=1
+    )
+    runtime_downstroke_start_y_max: float = Field(
+        default=settings.GESTURE_RUNTIME_DOWNSTROKE_START_Y_MAX, ge=0, le=1
+    )
+    runtime_downstroke_end_y_min: float = Field(
+        default=settings.GESTURE_RUNTIME_DOWNSTROKE_END_Y_MIN, ge=0, le=1
+    )
+    primitive_hand_centered_threshold: float = Field(
+        default=settings.GESTURE_PRIMITIVE_HAND_CENTERED_THRESHOLD, ge=0, le=1
+    )
+    primitive_stable_hold_threshold: float = Field(
+        default=settings.GESTURE_PRIMITIVE_STABLE_HOLD_THRESHOLD, ge=0, le=1
+    )
+    primitive_index_primary_threshold: float = Field(
+        default=settings.GESTURE_PRIMITIVE_INDEX_PRIMARY_THRESHOLD, ge=0, le=1
+    )
+    primitive_all_fingers_open_threshold: float = Field(
+        default=settings.GESTURE_PRIMITIVE_ALL_FINGERS_OPEN_THRESHOLD, ge=0, le=1
+    )
+    primitive_fist_like_threshold: float = Field(
+        default=settings.GESTURE_PRIMITIVE_FIST_LIKE_THRESHOLD, ge=0, le=1
+    )
+    primitive_push_forward_threshold: float = Field(
+        default=settings.GESTURE_PRIMITIVE_PUSH_FORWARD_THRESHOLD, ge=0, le=2
+    )
+    primitive_palm_visible_score: float = Field(
+        default=settings.GESTURE_PRIMITIVE_PALM_VISIBLE_SCORE, ge=0, le=1
+    )
+    primitive_palm_visible_threshold: float = Field(
+        default=settings.GESTURE_PRIMITIVE_PALM_VISIBLE_THRESHOLD, ge=0, le=1
+    )
+    primitive_swipe_jitter_damping: float = Field(
+        default=settings.GESTURE_PRIMITIVE_SWIPE_JITTER_DAMPING, ge=0, le=2
+    )
+    primitive_circle_motion_threshold: float = Field(
+        default=settings.GESTURE_PRIMITIVE_CIRCLE_MOTION_THRESHOLD, ge=0, le=1
+    )
+    primitive_two_hand_threshold: float = Field(
+        default=settings.GESTURE_PRIMITIVE_TWO_HAND_THRESHOLD, ge=0, le=1
+    )
+    resolver_push_centered_score_floor: float = Field(
+        default=settings.GESTURE_RESOLVER_PUSH_CENTERED_SCORE_FLOOR, ge=0, le=1
+    )
+    resolver_tracking_quality_trajectory_weight: float = Field(
+        default=settings.GESTURE_RESOLVER_TRACKING_QUALITY_TRAJECTORY_WEIGHT, ge=0, le=1
+    )
+    resolver_tracking_quality_pose_weight: float = Field(
+        default=settings.GESTURE_RESOLVER_TRACKING_QUALITY_POSE_WEIGHT, ge=0, le=1
+    )
+    resolver_tracking_quality_hand_weight: float = Field(
+        default=settings.GESTURE_RESOLVER_TRACKING_QUALITY_HAND_WEIGHT, ge=0, le=1
+    )
+    resolver_candidate_confidence_weight: float = Field(
+        default=settings.GESTURE_RESOLVER_CANDIDATE_CONFIDENCE_WEIGHT, ge=0, le=1
+    )
+    resolver_candidate_primitive_weight: float = Field(
+        default=settings.GESTURE_RESOLVER_CANDIDATE_PRIMITIVE_WEIGHT, ge=0, le=1
+    )
+    resolver_candidate_phase_weight: float = Field(
+        default=settings.GESTURE_RESOLVER_CANDIDATE_PHASE_WEIGHT, ge=0, le=1
+    )
+    resolver_required_primitive_min_score: float = Field(
+        default=settings.GESTURE_RESOLVER_REQUIRED_PRIMITIVE_MIN_SCORE, ge=0, le=1
+    )
     sequence_matching_enabled: bool = settings.GESTURE_SEQUENCE_MATCHING_ENABLED
     sequence_shadow_mode: bool = settings.GESTURE_SEQUENCE_SHADOW_MODE
-    sequence_resample_points: int = Field(default=settings.GESTURE_SEQUENCE_RESAMPLE_POINTS, ge=4, le=128)
+    sequence_resample_points: int = Field(
+        default=settings.GESTURE_SEQUENCE_RESAMPLE_POINTS, ge=4, le=128
+    )
     sequence_window: int = Field(default=settings.GESTURE_SEQUENCE_WINDOW, ge=1, le=64)
-    sequence_min_margin: float = Field(default=settings.GESTURE_SEQUENCE_MIN_MARGIN, ge=0, le=10)
-    sequence_score_weight: float = Field(default=settings.GESTURE_SEQUENCE_SCORE_WEIGHT, ge=0, le=1)
-    candidate_horizontal_dominance_ratio: float = Field(default=settings.GESTURE_CANDIDATE_HORIZONTAL_DOMINANCE_RATIO, gt=0, le=10)
-    candidate_horizontal_max_off_axis_span_ratio: float = Field(default=settings.GESTURE_CANDIDATE_HORIZONTAL_MAX_OFF_AXIS_SPAN_RATIO, gt=0, le=10)
-    candidate_horizontal_max_off_axis_motion_ratio: float = Field(default=settings.GESTURE_CANDIDATE_HORIZONTAL_MAX_OFF_AXIS_MOTION_RATIO, gt=0, le=10)
-    candidate_vertical_dominance_ratio: float = Field(default=settings.GESTURE_CANDIDATE_VERTICAL_DOMINANCE_RATIO, gt=0, le=10)
-    candidate_vertical_max_off_axis_span_ratio: float = Field(default=settings.GESTURE_CANDIDATE_VERTICAL_MAX_OFF_AXIS_SPAN_RATIO, gt=0, le=10)
-    candidate_vertical_max_off_axis_motion_ratio: float = Field(default=settings.GESTURE_CANDIDATE_VERTICAL_MAX_OFF_AXIS_MOTION_RATIO, gt=0, le=10)
-    candidate_circle_min_aspect_ratio: float = Field(default=settings.GESTURE_CANDIDATE_CIRCLE_MIN_ASPECT_RATIO, ge=0, le=1)
-    phase_hold_max_peak_speed: float = Field(default=settings.GESTURE_PHASE_HOLD_MAX_PEAK_SPEED, ge=0, le=10)
-    phase_hold_min_stability: float = Field(default=settings.GESTURE_PHASE_HOLD_MIN_STABILITY, ge=0, le=1)
-    phase_preparing_max_seconds: float = Field(default=settings.GESTURE_PHASE_PREPARING_MAX_SECONDS, ge=0, le=3)
-    phase_release_max_recent_speed: float = Field(default=settings.GESTURE_PHASE_RELEASE_MAX_RECENT_SPEED, ge=0, le=10)
-    phase_release_speed_ratio: float = Field(default=settings.GESTURE_PHASE_RELEASE_SPEED_RATIO, ge=0, le=1)
-    phase_commit_distance_threshold: float = Field(default=settings.GESTURE_PHASE_COMMIT_DISTANCE_THRESHOLD, ge=0, le=2)
-    pending_timeout_seconds: float = Field(default=settings.GESTURE_PENDING_TIMEOUT_SECONDS, ge=0, le=3)
-    pending_finalize_seconds: float = Field(default=settings.GESTURE_PENDING_FINALIZE_SECONDS, ge=0, le=3)
-    pending_long_finalize_seconds: float = Field(default=settings.GESTURE_PENDING_LONG_FINALIZE_SECONDS, ge=0, le=3)
-    post_fire_grace_seconds: float = Field(default=settings.GESTURE_POST_FIRE_GRACE_SECONDS, ge=0, le=3)
-    offline_swipe_min_cycle_points: int = Field(default=settings.GESTURE_OFFLINE_SWIPE_MIN_CYCLE_POINTS, ge=2, le=128)
-    offline_swipe_motion_step_threshold: float = Field(default=settings.GESTURE_OFFLINE_SWIPE_MOTION_STEP_THRESHOLD, gt=0, le=1)
-    offline_swipe_edge_speed_threshold: float = Field(default=settings.GESTURE_OFFLINE_SWIPE_EDGE_SPEED_THRESHOLD, gt=0, le=10)
-    offline_swipe_active_gap_seconds: float = Field(default=settings.GESTURE_OFFLINE_SWIPE_ACTIVE_GAP_SECONDS, ge=0, le=3)
-    offline_swipe_axis_ratio_threshold: float = Field(default=settings.GESTURE_OFFLINE_SWIPE_AXIS_RATIO_THRESHOLD, gt=0, le=10)
-    offline_swipe_edge_gap_ratio: float = Field(default=settings.GESTURE_OFFLINE_SWIPE_EDGE_GAP_RATIO, gt=0, le=2)
-    offline_swipe_edge_gap_max_seconds: float = Field(default=settings.GESTURE_OFFLINE_SWIPE_EDGE_GAP_MAX_SECONDS, ge=0, le=3)
-    offline_push_min_cycle_points: int = Field(default=settings.GESTURE_OFFLINE_PUSH_MIN_CYCLE_POINTS, ge=2, le=128)
-    offline_push_active_gap_seconds: float = Field(default=settings.GESTURE_OFFLINE_PUSH_ACTIVE_GAP_SECONDS, ge=0, le=3)
-    offline_push_min_pose_valid_ratio: float = Field(default=settings.GESTURE_OFFLINE_PUSH_MIN_POSE_VALID_RATIO, ge=0, le=1)
-    offline_push_inactive_grace_seconds: float = Field(default=settings.GESTURE_OFFLINE_PUSH_INACTIVE_GRACE_SECONDS, ge=0, le=3)
+    sequence_min_margin: float = Field(
+        default=settings.GESTURE_SEQUENCE_MIN_MARGIN, ge=0, le=10
+    )
+    sequence_score_weight: float = Field(
+        default=settings.GESTURE_SEQUENCE_SCORE_WEIGHT, ge=0, le=1
+    )
+    candidate_horizontal_dominance_ratio: float = Field(
+        default=settings.GESTURE_CANDIDATE_HORIZONTAL_DOMINANCE_RATIO, gt=0, le=10
+    )
+    candidate_horizontal_max_off_axis_span_ratio: float = Field(
+        default=settings.GESTURE_CANDIDATE_HORIZONTAL_MAX_OFF_AXIS_SPAN_RATIO,
+        gt=0,
+        le=10,
+    )
+    candidate_horizontal_max_off_axis_motion_ratio: float = Field(
+        default=settings.GESTURE_CANDIDATE_HORIZONTAL_MAX_OFF_AXIS_MOTION_RATIO,
+        gt=0,
+        le=10,
+    )
+    candidate_vertical_dominance_ratio: float = Field(
+        default=settings.GESTURE_CANDIDATE_VERTICAL_DOMINANCE_RATIO, gt=0, le=10
+    )
+    candidate_vertical_max_off_axis_span_ratio: float = Field(
+        default=settings.GESTURE_CANDIDATE_VERTICAL_MAX_OFF_AXIS_SPAN_RATIO, gt=0, le=10
+    )
+    candidate_vertical_max_off_axis_motion_ratio: float = Field(
+        default=settings.GESTURE_CANDIDATE_VERTICAL_MAX_OFF_AXIS_MOTION_RATIO,
+        gt=0,
+        le=10,
+    )
+    candidate_circle_min_aspect_ratio: float = Field(
+        default=settings.GESTURE_CANDIDATE_CIRCLE_MIN_ASPECT_RATIO, ge=0, le=1
+    )
+    phase_hold_max_peak_speed: float = Field(
+        default=settings.GESTURE_PHASE_HOLD_MAX_PEAK_SPEED, ge=0, le=10
+    )
+    phase_hold_min_stability: float = Field(
+        default=settings.GESTURE_PHASE_HOLD_MIN_STABILITY, ge=0, le=1
+    )
+    phase_preparing_max_seconds: float = Field(
+        default=settings.GESTURE_PHASE_PREPARING_MAX_SECONDS, ge=0, le=3
+    )
+    phase_release_max_recent_speed: float = Field(
+        default=settings.GESTURE_PHASE_RELEASE_MAX_RECENT_SPEED, ge=0, le=10
+    )
+    phase_release_speed_ratio: float = Field(
+        default=settings.GESTURE_PHASE_RELEASE_SPEED_RATIO, ge=0, le=1
+    )
+    phase_commit_distance_threshold: float = Field(
+        default=settings.GESTURE_PHASE_COMMIT_DISTANCE_THRESHOLD, ge=0, le=2
+    )
+    pending_timeout_seconds: float = Field(
+        default=settings.GESTURE_PENDING_TIMEOUT_SECONDS, ge=0, le=3
+    )
+    pending_finalize_seconds: float = Field(
+        default=settings.GESTURE_PENDING_FINALIZE_SECONDS, ge=0, le=3
+    )
+    pending_long_finalize_seconds: float = Field(
+        default=settings.GESTURE_PENDING_LONG_FINALIZE_SECONDS, ge=0, le=3
+    )
+    post_fire_grace_seconds: float = Field(
+        default=settings.GESTURE_POST_FIRE_GRACE_SECONDS, ge=0, le=3
+    )
+    offline_swipe_min_cycle_points: int = Field(
+        default=settings.GESTURE_OFFLINE_SWIPE_MIN_CYCLE_POINTS, ge=2, le=128
+    )
+    offline_swipe_motion_step_threshold: float = Field(
+        default=settings.GESTURE_OFFLINE_SWIPE_MOTION_STEP_THRESHOLD, gt=0, le=1
+    )
+    offline_swipe_edge_speed_threshold: float = Field(
+        default=settings.GESTURE_OFFLINE_SWIPE_EDGE_SPEED_THRESHOLD, gt=0, le=10
+    )
+    offline_swipe_active_gap_seconds: float = Field(
+        default=settings.GESTURE_OFFLINE_SWIPE_ACTIVE_GAP_SECONDS, ge=0, le=3
+    )
+    offline_swipe_axis_ratio_threshold: float = Field(
+        default=settings.GESTURE_OFFLINE_SWIPE_AXIS_RATIO_THRESHOLD, gt=0, le=10
+    )
+    offline_swipe_edge_gap_ratio: float = Field(
+        default=settings.GESTURE_OFFLINE_SWIPE_EDGE_GAP_RATIO, gt=0, le=2
+    )
+    offline_swipe_edge_gap_max_seconds: float = Field(
+        default=settings.GESTURE_OFFLINE_SWIPE_EDGE_GAP_MAX_SECONDS, ge=0, le=3
+    )
+    offline_push_min_cycle_points: int = Field(
+        default=settings.GESTURE_OFFLINE_PUSH_MIN_CYCLE_POINTS, ge=2, le=128
+    )
+    offline_push_active_gap_seconds: float = Field(
+        default=settings.GESTURE_OFFLINE_PUSH_ACTIVE_GAP_SECONDS, ge=0, le=3
+    )
+    offline_push_min_pose_valid_ratio: float = Field(
+        default=settings.GESTURE_OFFLINE_PUSH_MIN_POSE_VALID_RATIO, ge=0, le=1
+    )
+    offline_push_inactive_grace_seconds: float = Field(
+        default=settings.GESTURE_OFFLINE_PUSH_INACTIVE_GRACE_SECONDS, ge=0, le=3
+    )
     updated_at: datetime | None = None
 
     def offline_swipe_cycle_kwargs(self) -> dict[str, float | int]:

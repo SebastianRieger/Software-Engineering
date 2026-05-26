@@ -5,7 +5,6 @@ from pydantic import BaseModel, Field, model_validator
 
 from schemas.interactions import InputActionConfig
 
-
 CommandModalityType = Literal["gesture", "voice", "musical_audio", "keyboard", "dev"]
 
 
@@ -15,7 +14,9 @@ class CommandModalitySettings(BaseModel):
     metadata: dict[str, Any] = Field(default_factory=dict)
 
 
-def build_default_modality_settings() -> dict[CommandModalityType, CommandModalitySettings]:
+def build_default_modality_settings() -> (
+    dict[CommandModalityType, CommandModalitySettings]
+):
     return {
         "gesture": CommandModalitySettings(enabled=True),
         "voice": CommandModalitySettings(enabled=True),
@@ -39,7 +40,9 @@ class CommandProfile(BaseModel):
     modality_settings: dict[CommandModalityType, CommandModalitySettings] = Field(
         default_factory=build_default_modality_settings
     )
-    device_preferences: CommandDevicePreferences = Field(default_factory=CommandDevicePreferences)
+    device_preferences: CommandDevicePreferences = Field(
+        default_factory=CommandDevicePreferences
+    )
     updated_at: datetime | None = None
 
 
@@ -53,7 +56,9 @@ class CommandProfilesConfig(BaseModel):
         if not self.profiles:
             self.profiles = [CommandProfile()]
 
-        if not any(profile.profile_id == self.active_profile_id for profile in self.profiles):
+        if not any(
+            profile.profile_id == self.active_profile_id for profile in self.profiles
+        ):
             self.active_profile_id = self.profiles[0].profile_id
 
         return self

@@ -586,7 +586,9 @@ def default_gesture_specs() -> dict[GestureName, GestureSpecification]:
     }
 
 
-def _runtime_gesture_group_for_spec(specification: GestureSpecification) -> RuntimeGestureGroup:
+def _runtime_gesture_group_for_spec(
+    specification: GestureSpecification,
+) -> RuntimeGestureGroup:
     if specification.min_hand_count >= 2:
         return "two_hand_zoom"
     if specification.gesture in {"push_click_short", "push_click_long"}:
@@ -648,9 +650,7 @@ def _resolve_dominant_hand_pose(
         "all_fingers_open", PrimitiveDetection("all_fingers_open", 0.0, False)
     ).passed:
         return "open_hand"
-    if primitives.get(
-        "fist_like", PrimitiveDetection("fist_like", 0.0, False)
-    ).passed:
+    if primitives.get("fist_like", PrimitiveDetection("fist_like", 0.0, False)).passed:
         return "fist_like"
     if pose_features is not None:
         return "neutral"
@@ -870,7 +870,9 @@ def analyze_runtime_gesture(
         candidate_primitive_hits: dict[str, float] = {}
         candidate_primitive_passes: dict[str, bool] = {}
         for name in spec.required_primitives:
-            primitive = context.primitives.get(name, PrimitiveDetection(name, 0.0, False))
+            primitive = context.primitives.get(
+                name, PrimitiveDetection(name, 0.0, False)
+            )
             primitive_score = primitive.score
             primitive_threshold = max(
                 primitive.threshold, resolver_required_primitive_min_score
@@ -953,7 +955,9 @@ def analyze_runtime_gesture(
         if sequence_score is not None:
             candidate.metrics["sequence_score"] = round(sequence_score, 4)
         if candidate.gesture in resolved_sequence_profile_ids:
-            candidate.metrics["sequence_profile_id"] = resolved_sequence_profile_ids[candidate.gesture]
+            candidate.metrics["sequence_profile_id"] = resolved_sequence_profile_ids[
+                candidate.gesture
+            ]
         if candidate.gesture in resolved_sequence_distances:
             candidate.metrics["sequence_distance"] = round(
                 resolved_sequence_distances[candidate.gesture],
@@ -1074,7 +1078,9 @@ def detect_gesture_candidates(
     vertical_max_off_axis_motion_ratio: float = settings.GESTURE_CANDIDATE_VERTICAL_MAX_OFF_AXIS_MOTION_RATIO,
     circle_min_aspect_ratio: float = settings.GESTURE_CANDIDATE_CIRCLE_MIN_ASPECT_RATIO,
 ) -> list[GestureDetectionCandidate]:
-    effective_up_threshold = up_threshold if up_threshold is not None else down_threshold
+    effective_up_threshold = (
+        up_threshold if up_threshold is not None else down_threshold
+    )
 
     normalized_dx_total = features.dx_total / max(features.hand_size_scale, 1e-6)
     normalized_dy_total = features.dy_total / max(features.hand_size_scale, 1e-6)
@@ -1149,7 +1155,8 @@ def _detect_horizontal_gesture_candidate(
     horizontal_margin = abs(normalized_dx_total) - swipe_threshold
     if (
         horizontal_margin > 0
-        and abs(normalized_dx_total) > abs(normalized_dy_total) * horizontal_dominance_ratio
+        and abs(normalized_dx_total)
+        > abs(normalized_dy_total) * horizontal_dominance_ratio
         and normalized_span_x > swipe_min_span
         and normalized_span_y
         <= max(
@@ -1198,7 +1205,8 @@ def _detect_vertical_gesture_candidates(
     if (
         normalized_dy_total < 0
         and upward_margin > 0
-        and abs(normalized_dy_total) > abs(normalized_dx_total) * vertical_dominance_ratio
+        and abs(normalized_dy_total)
+        > abs(normalized_dx_total) * vertical_dominance_ratio
         and normalized_span_y > swipe_min_span
         and normalized_span_x
         <= max(

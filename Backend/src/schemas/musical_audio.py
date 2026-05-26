@@ -5,7 +5,6 @@ from pydantic import BaseModel, Field
 
 from core.config import settings
 
-
 MusicalAudioStatusCode = Literal[
     "unavailable",
     "ready",
@@ -65,10 +64,16 @@ class MusicalAudioStatusResponse(BaseModel):
 class MusicalAudioConfig(BaseModel):
     enabled: bool = settings.MUSICAL_AUDIO_ENABLED
     device_index: int = Field(default=settings.MUSICAL_AUDIO_DEVICE_INDEX, ge=-1)
-    sample_rate: int = Field(default=settings.MUSICAL_AUDIO_SAMPLE_RATE, ge=8000, le=48000)
+    sample_rate: int = Field(
+        default=settings.MUSICAL_AUDIO_SAMPLE_RATE, ge=8000, le=48000
+    )
     block_size: int = Field(default=settings.MUSICAL_AUDIO_BLOCK_SIZE, ge=256, le=8192)
-    queue_max_chunks: int = Field(default=settings.MUSICAL_AUDIO_QUEUE_MAX_CHUNKS, ge=1, le=256)
-    silence_threshold: float = Field(default=settings.MUSICAL_AUDIO_SILENCE_THRESHOLD, ge=0, le=1)
+    queue_max_chunks: int = Field(
+        default=settings.MUSICAL_AUDIO_QUEUE_MAX_CHUNKS, ge=1, le=256
+    )
+    silence_threshold: float = Field(
+        default=settings.MUSICAL_AUDIO_SILENCE_THRESHOLD, ge=0, le=1
+    )
     pitch_confidence_threshold: float = Field(
         default=settings.MUSICAL_AUDIO_PITCH_CONFIDENCE_THRESHOLD,
         ge=0,
@@ -79,7 +84,9 @@ class MusicalAudioConfig(BaseModel):
         ge=0,
         le=30,
     )
-    min_pattern_notes: int = Field(default=settings.MUSICAL_AUDIO_MIN_PATTERN_NOTES, ge=1, le=64)
+    min_pattern_notes: int = Field(
+        default=settings.MUSICAL_AUDIO_MIN_PATTERN_NOTES, ge=1, le=64
+    )
     max_pattern_window_seconds: float = Field(
         default=settings.MUSICAL_AUDIO_MAX_PATTERN_WINDOW_SECONDS,
         ge=0.2,

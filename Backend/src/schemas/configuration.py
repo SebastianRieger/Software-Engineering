@@ -5,7 +5,6 @@ from pydantic import BaseModel, Field, model_validator
 
 from core.config import settings
 
-
 GRID_ROWS = 4
 GRID_COLUMNS = 4
 
@@ -38,7 +37,9 @@ class WidgetConfig(BaseModel):
 
         next_value = dict(value)
         cell_id = next_value.get("cell_id")
-        if cell_id is not None and (next_value.get("row") is None or next_value.get("col") is None):
+        if cell_id is not None and (
+            next_value.get("row") is None or next_value.get("col") is None
+        ):
             row, col = cell_id_to_position(int(cell_id))
             next_value.setdefault("row", row)
             next_value.setdefault("col", col)
