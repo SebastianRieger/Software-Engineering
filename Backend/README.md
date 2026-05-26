@@ -49,17 +49,18 @@ Der aktuelle Zwischenstand ist bewusst backendzentriert:
 
 ```bash
 cd ..
-npm run dev
-```
-
-Alternativ nur das Backend:
-
-```bash
-cd ..
+npm run setup:backend
 npm run dev:backend
 ```
 
-Der Root-Bootstrapper erstellt bei Bedarf `Backend/venv_py312`, installiert `requirements.txt`, bereinigt Port `8000` und startet `uvicorn` anschliessend sauber auf dem festen API-Port.
+Falls auch das Frontend vorbereitet werden soll:
+
+```bash
+cd ..
+npm run setup
+```
+
+Der Root-Bootstrapper erstellt bei Bedarf `Backend/.venv`, installiert `requirements.txt` mit einem unterstuetzten Python-Interpreter und startet das Backend anschliessend ohne manuelle Venv-Aktivierung. Unterstuetzt sind Python 3.11 bis 3.13, bevorzugt wird 3.12. Fuer Linux zieht das Setup `numpy<2` vor, baut `aubio` separat ohne Build-Isolation und installiert danach die restlichen Requirements.
 
 ## Native Abhaengigkeiten
 
@@ -69,13 +70,15 @@ Der Musical-Audio-Pfad nutzt aubio bewusst als Pflichtkomponente fuer Live-Pitch
 sudo dnf install -y python3.12-devel aubio-devel aubio-lib
 ```
 
-`python3.12-devel` liefert `Python.h` fuer das venv-Build, `aubio-devel` liefert `aubio.pc` fuer `pkg-config`, und `aubio-lib` stellt die native Laufzeitbibliothek bereit. Der Root-Setup installiert zuerst `numpy<2`, baut aubio mit den noetigen GCC-15-Kompatibilitaetsflags im venv und installiert danach die restlichen Requirements.
+`python3.12-devel` liefert `Python.h` fuer native Builds, `aubio-devel` liefert `aubio.pc` fuer `pkg-config`, und `aubio-lib` stellt die Laufzeitbibliothek bereit. Unter Windows sollte Python 3.12 inklusive Python Launcher installiert sein, damit `py -3.12` vom Root-Bootstrapper gefunden wird. Der Root-Bootstrapper ueberspringt `aubio` auf Windows bewusst, wenn keine nativen Build-Werkzeuge vorhanden sind; das Backend startet trotzdem, waehrend der optionale Musical-Audio-Pfad dann als nicht verfuegbar markiert bleibt. Falls die automatische Interpreter-Erkennung nicht greift, kann der Pfad ueber `SMART_MIRROR_PYTHON` gesetzt werden.
 
 ## Tests
 
 ```bash
-.venv/bin/pytest -q tests
+./.venv/bin/python -m pytest -q tests
 ```
+
+Unter Windows entspricht das `./.venv/Scripts/python.exe -m pytest -q tests`.
 
 ## Quality-Metriken
 

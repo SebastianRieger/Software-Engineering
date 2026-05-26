@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, computed } from 'vue';
+import { ref, computed, onMounted, onBeforeUnmount, watch } from 'vue';
 import type { ComponentPublicInstance } from 'vue';
 import GridBoard from './GridBoard.vue';
 import ModuleShop from './ModuleShop.vue';
@@ -8,32 +8,50 @@ import { useWidgetResize } from '../../composables/useWidgetResize';
 import { useEditMode } from '../../composables/useEditMode';
 import { useModuleShop } from '../../composables/useModuleShop';
 import { useClockWidgetMode } from '../../composables/useClockWidgetMode';
+import { useActionDispatcher } from '../../composables/useActionDispatcher';
+import { realtimeClient } from '../../services/realtime';
 
 // Interface für die Methoden des ModuleShop
 interface ModuleShopExposed {
+  addCurrentWidgetToCell: (cellId: number) => void;
   nextModule: () => void;
   prevModule: () => void;
 }
 
 // Composables initialisieren
 const { insertWidgetIntoCell, clearCell, moveWidgets, occupiedCells } = useWidgetManager();
-const { getVisibleCells } = useWidgetResize();
+const { getVisibleCells, resizeCell } = useWidgetResize();
 
 const availableCells = computed(() => {
   const occupied = new Set(occupiedCells.value)
   return getVisibleCells().filter(id => !occupied.has(id))
 });
-const { isEditMode, setupKeyboardListener } = useEditMode();
-const { isShopOpen, toggleShop } = useModuleShop();
+const { isEditMode, setEditMode, setupKeyboardListener } = useEditMode();
+const { isShopOpen, toggleShop, openShop, closeShop } = useModuleShop();
 const { clockAnalogMode, toggleClockMode } = useClockWidgetMode();
 
 const moduleShopRef = ref<ComponentPublicInstance<{}, ModuleShopExposed> | null>(null);
+let unsubscribeRealtime: (() => void) | null = null;
+
+const { focusedCellId, handleRealtimeEvent, syncFocusedCell } = useActionDispatcher({
+  isShopOpen,
+  openShop,
+  closeShop,
+  toggleShop,
+  isEditMode,
+  setEditMode,
+  visibleCellIds: getVisibleCells,
+  isCellAvailable: (cellId: number) => availableCells.value.includes(cellId),
+  resizeCell,
+  moduleShopRef,
+});
 
 /**
  * Verarbeitet das Hinzufügen eines Widgets aus dem Shop
  */
 const handleAddWidget = ({ cellId, component }: { cellId: number; component: any }) => {
   insertWidgetIntoCell(cellId, component);
+  syncFocusedCell();
   console.log('Widget zu Zelle hinzugefügt:', cellId);
 };
 
@@ -42,6 +60,7 @@ const handleAddWidget = ({ cellId, component }: { cellId: number; component: any
  */
 const handleWidgetsMoved = ({ sourceCellId, targetCellId }: { sourceCellId: number; targetCellId: number }) => {
   moveWidgets({ sourceCellId, targetCellId });
+  syncFocusedCell();
 };
 
 /**
@@ -49,6 +68,7 @@ const handleWidgetsMoved = ({ sourceCellId, targetCellId }: { sourceCellId: numb
  */
 const handleDeleteWidget = (cellId: number) => {
   clearCell(cellId);
+  syncFocusedCell();
 };
 
 /**
@@ -69,6 +89,22 @@ setupKeyboardListener({
   onShopToggle: toggleShop,
   onShopNavigate: handleShopNavigation,
   onClockToggle: toggleClockMode,
+});
+
+watch(availableCells, () => {
+  syncFocusedCell();
+});
+
+onMounted(() => {
+  syncFocusedCell();
+  unsubscribeRealtime = realtimeClient.subscribe((event) => {
+    handleRealtimeEvent(event);
+  });
+});
+
+onBeforeUnmount(() => {
+  unsubscribeRealtime?.();
+  unsubscribeRealtime = null;
 });
 
 </script>
@@ -97,9 +133,9 @@ setupKeyboardListener({
     </Transition>
 
     <!-- Module Shop Popup -->
-    <div v-if="isShopOpen" class="shop-overlay" @click.self="isShopOpen = false">
+    <div v-if="isShopOpen" class="shop-overlay" @click.self="closeShop">
       <div class="shop-modal">
-        <button class="close-btn" @click="isShopOpen = false">×</button>
+        <button class="close-btn" @click="closeShop">×</button>
         <ModuleShop ref="moduleShopRef" :available-cells="availableCells" @addWidget="handleAddWidget" />
       </div>
     </div>
@@ -107,6 +143,7 @@ setupKeyboardListener({
     <!-- GridBoard mit Event-Listener für widgetsMoved -->
     <GridBoard
         :is-edit-mode="isEditMode"
+      :focused-cell-id="focusedCellId"
         @widgets-moved="handleWidgetsMoved"
         @delete-widget="handleDeleteWidget"
     />

@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, onMounted, defineEmits, defineExpose, computed } from 'vue'
+import { ref, onMounted, computed } from 'vue'
 
 const props = defineProps<{ availableCells: number[] }>()
 const emit = defineEmits(['addWidget'])
@@ -111,6 +111,7 @@ const setCurrentModule = (index: number) => {
 }
 
 defineExpose({
+  addCurrentWidgetToCell,
   nextModule,
   prevModule,
   setCurrentModule

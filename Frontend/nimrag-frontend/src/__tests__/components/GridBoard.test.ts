@@ -34,6 +34,14 @@ describe('GridBoard', () => {
     expect(cells.length).toBe(16)
   })
 
+  it('marks the focused cell with a dedicated class', () => {
+    const wrapper = mount(GridBoard, { props: { isEditMode: false, focusedCellId: 3 } })
+    const focusedCell = wrapper.find('[data-cell-id="3"]')
+
+    expect(focusedCell.classes()).toContain('grid-cell-focused')
+    expect(focusedCell.attributes('aria-selected')).toBe('true')
+  })
+
   it('does not show delete or resize buttons when isEditMode is false', () => {
     const wrapper = mount(GridBoard, { props: { isEditMode: false } })
     expect(wrapper.find('.delete-widget-btn').exists()).toBe(false)

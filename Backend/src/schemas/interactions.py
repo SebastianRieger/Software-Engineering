@@ -135,3 +135,22 @@ class CommandMatchEventPayload(BaseModel):
 class CommandMatchEventEnvelope(BaseModel):
     eventType: Literal["CommandMatchEvaluated"] = "CommandMatchEvaluated"
     payload: CommandMatchEventPayload
+
+
+class SimulatedInputRequest(BaseModel):
+    input_source: InputSourceType = "gesture"
+    raw_input: str = Field(min_length=1)
+    action_args: UIActionArguments = Field(default_factory=UIActionArguments)
+    metadata: dict[str, Any] = Field(default_factory=dict)
+    emit_raw_input_event: bool = True
+
+
+class SimulatedInputResponse(BaseModel):
+    accepted: bool
+    input_source: InputSourceType
+    raw_input: str = Field(min_length=1)
+    action_args: UIActionArguments = Field(default_factory=UIActionArguments)
+    metadata: dict[str, Any] = Field(default_factory=dict)
+    emitted_events: list[Literal["RawInputDetected", "CommandMatchEvaluated", "UIActionRequested"]] = Field(
+        default_factory=list
+    )
