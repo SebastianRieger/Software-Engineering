@@ -62,6 +62,29 @@ npm run setup
 
 Der Root-Bootstrapper erstellt bei Bedarf `Backend/.venv`, installiert `requirements.txt` mit einem unterstuetzten Python-Interpreter und startet das Backend anschliessend ohne manuelle Venv-Aktivierung. Unterstuetzt sind Python 3.11 bis 3.13, bevorzugt wird 3.12. Fuer Linux zieht das Setup `numpy<2` vor, baut `aubio` separat ohne Build-Isolation und installiert danach die restlichen Requirements.
 
+## Windows-Hinweis
+
+Wenn `npm run setup:backend` unter Windows mit einer Meldung wie `Gefunden, aber nicht unterstuetzt: py -3 (Python 3.14.x), python (Python 3.14.x)` abbricht, ist meist nur Python 3.14 installiert. Das ist kein PATH-Bug: Der Root-Bootstrapper akzeptiert aktuell bewusst nur Python 3.11 bis 3.13, bevorzugt 3.12, um ungetestete Kombinationen mit nativen Paketen wie MediaPipe, OpenCV und Audio-Abhaengigkeiten zu vermeiden.
+
+Empfohlener Fix:
+
+```powershell
+py -3.12 --version
+npm run setup:backend
+npm run dev:backend
+```
+
+Falls `py -3.12 --version` fehlschlaegt, Python 3.12 fuer Windows x64 inklusive Python Launcher installieren und den Befehl erneut ausfuehren.
+
+Falls Python 3.12 bereits installiert ist, aber nicht automatisch gefunden wird, kann der Interpreter explizit ueber `SMART_MIRROR_PYTHON` gesetzt werden:
+
+```powershell
+$env:SMART_MIRROR_PYTHON="C:\Users\<Name>\AppData\Local\Programs\Python\Python312\python.exe"
+npm run setup:backend
+```
+
+`SMART_MIRROR_PYTHON` ist eine Environment-Variable fuer den absoluten Pfad zum gewuenschten `python.exe`. Der Root-Bootstrapper prueft diese Variable vor den Standardkandidaten `py -3.12`, `py -3.11`, `py -3.13`, `py -3` und `python`.
+
 ## Native Abhaengigkeiten
 
 Der Musical-Audio-Pfad nutzt aubio bewusst als Pflichtkomponente fuer Live-Pitch- und Onset-Erkennung. Auf Fedora muss vor der Python-Installation der Requirements mindestens Folgendes vorhanden sein:

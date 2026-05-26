@@ -295,9 +295,13 @@ class SmartMirrorSetup {
             ? `Gefunden, aber nicht unterstuetzt: ${unsupported.join(', ')}.`
             : 'Es wurde kein passender Python-Interpreter gefunden.';
 
+        const followUpHint = this.isWindows
+            ? 'Unter Windows pruefe `py -0p` und `py -3.12 --version`, oder setze SMART_MIRROR_PYTHON auf den absoluten Pfad zu python.exe.'
+            : 'Falls der Interpreter an einem ungewoehnlichen Ort liegt, setze SMART_MIRROR_PYTHON auf den passenden Python-Pfad.';
+
         throw new Error(
-            `${unsupportedHint} Installiere Python 3.12 (bevorzugt) oder Python 3.11 und starte den Befehl erneut. `
-            + 'Falls der Interpreter an einem ungewoehnlichen Ort liegt, setze SMART_MIRROR_PYTHON auf den passenden Python-Pfad.'
+            `${unsupportedHint} Unterstuetzt sind Python 3.11 bis 3.13, bevorzugt wird Python 3.12. `
+            + `${followUpHint}`
         );
     }
 
