@@ -67,3 +67,6 @@ pip-delete-this-directory.txt
 
 # Frontend
 */node_modules
+
+# Claude
+.claude/
