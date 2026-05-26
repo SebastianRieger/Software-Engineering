@@ -1,10 +1,51 @@
-import { ref } from 'vue'
+import { ref, watch } from 'vue'
 
 export type CellSize = 1 | 2 | 4
 
-// Singleton outside the function → shared across all instances and
-// createApp() widgets via provide/inject
-const cellSizes = ref<Record<number, CellSize>>({})
+const STORAGE_KEY = 'nimrag-cell-sizes'
+
+/**
+ * Reads cell sizes from localStorage and validates each value.
+ * Only the valid CellSize values (1 | 2 | 4) are kept.
+ */
+function loadFromStorage(): Record<number, CellSize> {
+  try {
+    const raw = localStorage.getItem(STORAGE_KEY)
+    if (!raw) return {}
+
+    const parsed = JSON.parse(raw) as Record<string, number>
+    const result: Record<number, CellSize> = {}
+
+    for (const [id, size] of Object.entries(parsed)) {
+      if (size === 1 || size === 2 || size === 4) {
+        result[Number(id)] = size
+      }
+    }
+
+    return result
+  } catch {
+    return {}
+  }
+}
+
+/**
+ * Persists cell sizes to localStorage.
+ */
+function saveToStorage(sizes: Record<number, CellSize>): void {
+  try {
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(sizes))
+  } catch {
+    // Silently fail if localStorage is unavailable
+  }
+}
+
+// Module-level singleton – shared across all composable instances and
+// provided to widgets via provide/inject (see CellSlot.vue).
+// Initialized once from localStorage on first import.
+const cellSizes = ref<Record<number, CellSize>>(loadFromStorage())
+
+// Auto-persist on every change
+watch(cellSizes, (sizes) => saveToStorage(sizes), { deep: true })
 
 /**
  * Composable for widget size management.

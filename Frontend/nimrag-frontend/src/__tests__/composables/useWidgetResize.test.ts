@@ -1,10 +1,15 @@
-import { describe, it, expect } from 'vitest'
+import { describe, it, expect, beforeEach } from 'vitest'
 import { useWidgetResize } from '@/composables/useWidgetResize'
 
 // cellSizes is a module-level singleton; use IDs >= 200 to avoid overlap
 // with getVisibleCells (which iterates 1–16).
 let nextId = 200
 const uid = () => nextId++
+
+beforeEach(() => {
+  // Prevent persisted sizes from affecting unrelated test cases
+  localStorage.clear()
+})
 
 describe('useWidgetResize', () => {
   describe('initializeCell', () => {

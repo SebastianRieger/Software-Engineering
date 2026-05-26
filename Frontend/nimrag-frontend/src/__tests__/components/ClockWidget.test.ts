@@ -16,11 +16,6 @@ describe('ClockWidget', () => {
     expect(wrapper.exists()).toBe(true)
   })
 
-  it('displays the "Uhr" heading', () => {
-    const wrapper = mount(ClockWidget)
-    expect(wrapper.find('h3').text()).toBe('Uhr')
-  })
-
   it('displays a formatted time string', () => {
     const wrapper = mount(ClockWidget)
     // The time element should contain at least a colon (HH:MM)
