@@ -398,7 +398,10 @@ class MusicalAudioService:
 
         if not artifacts:
             raise MusicalAudioServiceError(
-                f"Aktives Musical-Audio-Artefakt '{config.active_artifact_id}' wurde nicht gefunden oder ist deaktiviert.",
+                (
+                    f"Aktives Musical-Audio-Artefakt '{config.active_artifact_id}' "
+                    "wurde nicht gefunden oder ist deaktiviert."
+                ),
                 status_code=409,
                 error_code="no_active_artifact",
             )

@@ -1097,7 +1097,10 @@ class CalibrationService:
                         recommended_value=candidate_config.swipe_threshold,
                         min_bound=0.05,
                         max_bound=0.45,
-                        rationale="Horizontaler Bewegungsumfang wurde an die unteren Perzentile der positiven Samples angepasst.",
+                        rationale=(
+                            "Horizontaler Bewegungsumfang wurde an die unteren "
+                            "Perzentile der positiven Samples angepasst."
+                        ),
                     )
                 )
             if target_id == "swipe_down":
@@ -1282,7 +1285,10 @@ class CalibrationService:
                     recommended_value=candidate_config.circle_radius_cv_max,
                     min_bound=0.05,
                     max_bound=1.0,
-                    rationale="Radius-Stabilitaet bleibt begrenzt, orientiert sich aber an erfolgreichen Kreisbewegungen.",
+                    rationale=(
+                        "Radius-Stabilitaet bleibt begrenzt, orientiert sich "
+                        "aber an erfolgreichen Kreisbewegungen."
+                    ),
                 ),
                 CalibrationRecommendation(
                     parameter="circle_min_radius",
@@ -1455,7 +1461,10 @@ class CalibrationService:
                             recommended_value=candidate_config.push_release_threshold,
                             min_bound=0.0,
                             max_bound=0.28,
-                            rationale="Release-Tiefe bleibt unterhalb des Push-Schwellwerts, folgt aber erfolgreichen Samples.",
+                            rationale=(
+                                "Release-Tiefe bleibt unterhalb des "
+                                "Push-Schwellwerts, folgt aber erfolgreichen Samples."
+                            ),
                         ),
                         CalibrationRecommendation(
                             parameter="push_pose_extension_ratio",

@@ -1,3 +1,5 @@
+# flake8: noqa: E402
+
 import pytest
 import pytest_asyncio
 import sys
@@ -285,7 +287,10 @@ def mock_musical_audio_service():
                 "last_match": None,
                 "last_match_score": None,
                 "last_event_at": None,
-                "last_error": "Musical-Audio-Service ist nicht verfuegbar. Fehlende Abhaengigkeiten: aubio, dtaidistance",
+                "last_error": (
+                    "Musical-Audio-Service ist nicht verfuegbar. "
+                    "Fehlende Abhaengigkeiten: aubio, dtaidistance"
+                ),
                 "last_error_code": "unavailable",
             }
 

@@ -182,7 +182,8 @@ def default_gesture_contracts() -> dict[GestureType, GestureContract]:
             end_pose="release erst nach erkennbarer haltezeit",
             tempo_hint="langsamer commit plus sichtbare haltephase",
             recording_notes=(
-                "die unterscheidung zum kurzen klick soll ueber ruhigere einleitung und stabile haltephase sichtbar sein",
+                "die unterscheidung zum kurzen klick soll ueber ruhigere "
+                "einleitung und stabile haltephase sichtbar sein",
                 "release erst nach klarer haltedauer statt sofortigem loesen",
             ),
             detector_bias=(
