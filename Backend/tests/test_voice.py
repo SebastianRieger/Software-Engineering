@@ -26,7 +26,9 @@ class StaticVoiceConfigRepository:
     ):
         self.voice_config = voice_config or VoiceConfig(
             commands=[],
-            signals=[VoiceSignalDefinition(raw_input="voice.open_shop", phrases=["shop auf"])],
+            signals=[
+                VoiceSignalDefinition(raw_input="voice.open_shop", phrases=["shop auf"])
+            ],
         )
         self.input_action_config = input_action_config or InputActionConfig(
             mappings=[
@@ -67,7 +69,9 @@ async def test_get_voice_devices(client, override_voice_dependency):
 
 
 @pytest.mark.asyncio
-async def test_start_voice_returns_clear_status_error(client, override_voice_dependency):
+async def test_start_voice_returns_clear_status_error(
+    client, override_voice_dependency
+):
     _ = override_voice_dependency
     response = await client.post("/api/v1/voice/start", json={"device_index": 0})
     assert response.status_code == 503
@@ -95,7 +99,12 @@ def test_voice_service_publishes_raw_input_and_ui_action_for_mapped_command():
     service._handle_transcript("shop auf", partial=False)
 
     event_types = [message["eventType"] for message in hub.messages]
-    assert event_types == ["VoiceCommandDetected", "RawInputDetected", "CommandMatchEvaluated", "UIActionRequested"]
+    assert event_types == [
+        "VoiceCommandDetected",
+        "RawInputDetected",
+        "CommandMatchEvaluated",
+        "UIActionRequested",
+    ]
     assert hub.messages[0]["payload"]["raw_input"] == "voice.open_shop"
     assert hub.messages[1]["payload"]["input_source"] == "voice"
     assert hub.messages[1]["payload"]["raw_input"] == "voice.open_shop"
@@ -127,9 +136,15 @@ def test_voice_service_parses_grid_cell_focus_command_with_structured_action_arg
     service._handle_transcript("feld vier", partial=False)
 
     assert hub.messages[0]["payload"]["raw_input"] == "voice.focus_grid_cell"
-    assert hub.messages[2]["payload"]["action_args"] == {"cell_index": 4, "mode": "grid"}
+    assert hub.messages[2]["payload"]["action_args"] == {
+        "cell_index": 4,
+        "mode": "grid",
+    }
     assert hub.messages[3]["payload"]["action"] == "focus_grid_cell"
-    assert hub.messages[3]["payload"]["action_args"] == {"cell_index": 4, "mode": "grid"}
+    assert hub.messages[3]["payload"]["action_args"] == {
+        "cell_index": 4,
+        "mode": "grid",
+    }
 
 
 def test_voice_service_parses_widget_type_command_with_structured_action_args():
@@ -181,6 +196,12 @@ def test_voice_service_parses_targeted_resize_command_with_cell_reference():
     service._handle_transcript("feld drei groesser", partial=False)
 
     assert hub.messages[0]["payload"]["raw_input"] == "voice.resize_expand"
-    assert hub.messages[2]["payload"]["action_args"] == {"cell_index": 3, "mode": "grid"}
+    assert hub.messages[2]["payload"]["action_args"] == {
+        "cell_index": 3,
+        "mode": "grid",
+    }
     assert hub.messages[3]["payload"]["action"] == "resize_expand"
-    assert hub.messages[3]["payload"]["action_args"] == {"cell_index": 3, "mode": "grid"}
+    assert hub.messages[3]["payload"]["action_args"] == {
+        "cell_index": 3,
+        "mode": "grid",
+    }

@@ -1,5 +1,13 @@
-from services.gesture.contracts import GestureContract, default_gesture_contracts, get_gesture_contract
-from services.gesture.push_runtime import PushGestureState, detect_push_gesture, is_click_pose_candidate
+from services.gesture.contracts import (
+    GestureContract,
+    default_gesture_contracts,
+    get_gesture_contract,
+)
+from services.gesture.push_runtime import (
+    PushGestureState,
+    detect_push_gesture,
+    is_click_pose_candidate,
+)
 
 __all__ = [
     "GestureContract",

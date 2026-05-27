@@ -45,7 +45,11 @@ from services.gesture.detection import (
     extract_temporal_gesture_window,
     select_best_gesture_candidate,
 )
-from services.gesture.push_runtime import PushGestureState, detect_push_gesture, is_click_pose_candidate
+from services.gesture.push_runtime import (
+    PushGestureState,
+    detect_push_gesture,
+    is_click_pose_candidate,
+)
 from services.gesture.sequence_features import is_sequence_supported_gesture
 from services.gesture.sequence_matcher import GestureSequenceMatcher
 from services.gesture.tracking import (
@@ -63,8 +67,7 @@ from services.gesture.tracking import (
     extract_hand_pose_features,
     smooth_point,
 )
-from services.input.orchestrator import InputOrchestrator
-
+from services.input.orchestrator import InputOrchestrator, input_orchestrator
 
 logger = logging.getLogger(__name__)
 
@@ -210,12 +213,16 @@ class TrajectoryLifecycleManager:
             self.active_phase_samples[-1] = active_phase
 
     def average_hand_size(self) -> float | None:
-        available_sizes = [value for value in self.hand_size_samples if value is not None]
+        available_sizes = [
+            value for value in self.hand_size_samples if value is not None
+        ]
         if not available_sizes:
             return None
         return mean(available_sizes)
 
-    def copy_motion_snapshot(self) -> tuple[list[tuple[float, float]], list[float], float | None]:
+    def copy_motion_snapshot(
+        self,
+    ) -> tuple[list[tuple[float, float]], list[float], float | None]:
         return (
             list(self.trajectory),
             list(self.trajectory_timestamps),
@@ -234,7 +241,11 @@ class TrajectoryLifecycleManager:
         return list(self.active_phase_samples)
 
     def latest_two_hand_distance(self) -> float | None:
-        return self.two_hand_distance_history[-1][1] if self.two_hand_distance_history else None
+        return (
+            self.two_hand_distance_history[-1][1]
+            if self.two_hand_distance_history
+            else None
+        )
 
     def clear_two_hand_history(self) -> None:
         self.two_hand_distance_history = []
@@ -242,7 +253,9 @@ class TrajectoryLifecycleManager:
     def copy_two_hand_history(self) -> list[tuple[float, float]]:
         return list(self.two_hand_distance_history)
 
-    def append_two_hand_distance(self, observed_at: float, distance: float, max_points: int) -> list[tuple[float, float]]:
+    def append_two_hand_distance(
+        self, observed_at: float, distance: float, max_points: int
+    ) -> list[tuple[float, float]]:
         self.two_hand_distance_history.append((observed_at, distance))
         while len(self.two_hand_distance_history) > max_points:
             self.two_hand_distance_history.pop(0)
@@ -415,9 +428,7 @@ class GestureService:
                 None,
             )
             sequence_profile_set = (
-                sequence_profile_getter()
-                if callable(sequence_profile_getter)
-                else None
+                sequence_profile_getter() if callable(sequence_profile_getter) else None
             )
         except (OSError, sqlite3.Error, TypeError, ValueError) as exc:
             logger.warning("Could not reload gesture config, using defaults: %s", exc)
@@ -436,7 +447,9 @@ class GestureService:
                 return self.get_status()
 
             if not self.is_available():
-                self.last_error = "Gestenerkennung ist in dieser Umgebung nicht verfuegbar."
+                self.last_error = (
+                    "Gestenerkennung ist in dieser Umgebung nicht verfuegbar."
+                )
                 raise GestureServiceError(
                     "Gestenerkennung ist in dieser Umgebung nicht verfuegbar.",
                     status_code=503,
@@ -451,12 +464,16 @@ class GestureService:
 
             self.reload_config()
             self._reset_runtime_state()
-            resolved_camera_index = cast(int | None, getattr(adapter, "camera_index", camera_index))
+            resolved_camera_index = cast(
+                int | None, getattr(adapter, "camera_index", camera_index)
+            )
             if resolved_camera_index is None:
                 resolved_camera_index = camera_index
             self._adapter = adapter
             self.camera_index = resolved_camera_index
-            self.camera_name = cast(str | None, getattr(adapter, "camera_name", None)) or self._resolve_camera_name(resolved_camera_index)
+            self.camera_name = cast(
+                str | None, getattr(adapter, "camera_name", None)
+            ) or self._resolve_camera_name(resolved_camera_index)
             self._preferred_camera_index = resolved_camera_index
             self.running = True
             self.last_error = None
@@ -480,9 +497,14 @@ class GestureService:
         if thread is not None:
             thread.join(timeout=settings.GESTURE_STOP_JOIN_TIMEOUT_SECONDS)
             if thread.is_alive():
-                logger.warning("Gesture thread did not stop within %.2f seconds.", settings.GESTURE_STOP_JOIN_TIMEOUT_SECONDS)
+                logger.warning(
+                    "Gesture thread did not stop within %.2f seconds.",
+                    settings.GESTURE_STOP_JOIN_TIMEOUT_SECONDS,
+                )
                 with self._lock:
-                    self.last_error = "Gesten-Thread konnte nicht rechtzeitig beendet werden."
+                    self.last_error = (
+                        "Gesten-Thread konnte nicht rechtzeitig beendet werden."
+                    )
 
         if adapter is not None:
             try:
@@ -540,11 +562,15 @@ class GestureService:
 
         try:
             repository = self.config_repository_factory()
-            active_profile_getter = getattr(repository, "get_active_command_profile", None)
+            active_profile_getter = getattr(
+                repository, "get_active_command_profile", None
+            )
             if callable(active_profile_getter):
                 active_profile = active_profile_getter()
                 device_preferences = getattr(active_profile, "device_preferences", None)
-                gesture_camera_index = getattr(device_preferences, "gesture_camera_index", None)
+                gesture_camera_index = getattr(
+                    device_preferences, "gesture_camera_index", None
+                )
                 if isinstance(gesture_camera_index, int):
                     return gesture_camera_index
         except (AttributeError, OSError, sqlite3.Error, TypeError, ValueError):
@@ -560,7 +586,13 @@ class GestureService:
             captured_at = self.latest_frame_captured_at
             frame_age_ms = None
             if captured_at is not None:
-                frame_age_ms = max(0, int((datetime.now(timezone.utc) - captured_at).total_seconds() * 1000))
+                frame_age_ms = max(
+                    0,
+                    int(
+                        (datetime.now(timezone.utc) - captured_at).total_seconds()
+                        * 1000
+                    ),
+                )
 
             return {
                 "image": self.latest_frame_data_url,
@@ -584,7 +616,9 @@ class GestureService:
                 trimmed_tail_ms=trimmed_tail_ms,
             )
 
-    def cancel_calibration_take_capture(self, session_id: str | None = None, take_id: str | None = None) -> None:
+    def cancel_calibration_take_capture(
+        self, session_id: str | None = None, take_id: str | None = None
+    ) -> None:
         with self._lock:
             active_capture = self._active_calibration_capture
             if active_capture is None:
@@ -604,15 +638,24 @@ class GestureService:
     ) -> tuple[CalibrationCollectedSample, CalibrationAdvisoryRecognition | None]:
         with self._lock:
             active_capture = self._active_calibration_capture
-            if active_capture is None or active_capture.session_id != session_id or active_capture.take_id != take_id:
-                raise GestureServiceError("Kein aktiver Kalibrierungs-Take vorhanden.", status_code=409)
+            if (
+                active_capture is None
+                or active_capture.session_id != session_id
+                or active_capture.take_id != take_id
+            ):
+                raise GestureServiceError(
+                    "Kein aktiver Kalibrierungs-Take vorhanden.", status_code=409
+                )
             frames = list(active_capture.frames)
             trimmed_tail_ms = active_capture.trimmed_tail_ms
             self._active_calibration_capture = None
 
         trimmed_frames = self._trim_calibration_frames(frames, trimmed_tail_ms)
         if not trimmed_frames:
-            raise GestureServiceError("Nach dem serverseitigen Tail-Trim blieb kein verwertbarer Take uebrig.", status_code=422)
+            raise GestureServiceError(
+                "Nach dem serverseitigen Tail-Trim blieb kein verwertbarer Take uebrig.",
+                status_code=422,
+            )
 
         return self._build_source_of_truth_take_sample(
             target_id=target_id,
@@ -648,7 +691,9 @@ class GestureService:
                 palm_point = landmark_map.get("wrist")
                 tip_distance = None
                 if tip_point is not None and palm_point is not None:
-                    tip_distance = math.hypot(tip_point[0] - palm_point[0], tip_point[1] - palm_point[1])
+                    tip_distance = math.hypot(
+                        tip_point[0] - palm_point[0], tip_point[1] - palm_point[1]
+                    )
                 finger_states[finger_name] = GestureFingerStateSnapshot(
                     extended_score=finger_state.extended_score,
                     curled_score=finger_state.curled_score,
@@ -667,13 +712,31 @@ class GestureService:
                     point=observation.point,
                     hand_size=observation.hand_size,
                     hand=observation.hand,
-                    hand_count=len(observation.hands) if observation.hands else (1 if observation.point is not None else 0),
+                    hand_count=(
+                        len(observation.hands)
+                        if observation.hands
+                        else (1 if observation.point is not None else 0)
+                    ),
                     tracking_source=observation.tracking_source,
                     active_phase=analysis.active_phase,
-                    center_distance=pose_features.center_distance if pose_features is not None else None,
-                    hand_openness=pose_features.hand_openness if pose_features is not None else None,
-                    index_extension_ratio=pose_features.index_extension_ratio if pose_features is not None else None,
-                    push_depth=pose_features.push_depth if pose_features is not None else None,
+                    center_distance=(
+                        pose_features.center_distance
+                        if pose_features is not None
+                        else None
+                    ),
+                    hand_openness=(
+                        pose_features.hand_openness
+                        if pose_features is not None
+                        else None
+                    ),
+                    index_extension_ratio=(
+                        pose_features.index_extension_ratio
+                        if pose_features is not None
+                        else None
+                    ),
+                    push_depth=(
+                        pose_features.push_depth if pose_features is not None else None
+                    ),
                     dominant_hand_pose=analysis.dominant_hand_pose,
                     finger_states=finger_states,
                     distance_value=distance_value,
@@ -707,7 +770,9 @@ class GestureService:
 
         points = [frame.point for frame in frames if frame.point is not None]
         trajectory = [point for point in points if point is not None]
-        hand_sizes = [frame.hand_size for frame in frames if frame.hand_size is not None]
+        hand_sizes = [
+            frame.hand_size for frame in frames if frame.hand_size is not None
+        ]
         hand_size = mean(hand_sizes) if hand_sizes else None
         hand_size_scale = compute_hand_size_scale(
             hand_size=hand_size,
@@ -715,13 +780,19 @@ class GestureService:
             hand_size_scale_min=active_config.hand_size_scale_min,
             hand_size_scale_max=active_config.hand_size_scale_max,
         )
-        duration_seconds = max(0.0, frames[-1].observed_at - frames[0].observed_at) if len(frames) >= 2 else 0.0
+        duration_seconds = (
+            max(0.0, frames[-1].observed_at - frames[0].observed_at)
+            if len(frames) >= 2
+            else 0.0
+        )
 
         trajectory_summary = None
         if trajectory:
             features = extract_gesture_features(
                 trajectory=trajectory,
-                min_detection_points=max(2, min(active_config.min_detection_points, len(trajectory))),
+                min_detection_points=max(
+                    2, min(active_config.min_detection_points, len(trajectory))
+                ),
                 hand_size=hand_size,
                 hand_size_reference=active_config.hand_size_reference,
                 hand_size_scale_min=active_config.hand_size_scale_min,
@@ -739,10 +810,22 @@ class GestureService:
                     total_sweep=features.total_sweep,
                 )
 
-        push_depths = [frame.push_depth for frame in frames if frame.push_depth is not None]
-        center_distances = [frame.center_distance for frame in frames if frame.center_distance is not None]
-        index_extension_ratios = [frame.index_extension_ratio for frame in frames if frame.index_extension_ratio is not None]
-        distance_values = [frame.distance_value for frame in frames if frame.distance_value is not None]
+        push_depths = [
+            frame.push_depth for frame in frames if frame.push_depth is not None
+        ]
+        center_distances = [
+            frame.center_distance
+            for frame in frames
+            if frame.center_distance is not None
+        ]
+        index_extension_ratios = [
+            frame.index_extension_ratio
+            for frame in frames
+            if frame.index_extension_ratio is not None
+        ]
+        distance_values = [
+            frame.distance_value for frame in frames if frame.distance_value is not None
+        ]
 
         push_metrics = None
         if target_id in {"push_click_short", "push_click_long"}:
@@ -750,7 +833,9 @@ class GestureService:
                 pose_valid=bool(push_depths or index_extension_ratios),
                 forward_depth=max(push_depths) if push_depths else 0.0,
                 release_depth=push_depths[-1] if push_depths else 0.0,
-                hold_duration_seconds=duration_seconds if target_id == "push_click_long" else None,
+                hold_duration_seconds=(
+                    duration_seconds if target_id == "push_click_long" else None
+                ),
                 max_depth=max(push_depths) if push_depths else None,
             )
 
@@ -765,12 +850,26 @@ class GestureService:
 
         advisory_recognition = self._select_advisory_recognition(frames)
         most_common_hand = self._most_common_non_null(frame.hand for frame in frames)
-        tracking_source = self._most_common_non_null(frame.tracking_source for frame in frames)
-        last_frame_with_pose = next((frame for frame in reversed(frames) if frame.center_distance is not None or frame.push_depth is not None), None)
+        tracking_source = self._most_common_non_null(
+            frame.tracking_source for frame in frames
+        )
+        last_frame_with_pose = next(
+            (
+                frame
+                for frame in reversed(frames)
+                if frame.center_distance is not None or frame.push_depth is not None
+            ),
+            None,
+        )
 
         payload = GestureCalibrationSamplePayload(
             gesture=cast(Any, target_id),
-            confidence=advisory_recognition.confidence if advisory_recognition is not None and advisory_recognition.confidence is not None else 0.0,
+            confidence=(
+                advisory_recognition.confidence
+                if advisory_recognition is not None
+                and advisory_recognition.confidence is not None
+                else 0.0
+            ),
             tracking_source=tracking_source,
             hand=most_common_hand,
             duration_seconds=duration_seconds,
@@ -783,7 +882,8 @@ class GestureService:
                 GesturePoseSnapshot(
                     center_distance=last_frame_with_pose.center_distance or 0.0,
                     hand_openness=last_frame_with_pose.hand_openness or 0.0,
-                    index_extension_ratio=last_frame_with_pose.index_extension_ratio or 0.0,
+                    index_extension_ratio=last_frame_with_pose.index_extension_ratio
+                    or 0.0,
                     push_depth=last_frame_with_pose.push_depth or 0.0,
                     dominant_hand_pose=last_frame_with_pose.dominant_hand_pose,
                     finger_states=last_frame_with_pose.finger_states,
@@ -797,10 +897,20 @@ class GestureService:
                 hand_size=hand_size,
             ),
             feature_windows={
-                "recognized_target": advisory_recognition.recognized_target_id if advisory_recognition is not None else None,
-                "recognized_confidence": advisory_recognition.confidence if advisory_recognition is not None else None,
+                "recognized_target": (
+                    advisory_recognition.recognized_target_id
+                    if advisory_recognition is not None
+                    else None
+                ),
+                "recognized_confidence": (
+                    advisory_recognition.confidence
+                    if advisory_recognition is not None
+                    else None
+                ),
                 "center_distance": mean(center_distances) if center_distances else 0.0,
-                "index_extension_ratio": mean(index_extension_ratios) if index_extension_ratios else 0.0,
+                "index_extension_ratio": (
+                    mean(index_extension_ratios) if index_extension_ratios else 0.0
+                ),
             },
         )
 
@@ -821,7 +931,9 @@ class GestureService:
     ) -> int:
         stable_phases = {"preparing", "holding", "committing"}
         for index, phase in enumerate(active_phases):
-            if has_points is not None and (index >= len(has_points) or not has_points[index]):
+            if has_points is not None and (
+                index >= len(has_points) or not has_points[index]
+            ):
                 continue
             if phase in stable_phases:
                 return index
@@ -875,16 +987,26 @@ class GestureService:
                     y=local_y,
                     velocity_x=velocity_x,
                     velocity_y=velocity_y,
-                    hand_openness=hand_openness[index] if hand_openness is not None and index < len(hand_openness) else None,
-                    index_extension_ratio=(
-                        index_extension_ratios[index]
-                        if index_extension_ratios is not None and index < len(index_extension_ratios)
+                    hand_openness=(
+                        hand_openness[index]
+                        if hand_openness is not None and index < len(hand_openness)
                         else None
                     ),
-                    push_depth=push_depths[index] if push_depths is not None and index < len(push_depths) else None,
+                    index_extension_ratio=(
+                        index_extension_ratios[index]
+                        if index_extension_ratios is not None
+                        and index < len(index_extension_ratios)
+                        else None
+                    ),
+                    push_depth=(
+                        push_depths[index]
+                        if push_depths is not None and index < len(push_depths)
+                        else None
+                    ),
                     center_distance=(
                         center_distances[index]
-                        if center_distances is not None and index < len(center_distances)
+                        if center_distances is not None
+                        and index < len(center_distances)
                         else None
                     ),
                     distance_value=(
@@ -892,7 +1014,11 @@ class GestureService:
                         if distance_values is not None and index < len(distance_values)
                         else None
                     ),
-                    active_phase=active_phases[index] if active_phases is not None and index < len(active_phases) else None,
+                    active_phase=(
+                        active_phases[index]
+                        if active_phases is not None and index < len(active_phases)
+                        else None
+                    ),
                 )
             )
 
@@ -926,7 +1052,9 @@ class GestureService:
             anchor_index = indexed_frames[0][0]
 
         points = [frame.point for _, frame in trimmed if frame.point is not None]
-        timestamps = [frame.observed_at for _, frame in trimmed if frame.point is not None]
+        timestamps = [
+            frame.observed_at for _, frame in trimmed if frame.point is not None
+        ]
         sequence_frames = [frame for _, frame in trimmed if frame.point is not None]
         if not points or not timestamps:
             return None
@@ -937,7 +1065,9 @@ class GestureService:
             timestamps=timestamps,
             scale=scale,
             hand_openness=[frame.hand_openness for frame in sequence_frames],
-            index_extension_ratios=[frame.index_extension_ratio for frame in sequence_frames],
+            index_extension_ratios=[
+                frame.index_extension_ratio for frame in sequence_frames
+            ],
             push_depths=[frame.push_depth for frame in sequence_frames],
             center_distances=[frame.center_distance for frame in sequence_frames],
             distance_values=[frame.distance_value for frame in sequence_frames],
@@ -978,19 +1108,23 @@ class GestureService:
 
         trimmed_trajectory = trajectory[anchor_index:]
         trimmed_timestamps = trajectory_timestamps[anchor_index:]
-        trimmed_hand_openness = hand_openness[anchor_index:] if hand_openness is not None else None
+        trimmed_hand_openness = (
+            hand_openness[anchor_index:] if hand_openness is not None else None
+        )
         trimmed_index_extension_ratios = (
             index_extension_ratios[anchor_index:]
             if index_extension_ratios is not None
             else None
         )
-        trimmed_push_depths = push_depths[anchor_index:] if push_depths is not None else None
-        trimmed_center_distances = (
-            center_distances[anchor_index:]
-            if center_distances is not None
-            else None
+        trimmed_push_depths = (
+            push_depths[anchor_index:] if push_depths is not None else None
         )
-        trimmed_active_phases = active_phases[anchor_index:] if active_phases is not None else None
+        trimmed_center_distances = (
+            center_distances[anchor_index:] if center_distances is not None else None
+        )
+        trimmed_active_phases = (
+            active_phases[anchor_index:] if active_phases is not None else None
+        )
         if not trimmed_trajectory or not trimmed_timestamps:
             return None
 
@@ -1017,7 +1151,9 @@ class GestureService:
             frames=frames_payload,
         )
 
-    def _slice_runtime_sequence_channels(self, point_count: int) -> dict[str, list[float | None]]:
+    def _slice_runtime_sequence_channels(
+        self, point_count: int
+    ) -> dict[str, list[float | None]]:
         with self._lock:
             channel_snapshot = self._lifecycle.copy_sequence_channel_snapshot()
         if point_count <= 0:
@@ -1027,7 +1163,9 @@ class GestureService:
             for name, values in channel_snapshot.items()
         }
 
-    def _slice_runtime_sequence_active_phases(self, point_count: int) -> list[str | None]:
+    def _slice_runtime_sequence_active_phases(
+        self, point_count: int
+    ) -> list[str | None]:
         with self._lock:
             active_phase_snapshot = self._lifecycle.copy_active_phase_snapshot()
         if point_count <= 0:
@@ -1060,7 +1198,10 @@ class GestureService:
         if (
             not candidate_gestures
             or sequence_profile_set is None
-            or (not active_config.sequence_shadow_mode and not active_config.sequence_matching_enabled)
+            or (
+                not active_config.sequence_shadow_mode
+                and not active_config.sequence_matching_enabled
+            )
         ):
             return {}, {}, {}, {}
 
@@ -1091,7 +1232,9 @@ class GestureService:
         )
 
     @staticmethod
-    def _most_common_non_null(values: list[str | None] | tuple[str | None, ...] | Any) -> str | None:
+    def _most_common_non_null(
+        values: list[str | None] | tuple[str | None, ...] | Any,
+    ) -> str | None:
         counter = Counter(value for value in values if value is not None)
         if not counter:
             return None
@@ -1101,7 +1244,9 @@ class GestureService:
     def _select_advisory_recognition(
         frames: list[CalibrationCaptureFrame],
     ) -> CalibrationAdvisoryRecognition | None:
-        recognitions = [frame.recognition for frame in frames if frame.recognition is not None]
+        recognitions = [
+            frame.recognition for frame in frames if frame.recognition is not None
+        ]
         if not recognitions:
             return None
         best = max(recognitions, key=lambda recognition: recognition.confidence)
@@ -1116,11 +1261,17 @@ class GestureService:
         frames: list[CalibrationCaptureFrame],
         trajectory: list[tuple[float, float]],
     ) -> GestureTemporalWindowSummary:
-        duration_seconds = max(0.0, frames[-1].observed_at - frames[0].observed_at) if len(frames) >= 2 else 0.0
+        duration_seconds = (
+            max(0.0, frames[-1].observed_at - frames[0].observed_at)
+            if len(frames) >= 2
+            else 0.0
+        )
         avg_velocity_x = 0.0
         avg_velocity_y = 0.0
         peak_speed = 0.0
-        point_timestamps = [frame.observed_at for frame in frames if frame.point is not None]
+        point_timestamps = [
+            frame.observed_at for frame in frames if frame.point is not None
+        ]
         if len(trajectory) >= 2 and len(point_timestamps) >= 2 and duration_seconds > 0:
             avg_velocity_x = (trajectory[-1][0] - trajectory[0][0]) / duration_seconds
             avg_velocity_y = (trajectory[-1][1] - trajectory[0][1]) / duration_seconds
@@ -1130,8 +1281,14 @@ class GestureService:
                 dt = max(1e-6, point_timestamps[index] - point_timestamps[index - 1])
                 peak_speed = max(peak_speed, math.hypot(dx, dy) / dt)
         active_phase = frames[-1].active_phase if frames else "recording"
-        distance_values = [frame.distance_value for frame in frames if frame.distance_value is not None]
-        delta_distance = distance_values[-1] - distance_values[0] if len(distance_values) >= 2 else None
+        distance_values = [
+            frame.distance_value for frame in frames if frame.distance_value is not None
+        ]
+        delta_distance = (
+            distance_values[-1] - distance_values[0]
+            if len(distance_values) >= 2
+            else None
+        )
         return GestureTemporalWindowSummary(
             duration_seconds=duration_seconds,
             frame_count=len(frames),
@@ -1151,7 +1308,9 @@ class GestureService:
     ) -> dict[str, int | list[GestureName] | float | str | None]:
         if not self.is_available():
             with self._lock:
-                self.last_error = "Gestenerkennung ist in dieser Umgebung nicht verfuegbar."
+                self.last_error = (
+                    "Gestenerkennung ist in dieser Umgebung nicht verfuegbar."
+                )
             raise GestureServiceError(
                 "Gestenerkennung ist in dieser Umgebung nicht verfuegbar.",
                 status_code=503,
@@ -1204,26 +1363,40 @@ class GestureService:
                     continue
 
                 self._update_preview(observation.preview_bytes)
-                observed_at = observation.captured_at if observation.captured_at is not None else time.monotonic()
+                observed_at = (
+                    observation.captured_at
+                    if observation.captured_at is not None
+                    else time.monotonic()
+                )
 
                 if observation.point is None:
                     with self._lock:
                         pending_gesture = self._pending_gesture
                         push_state = self._push_state
-                        trajectory_snapshot, trajectory_timestamps_snapshot, hand_size_snapshot = self._lifecycle.copy_motion_snapshot()
+                        (
+                            trajectory_snapshot,
+                            trajectory_timestamps_snapshot,
+                            hand_size_snapshot,
+                        ) = self._lifecycle.copy_motion_snapshot()
                         last_detectable_observation = self._last_detectable_observation
                     if observation.captured_at is None:
                         observed_at = (
                             pending_gesture.last_seen_at
                             if pending_gesture is not None
-                            else push_state.last_seen_at
-                            if push_state is not None
-                            else trajectory_timestamps_snapshot[-1]
-                            if trajectory_timestamps_snapshot
-                            else observed_at
+                            else (
+                                push_state.last_seen_at
+                                if push_state is not None
+                                else (
+                                    trajectory_timestamps_snapshot[-1]
+                                    if trajectory_timestamps_snapshot
+                                    else observed_at
+                                )
+                            )
                         )
                     detection = self._flush_pending_gesture(observed_at)
-                    if detection is not None and self._cooldown_elapsed(detection.gesture):
+                    if detection is not None and self._cooldown_elapsed(
+                        detection.gesture
+                    ):
                         self._publish_runtime_detection(
                             detection=detection,
                             observation=last_detectable_observation,
@@ -1253,7 +1426,11 @@ class GestureService:
                         smoothing_alpha=active_config.smoothing_alpha,
                         max_points=active_config.max_trajectory_points,
                     )
-                    trajectory_snapshot, trajectory_timestamps_snapshot, hand_size_snapshot = self._lifecycle.copy_motion_snapshot()
+                    (
+                        trajectory_snapshot,
+                        trajectory_timestamps_snapshot,
+                        hand_size_snapshot,
+                    ) = self._lifecycle.copy_motion_snapshot()
 
                 if recorded_point is None:
                     time.sleep(settings.GESTURE_IDLE_SLEEP_SECONDS)
@@ -1281,7 +1458,9 @@ class GestureService:
                     self.last_dominant_hand_pose = analysis.dominant_hand_pose
                     self.last_primitive_hits = dict(analysis.primitive_hits)
 
-                detection = self._advance_pending_gesture(analysis=analysis, observed_at=observed_at)
+                detection = self._advance_pending_gesture(
+                    analysis=analysis, observed_at=observed_at
+                )
                 try:
                     self._append_active_calibration_capture_frame(
                         observation=observation,
@@ -1290,7 +1469,10 @@ class GestureService:
                         observed_at=observed_at,
                     )
                 except (AttributeError, KeyError, TypeError, ValueError) as exc:
-                    logger.warning("Calibration capture frame append failed, skipping frame: %s", exc)
+                    logger.warning(
+                        "Calibration capture frame append failed, skipping frame: %s",
+                        exc,
+                    )
                 if detection is not None and self._cooldown_elapsed(detection.gesture):
                     self._publish_runtime_detection(
                         detection=detection,
@@ -1312,7 +1494,9 @@ class GestureService:
                 try:
                     adapter_to_close.close()
                 except (GestureAdapterError, OSError, RuntimeError, ValueError) as exc:
-                    logger.warning("Gesture adapter close failed after runtime loop exit: %s", exc)
+                    logger.warning(
+                        "Gesture adapter close failed after runtime loop exit: %s", exc
+                    )
 
     def _publish_runtime_detection(
         self,
@@ -1359,7 +1543,9 @@ class GestureService:
                 hand=hand,
             )
         self._reset_calibration_motion_window(
-            observed_at=trajectory_timestamps[-1] if trajectory_timestamps else time.monotonic(),
+            observed_at=(
+                trajectory_timestamps[-1] if trajectory_timestamps else time.monotonic()
+            ),
         )
 
     def _advance_pending_gesture(
@@ -1373,14 +1559,28 @@ class GestureService:
 
         detection = analysis.detection
         settled_phase = analysis.active_phase == "releasing"
-        stable_hold = analysis.active_phase == "holding" and detection is not None and detection.gesture == "push_click_long"
+        stable_hold = (
+            analysis.active_phase == "holding"
+            and detection is not None
+            and detection.gesture == "push_click_long"
+        )
 
         if detection is None:
             pending = self._pending_gesture
             if pending is None:
                 return None
-            keep_pending_during_commit = pending.detection.gesture in {"zoom_out_hands", "zoom_in_hands"}
-            if (analysis.active_phase == "committing" and not keep_pending_during_commit) or observed_at - pending.last_seen_at > active_config.pending_timeout_seconds:
+            keep_pending_during_commit = pending.detection.gesture in {
+                "zoom_out_hands",
+                "zoom_in_hands",
+            }
+            if (
+                (
+                    analysis.active_phase == "committing"
+                    and not keep_pending_during_commit
+                )
+                or observed_at - pending.last_seen_at
+                > active_config.pending_timeout_seconds
+            ):
                 self._pending_gesture = None
             return None
 
@@ -1403,15 +1603,24 @@ class GestureService:
             pending.settled_at = None
             return None
 
-        finalize_delay = active_config.pending_long_finalize_seconds if detection.gesture == "push_click_long" else active_config.pending_finalize_seconds
-        if pending.settled_at is not None and observed_at - pending.settled_at >= finalize_delay:
+        finalize_delay = (
+            active_config.pending_long_finalize_seconds
+            if detection.gesture == "push_click_long"
+            else active_config.pending_finalize_seconds
+        )
+        if (
+            pending.settled_at is not None
+            and observed_at - pending.settled_at >= finalize_delay
+        ):
             finalized = pending.detection
             self._pending_gesture = None
             return finalized
 
         return None
 
-    def _flush_pending_gesture(self, observed_at: float) -> GestureDetectionResult | None:
+    def _flush_pending_gesture(
+        self, observed_at: float
+    ) -> GestureDetectionResult | None:
         with self._lock:
             pending_timeout_seconds = self._active_config.pending_timeout_seconds
 
@@ -1549,10 +1758,20 @@ class GestureService:
             trajectory_timestamps=trajectory_timestamps,
             observed_at=observed_at,
         )
-        trajectory_window_timestamps = trajectory_timestamps[-len(trajectory_window):] if trajectory_window else []
-        hand_count = len(observation.hands) if observation.hands else (1 if observation.point is not None else 0)
+        trajectory_window_timestamps = (
+            trajectory_timestamps[-len(trajectory_window) :]
+            if trajectory_window
+            else []
+        )
+        hand_count = (
+            len(observation.hands)
+            if observation.hands
+            else (1 if observation.point is not None else 0)
+        )
         analysis_trajectory = trajectory if hand_count >= 2 else trajectory_window
-        analysis_timestamps = trajectory_timestamps if hand_count >= 2 else trajectory_window_timestamps
+        analysis_timestamps = (
+            trajectory_timestamps if hand_count >= 2 else trajectory_window_timestamps
+        )
         candidates.extend(
             self._collect_runtime_single_hand_candidates(
                 observation=observation,
@@ -1565,9 +1784,14 @@ class GestureService:
         with self._lock:
             active_config = self._active_config
             last_seen = max(self.last_gesture_time_by_name.values(), default=0.0)
-            cooldown_active = bool(self.last_gesture_time_by_name) and time.time() - last_seen <= active_config.cooldown_seconds
+            cooldown_active = (
+                bool(self.last_gesture_time_by_name)
+                and time.time() - last_seen <= active_config.cooldown_seconds
+            )
 
-        resolved_pose_features = pose_features or extract_hand_pose_features(observation)
+        resolved_pose_features = pose_features or extract_hand_pose_features(
+            observation
+        )
         sequence_scores: dict[str, float] = {}
         sequence_distances: dict[str, float] = {}
         sequence_margins: dict[str, float] = {}
@@ -1589,8 +1813,12 @@ class GestureService:
                     trajectory=trajectory_window,
                     trajectory_timestamps=trajectory_window_timestamps,
                     hand_size=hand_size,
-                    sequence_channels=self._slice_runtime_sequence_channels(len(trajectory_window)),
-                    active_phases=self._slice_runtime_sequence_active_phases(len(trajectory_window)),
+                    sequence_channels=self._slice_runtime_sequence_channels(
+                        len(trajectory_window)
+                    ),
+                    active_phases=self._slice_runtime_sequence_active_phases(
+                        len(trajectory_window)
+                    ),
                 )
         return analyze_runtime_gesture(
             candidates=candidates,
@@ -1637,7 +1865,11 @@ class GestureService:
             hand_size=hand_size,
             tracking_source=tracking_source,
         )
-        return max(candidates, key=lambda candidate: candidate.confidence) if candidates else None
+        return (
+            max(candidates, key=lambda candidate: candidate.confidence)
+            if candidates
+            else None
+        )
 
     def _select_runtime_single_hand_trajectory(
         self,
@@ -1682,16 +1914,30 @@ class GestureService:
             extension_ratio_multiplier=active_config.click_pose_extension_ratio_multiplier,
             extension_ratio_floor=active_config.click_pose_extension_ratio_floor,
         )
-        if click_pose_candidate and push_state is not None and push_state.forward_started_at is not None:
+        if (
+            click_pose_candidate
+            and push_state is not None
+            and push_state.forward_started_at is not None
+        ):
             return []
 
         pose_features = extract_hand_pose_features(observation)
         circle_pose_allowed = True
         swipe_pose_blocked = False
         if pose_features is not None:
-            circle_pose_allowed = pose_features.hand_openness < active_config.runtime_circle_pose_max_openness
-            index_primary_like = pose_features.index_extension_ratio >= active_config.push_pose_extension_ratio
-            swipe_pose_blocked = pose_features.hand_openness < active_config.runtime_swipe_block_max_openness and not index_primary_like
+            circle_pose_allowed = (
+                pose_features.hand_openness
+                < active_config.runtime_circle_pose_max_openness
+            )
+            index_primary_like = (
+                pose_features.index_extension_ratio
+                >= active_config.push_pose_extension_ratio
+            )
+            swipe_pose_blocked = (
+                pose_features.hand_openness
+                < active_config.runtime_swipe_block_max_openness
+                and not index_primary_like
+            )
 
         candidates: list[GestureDetectionResult] = []
 
@@ -1700,10 +1946,17 @@ class GestureService:
             hand_size=hand_size,
             tracking_source=tracking_source,
         )
-        if primary_detection is not None and primary_detection.gesture == "circle" and circle_pose_allowed:
+        if (
+            primary_detection is not None
+            and primary_detection.gesture == "circle"
+            and circle_pose_allowed
+        ):
             candidates.append(primary_detection)
 
-        if self._should_hold_swipe_for_circle(trajectory, hand_size) and circle_pose_allowed:
+        if (
+            self._should_hold_swipe_for_circle(trajectory, hand_size)
+            and circle_pose_allowed
+        ):
             return candidates
 
         if swipe_pose_blocked:
@@ -1716,7 +1969,10 @@ class GestureService:
             tracking_source=tracking_source,
             runtime_min_detection_points=runtime_min_detection_points,
         )
-        if horizontal_detection is not None and horizontal_detection.gesture in {"swipe_left", "swipe_right"}:
+        if horizontal_detection is not None and horizontal_detection.gesture in {
+            "swipe_left",
+            "swipe_right",
+        }:
             candidates.append(horizontal_detection)
 
         upward_segment = self._select_runtime_upstroke_segment(trajectory)
@@ -1771,16 +2027,27 @@ class GestureService:
             hand_size_scale_min=active_config.hand_size_scale_min,
             hand_size_scale_max=active_config.hand_size_scale_max,
         )
-        if features is None or features.radius_cv is None or features.total_sweep is None:
+        if (
+            features is None
+            or features.radius_cv is None
+            or features.total_sweep is None
+        ):
             return False
 
         normalized_span_x = features.span_x / max(features.hand_size_scale, 1e-6)
         normalized_span_y = features.span_y / max(features.hand_size_scale, 1e-6)
-        aspect_ratio = min(normalized_span_x, normalized_span_y) / max(normalized_span_x, normalized_span_y, 1e-6)
+        aspect_ratio = min(normalized_span_x, normalized_span_y) / max(
+            normalized_span_x, normalized_span_y, 1e-6
+        )
         return (
-            features.radius_cv <= active_config.circle_radius_cv_max * active_config.runtime_circle_hold_radius_cv_ratio
-            and abs(features.total_sweep) >= active_config.circle_sweep_min * active_config.runtime_circle_hold_sweep_ratio
-            and min(normalized_span_x, normalized_span_y) >= active_config.swipe_min_span
+            features.radius_cv
+            <= active_config.circle_radius_cv_max
+            * active_config.runtime_circle_hold_radius_cv_ratio
+            and abs(features.total_sweep)
+            >= active_config.circle_sweep_min
+            * active_config.runtime_circle_hold_sweep_ratio
+            and min(normalized_span_x, normalized_span_y)
+            >= active_config.swipe_min_span
             and aspect_ratio >= active_config.runtime_circle_hold_min_aspect_ratio
         )
 
@@ -1813,7 +2080,10 @@ class GestureService:
         if len(trajectory) < 4:
             return None
 
-        deltas_x = [trajectory[index + 1][0] - trajectory[index][0] for index in range(len(trajectory) - 1)]
+        deltas_x = [
+            trajectory[index + 1][0] - trajectory[index][0]
+            for index in range(len(trajectory) - 1)
+        ]
         total_dx = trajectory[-1][0] - trajectory[0][0]
         if abs(total_dx) <= 1e-6:
             return None
@@ -1846,7 +2116,10 @@ class GestureService:
         if len(trajectory) < 4:
             return None
 
-        deltas_y = [trajectory[index + 1][1] - trajectory[index][1] for index in range(len(trajectory) - 1)]
+        deltas_y = [
+            trajectory[index + 1][1] - trajectory[index][1]
+            for index in range(len(trajectory) - 1)
+        ]
         upward_run = 0
         start_index: int | None = None
         for index in range(len(deltas_y) - 1, -1, -1):
@@ -1892,7 +2165,10 @@ class GestureService:
         if len(trajectory) < 4:
             return None
 
-        deltas_y = [trajectory[index + 1][1] - trajectory[index][1] for index in range(len(trajectory) - 1)]
+        deltas_y = [
+            trajectory[index + 1][1] - trajectory[index][1]
+            for index in range(len(trajectory) - 1)
+        ]
         downward_run = 0
         start_index: int | None = None
         for index in range(len(deltas_y) - 1, -1, -1):
@@ -1990,7 +2266,10 @@ class GestureService:
         frame_count = len(distance_history)
         zoom_duration = distance_history[-1][0] - distance_history[0][0]
 
-        if start_distance <= active_config.zoom_start_near_distance and delta >= threshold:
+        if (
+            start_distance <= active_config.zoom_start_near_distance
+            and delta >= threshold
+        ):
             return GestureDetectionResult(
                 gesture="zoom_in_hands",
                 confidence=min(1.0, delta / max(threshold, 1e-6)),
@@ -2004,7 +2283,10 @@ class GestureService:
                 },
             )
 
-        if start_distance >= active_config.zoom_start_far_distance and -delta >= threshold:
+        if (
+            start_distance >= active_config.zoom_start_far_distance
+            and -delta >= threshold
+        ):
             return GestureDetectionResult(
                 gesture="zoom_out_hands",
                 confidence=min(1.0, (-delta) / max(threshold, 1e-6)),
@@ -2031,13 +2313,19 @@ class GestureService:
     ) -> CalibrationCollectedSample | None:
         runtime_analysis = self._analyze_runtime_gesture(
             observation=observation,
-            observed_at=trajectory_timestamps[-1] if trajectory_timestamps else time.monotonic(),
+            observed_at=(
+                trajectory_timestamps[-1] if trajectory_timestamps else time.monotonic()
+            ),
             trajectory=trajectory,
             trajectory_timestamps=trajectory_timestamps,
             hand_size=hand_size,
         )
         pose_features = extract_hand_pose_features(observation)
-        hand_count = len(observation.hands) if observation.hands else (1 if observation.point is not None else 0)
+        hand_count = (
+            len(observation.hands)
+            if observation.hands
+            else (1 if observation.point is not None else 0)
+        )
         temporal_window = extract_temporal_gesture_window(
             trajectory=trajectory,
             trajectory_timestamps=trajectory_timestamps,
@@ -2058,7 +2346,13 @@ class GestureService:
         )
         duration_seconds = None
         trajectory_summary = None
-        if detection.gesture in {"swipe_left", "swipe_right", "swipe_up", "swipe_down", "circle"}:
+        if detection.gesture in {
+            "swipe_left",
+            "swipe_right",
+            "swipe_up",
+            "swipe_down",
+            "circle",
+        }:
             features = extract_gesture_features(
                 trajectory=trajectory,
                 min_detection_points=active_config.min_detection_points,
@@ -2090,10 +2384,14 @@ class GestureService:
                 pose_valid=bool(detection.metrics.get("pose_valid", False)),
                 forward_depth=self._metric_float(detection.metrics, "forward_depth"),
                 release_depth=self._metric_float(detection.metrics, "release_depth"),
-                hold_duration_seconds=self._metric_float(detection.metrics, "hold_duration_seconds"),
+                hold_duration_seconds=self._metric_float(
+                    detection.metrics, "hold_duration_seconds"
+                ),
                 max_depth=self._metric_float(detection.metrics, "forward_depth"),
             )
-            duration_seconds = self._metric_float(detection.metrics, "hold_duration_seconds")
+            duration_seconds = self._metric_float(
+                detection.metrics, "hold_duration_seconds"
+            )
 
         zoom_metrics = None
         if detection.gesture in {"zoom_out_hands", "zoom_in_hands"}:
@@ -2161,8 +2459,12 @@ class GestureService:
                     hand_size=hand_size,
                 ),
                 feature_windows={
-                    "index_extension_ratio": self._metric_float(detection.metrics, "index_extension_ratio"),
-                    "center_distance": self._metric_float(detection.metrics, "center_distance"),
+                    "index_extension_ratio": self._metric_float(
+                        detection.metrics, "index_extension_ratio"
+                    ),
+                    "center_distance": self._metric_float(
+                        detection.metrics, "center_distance"
+                    ),
                     "candidate_scores": runtime_analysis.candidate_scores,
                     "primitive_hits": runtime_analysis.primitive_hits,
                     "tracking_quality": runtime_analysis.tracking_quality,
@@ -2171,12 +2473,16 @@ class GestureService:
         )
 
     @staticmethod
-    def _metric_float(metrics: dict[str, float | int | bool | str | None], key: str) -> float:
+    def _metric_float(
+        metrics: dict[str, float | int | bool | str | None], key: str
+    ) -> float:
         value = metrics.get(key)
         return float(value) if isinstance(value, (int, float)) else 0.0
 
     @staticmethod
-    def _metric_int(metrics: dict[str, float | int | bool | str | None], key: str) -> int:
+    def _metric_int(
+        metrics: dict[str, float | int | bool | str | None], key: str
+    ) -> int:
         value = metrics.get(key)
         return int(value) if isinstance(value, (int, float)) else 0
 
@@ -2242,7 +2548,9 @@ class GestureService:
         self.last_error = None
         self.last_gesture_time_by_name = {}
 
-    def _reset_calibration_motion_window(self, observed_at: float | None = None) -> None:
+    def _reset_calibration_motion_window(
+        self, observed_at: float | None = None
+    ) -> None:
         with self._lock:
             grace_seconds = self._active_config.post_fire_grace_seconds
             if observed_at is not None:
@@ -2270,7 +2578,7 @@ class GestureService:
             self._push_state = None
 
 
-gesture_service = GestureService()
+gesture_service = GestureService(input_orchestrator_service=input_orchestrator)
 
 
 __all__ = [

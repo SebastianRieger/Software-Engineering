@@ -19,11 +19,11 @@ from schemas.musical_audio import (
     MusicalAudioStatusCode,
     MusicalAudioTrainingArtifact,
 )
-from services.input.orchestrator import InputOrchestrator
+from services.input.orchestrator import InputOrchestrator, input_orchestrator
 
 try:
     import sounddevice as sd
-except ImportError:  # pragma: no cover - optional runtime dependency
+except (ImportError, OSError):  # pragma: no cover - optional runtime dependency
     sd = None
 
 try:
@@ -112,16 +112,24 @@ class MusicalAudioService:
         repository = self.config_repository_factory()
         try:
             config = repository.get_musical_audio_config()
-            active_profile_getter = getattr(repository, "get_active_command_profile", None)
+            active_profile_getter = getattr(
+                repository, "get_active_command_profile", None
+            )
             active_profile = (
                 cast(CommandProfile | None, active_profile_getter())
                 if callable(active_profile_getter)
                 else None
             )
-            profile_id = active_profile.profile_id if active_profile is not None else "default"
-            artifacts = repository.list_musical_audio_training_artifacts(profile_id=profile_id)
+            profile_id = (
+                active_profile.profile_id if active_profile is not None else "default"
+            )
+            artifacts = repository.list_musical_audio_training_artifacts(
+                profile_id=profile_id
+            )
         except (AttributeError, OSError, TypeError, ValueError) as exc:
-            logger.warning("Could not reload musical audio config, using defaults: %s", exc)
+            logger.warning(
+                "Could not reload musical audio config, using defaults: %s", exc
+            )
             config = MusicalAudioConfig()
             artifacts = []
 
@@ -129,7 +137,9 @@ class MusicalAudioService:
         filtered_artifacts = [artifact for artifact in artifacts if artifact.enabled]
         if config.active_artifact_id:
             filtered_artifacts = [
-                artifact for artifact in filtered_artifacts if artifact.artifact_id == config.active_artifact_id
+                artifact
+                for artifact in filtered_artifacts
+                if artifact.artifact_id == config.active_artifact_id
             ]
 
         with self._lock:
@@ -188,7 +198,11 @@ class MusicalAudioService:
 
         try:
             default_input = sd.default.device[0]
-        except (AttributeError, PORTAUDIO_ERROR, RuntimeError):  # pragma: no cover - backend dependent
+        except (
+            AttributeError,
+            PORTAUDIO_ERROR,
+            RuntimeError,
+        ):  # pragma: no cover - backend dependent
             default_input = None
 
         result: list[dict[str, object]] = []
@@ -203,9 +217,12 @@ class MusicalAudioService:
                     "name": str(device.get("name", f"Input {index}")),
                     "max_input_channels": max_input_channels,
                     "default_samplerate": (
-                        float(device["default_samplerate"]) if device.get("default_samplerate") is not None else None
+                        float(device["default_samplerate"])
+                        if device.get("default_samplerate") is not None
+                        else None
                     ),
-                    "is_default": isinstance(default_input, int) and default_input == index,
+                    "is_default": isinstance(default_input, int)
+                    and default_input == index,
                 }
             )
 
@@ -339,7 +356,11 @@ class MusicalAudioService:
                         continue
 
                     self._process_audio_chunk(chunk)
-        except (PORTAUDIO_ERROR, RuntimeError, ValueError) as exc:  # pragma: no cover - depends on audio hardware
+        except (
+            PORTAUDIO_ERROR,
+            RuntimeError,
+            ValueError,
+        ) as exc:  # pragma: no cover - depends on audio hardware
             logger.exception("Musical audio capture loop failed")
             with self._lock:
                 self._last_error = self._format_runtime_error(exc)
@@ -377,14 +398,23 @@ class MusicalAudioService:
 
         if not artifacts:
             raise MusicalAudioServiceError(
-                f"Aktives Musical-Audio-Artefakt '{config.active_artifact_id}' wurde nicht gefunden oder ist deaktiviert.",
+                (
+                    f"Aktives Musical-Audio-Artefakt '{config.active_artifact_id}' "
+                    "wurde nicht gefunden oder ist deaktiviert."
+                ),
                 status_code=409,
                 error_code="no_active_artifact",
             )
 
-        resolved_device = self._resolve_input_device(device_index if device_index >= 0 else config.device_index)
-        resolved_device_index, resolved_device_name = self._device_identity(resolved_device)
-        resolved_sample_rate = self._resolve_sample_rate(config=config, device=resolved_device)
+        resolved_device = self._resolve_input_device(
+            device_index if device_index >= 0 else config.device_index
+        )
+        resolved_device_index, resolved_device_name = self._device_identity(
+            resolved_device
+        )
+        resolved_sample_rate = self._resolve_sample_rate(
+            config=config, device=resolved_device
+        )
         runtime_config = config.model_copy(
             update={
                 "device_index": resolved_device_index,
@@ -400,7 +430,9 @@ class MusicalAudioService:
             onset_detector=onset_detector,
         )
 
-    def _audio_callback(self, indata, frames, time_info, status) -> None:  # pragma: no cover - callback from audio backend
+    def _audio_callback(
+        self, indata, frames, time_info, status
+    ) -> None:  # pragma: no cover - callback from audio backend
         del frames, time_info
         if status:
             logger.warning("Musical audio stream status: %s", status)
@@ -435,7 +467,11 @@ class MusicalAudioService:
 
         if pitch_detector is not None and onset_detector is not None:
             pitch_hz = float(pitch_detector(chunk)[0]) if chunk.size else 0.0
-            confidence = float(pitch_detector.get_confidence()) if hasattr(pitch_detector, "get_confidence") else None
+            confidence = (
+                float(pitch_detector.get_confidence())
+                if hasattr(pitch_detector, "get_confidence")
+                else None
+            )
             onset_detected = bool(onset_detector(chunk)) if chunk.size else False
         else:
             pitch_hz, confidence = self._estimate_pitch_hz(chunk, config.sample_rate)
@@ -444,12 +480,19 @@ class MusicalAudioService:
         with self._lock:
             self._last_pitch_hz = pitch_hz if pitch_hz > 0 else None
 
-        if pitch_hz <= 0 or (confidence is not None and confidence < config.pitch_confidence_threshold):
+        if pitch_hz <= 0 or (
+            confidence is not None and confidence < config.pitch_confidence_threshold
+        ):
             self._flush_if_idle(now, force=False)
             return
 
         semitone = self._hz_to_semitone(pitch_hz)
-        self._register_pitch_event(semitone=semitone, confidence=confidence, timestamp=now, onset_detected=onset_detected)
+        self._register_pitch_event(
+            semitone=semitone,
+            confidence=confidence,
+            timestamp=now,
+            onset_detected=onset_detected,
+        )
         self._flush_if_idle(now, force=False)
 
     def _register_pitch_event(
@@ -463,14 +506,22 @@ class MusicalAudioService:
         with self._lock:
             self._last_activity_at = timestamp
             if not self._sequence_events:
-                self._sequence_events.append(_DetectedPitchEvent(semitone=semitone, timestamp=timestamp, confidence=confidence))
+                self._sequence_events.append(
+                    _DetectedPitchEvent(
+                        semitone=semitone, timestamp=timestamp, confidence=confidence
+                    )
+                )
                 return
 
             last_event = self._sequence_events[-1]
             if onset_detected or abs(semitone - last_event.semitone) >= 0.75:
                 if timestamp - last_event.timestamp >= 0.08:
                     self._sequence_events.append(
-                        _DetectedPitchEvent(semitone=semitone, timestamp=timestamp, confidence=confidence)
+                        _DetectedPitchEvent(
+                            semitone=semitone,
+                            timestamp=timestamp,
+                            confidence=confidence,
+                        )
                     )
 
     def _flush_if_idle(self, now: float, force: bool) -> None:
@@ -479,8 +530,14 @@ class MusicalAudioService:
             if not self._sequence_events:
                 return
             first_timestamp = self._sequence_events[0].timestamp
-            last_activity = self._last_activity_at or self._sequence_events[-1].timestamp
-            should_flush = force or (now - last_activity >= 0.45) or (now - first_timestamp >= config.max_pattern_window_seconds)
+            last_activity = (
+                self._last_activity_at or self._sequence_events[-1].timestamp
+            )
+            should_flush = (
+                force
+                or (now - last_activity >= 0.45)
+                or (now - first_timestamp >= config.max_pattern_window_seconds)
+            )
             if not should_flush:
                 return
             detected_events = self._sequence_events
@@ -492,7 +549,9 @@ class MusicalAudioService:
 
         self.process_note_events(note_events)
 
-    def _normalize_detected_events(self, detected_events: list[_DetectedPitchEvent]) -> list[MusicalAudioNoteEvent]:
+    def _normalize_detected_events(
+        self, detected_events: list[_DetectedPitchEvent]
+    ) -> list[MusicalAudioNoteEvent]:
         if not detected_events:
             return []
 
@@ -500,13 +559,21 @@ class MusicalAudioService:
         base_time = detected_events[0].timestamp
         normalized: list[MusicalAudioNoteEvent] = []
         for index, event in enumerate(detected_events):
-            next_event = detected_events[index + 1] if index + 1 < len(detected_events) else None
-            duration = (next_event.timestamp - event.timestamp) if next_event is not None else None
+            next_event = (
+                detected_events[index + 1] if index + 1 < len(detected_events) else None
+            )
+            duration = (
+                (next_event.timestamp - event.timestamp)
+                if next_event is not None
+                else None
+            )
             normalized.append(
                 MusicalAudioNoteEvent(
                     relative_pitch_semitones=round(event.semitone - base_pitch, 4),
                     relative_time_seconds=round(event.timestamp - base_time, 4),
-                    duration_seconds=round(duration, 4) if duration is not None else None,
+                    duration_seconds=(
+                        round(duration, 4) if duration is not None else None
+                    ),
                     confidence=event.confidence,
                 )
             )
@@ -522,8 +589,12 @@ class MusicalAudioService:
         if not artifacts:
             return None, None
 
-        candidate_pitch = np.asarray([note.relative_pitch_semitones for note in note_events], dtype=np.double)
-        candidate_timing = np.asarray([note.relative_time_seconds for note in note_events], dtype=np.double)
+        candidate_pitch = np.asarray(
+            [note.relative_pitch_semitones for note in note_events], dtype=np.double
+        )
+        candidate_timing = np.asarray(
+            [note.relative_time_seconds for note in note_events], dtype=np.double
+        )
         best_artifact: MusicalAudioTrainingArtifact | None = None
         best_score: float | None = None
 
@@ -531,12 +602,19 @@ class MusicalAudioService:
             if not artifact.enabled or len(artifact.notes) == 0:
                 continue
 
-            artifact_pitch = np.asarray([note.relative_pitch_semitones for note in artifact.notes], dtype=np.double)
-            artifact_timing = np.asarray([note.relative_time_seconds for note in artifact.notes], dtype=np.double)
+            artifact_pitch = np.asarray(
+                [note.relative_pitch_semitones for note in artifact.notes],
+                dtype=np.double,
+            )
+            artifact_timing = np.asarray(
+                [note.relative_time_seconds for note in artifact.notes], dtype=np.double
+            )
             pitch_distance = self._sequence_distance(candidate_pitch, artifact_pitch)
             timing_distance = 0.0
             if len(candidate_timing) > 1 and len(artifact_timing) > 1:
-                timing_distance = self._sequence_distance(candidate_timing, artifact_timing)
+                timing_distance = self._sequence_distance(
+                    candidate_timing, artifact_timing
+                )
             combined_score = pitch_distance + (timing_distance * 0.5)
 
             if best_score is None or combined_score < best_score:
@@ -568,7 +646,9 @@ class MusicalAudioService:
                 error_code="device_missing",
             )
 
-        default_device = next((device for device in devices if device.get("is_default")), None)
+        default_device = next(
+            (device for device in devices if device.get("is_default")), None
+        )
         if default_device is not None:
             return default_device
 
@@ -585,7 +665,9 @@ class MusicalAudioService:
             )
         return index, str(device.get("name", f"Input {index}"))
 
-    def _resolve_sample_rate(self, *, config: MusicalAudioConfig, device: dict[str, object]) -> int:
+    def _resolve_sample_rate(
+        self, *, config: MusicalAudioConfig, device: dict[str, object]
+    ) -> int:
         resolved_device_index, resolved_device_name = self._device_identity(device)
         candidate_rates: list[int] = [config.sample_rate]
         default_samplerate = device.get("default_samplerate")
@@ -617,7 +699,9 @@ class MusicalAudioService:
             error_code="invalid_sample_rate",
         )
 
-    def _validate_input_settings(self, *, device_index: int, device_name: str, sample_rate: int) -> None:
+    def _validate_input_settings(
+        self, *, device_index: int, device_name: str, sample_rate: int
+    ) -> None:
         sounddevice_module = sd
         if sounddevice_module is None:
             raise MusicalAudioServiceError(
@@ -710,7 +794,11 @@ class MusicalAudioService:
         if not self._active_config.enabled:
             return "configuration_disabled"
         if self._running:
-            return "runtime_running_no_matchable_artifacts" if not self._artifacts else "running"
+            return (
+                "runtime_running_no_matchable_artifacts"
+                if not self._artifacts
+                else "running"
+            )
         if self._last_error_code in {
             "device_missing",
             "invalid_sample_rate",
@@ -726,7 +814,10 @@ class MusicalAudioService:
     @staticmethod
     def _is_permission_error(exc: BaseException) -> bool:
         message = str(exc).lower()
-        return any(keyword in message for keyword in ("permission", "forbidden", "access denied", "not permitted"))
+        return any(
+            keyword in message
+            for keyword in ("permission", "forbidden", "access denied", "not permitted")
+        )
 
     def _runtime_error_code(self, exc: BaseException) -> MusicalAudioStatusCode:
         if self._is_permission_error(exc):
@@ -739,7 +830,9 @@ class MusicalAudioService:
         return str(exc)
 
     @staticmethod
-    def _estimate_pitch_hz(chunk: np.ndarray, sample_rate: int) -> tuple[float, float | None]:
+    def _estimate_pitch_hz(
+        chunk: np.ndarray, sample_rate: int
+    ) -> tuple[float, float | None]:
         if chunk.size < 32:
             return 0.0, None
 
@@ -748,7 +841,7 @@ class MusicalAudioService:
         if energy <= 1e-5:
             return 0.0, None
 
-        correlation = np.correlate(centered, centered, mode='full')[chunk.size - 1:]
+        correlation = np.correlate(centered, centered, mode="full")[chunk.size - 1 :]
         min_lag = max(1, int(sample_rate / 1200))
         max_lag = min(len(correlation) - 1, int(sample_rate / 80))
         if max_lag <= min_lag:
@@ -770,8 +863,8 @@ class MusicalAudioService:
 
     def _provider_name(self) -> str:
         if aubio is not None and dtw is not None:
-            return 'aubio+dtaidistance'
-        return 'unavailable'
+            return "aubio+dtaidistance"
+        return "unavailable"
 
     def _build_unavailable_message(self) -> str:
         missing: list[str] = []
@@ -786,4 +879,6 @@ class MusicalAudioService:
         return "Musical-Audio-Service ist nicht verfuegbar."
 
 
-musical_audio_service = MusicalAudioService()
+musical_audio_service = MusicalAudioService(
+    input_orchestrator_service=input_orchestrator
+)

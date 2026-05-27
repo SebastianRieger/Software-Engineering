@@ -10,11 +10,12 @@ from repositories.config import ConfigRepository
 from schemas.commands import CommandProfile
 from schemas.interactions import InputActionConfig, InputSourceType, UIActionArguments
 
-
 logger = logging.getLogger(__name__)
 
 
-def _model_to_dict(model_or_dict: UIActionArguments | dict[str, Any] | None) -> dict[str, Any]:
+def _model_to_dict(
+    model_or_dict: UIActionArguments | dict[str, Any] | None,
+) -> dict[str, Any]:
     if model_or_dict is None:
         return {}
     if isinstance(model_or_dict, UIActionArguments):
@@ -26,7 +27,9 @@ class InputOrchestrator:
     def __init__(
         self,
         realtime: RealtimeHub | None = None,
-        config_repository_factory: Callable[[], ConfigRepository] | type[ConfigRepository] | None = None,
+        config_repository_factory: (
+            Callable[[], ConfigRepository] | type[ConfigRepository] | None
+        ) = None,
     ) -> None:
         self.realtime = realtime or realtime_hub
         self.config_repository_factory = config_repository_factory or ConfigRepository
@@ -41,10 +44,16 @@ class InputOrchestrator:
         try:
             repository = self.config_repository_factory()
             config = repository.get_input_action_config()
-            active_profile_getter = getattr(repository, "get_active_command_profile", None)
-            active_profile = active_profile_getter() if callable(active_profile_getter) else None
+            active_profile_getter = getattr(
+                repository, "get_active_command_profile", None
+            )
+            active_profile = (
+                active_profile_getter() if callable(active_profile_getter) else None
+            )
         except (AttributeError, OSError, TypeError, ValueError) as exc:
-            logger.warning("Could not reload input action config, using defaults: %s", exc)
+            logger.warning(
+                "Could not reload input action config, using defaults: %s", exc
+            )
             config = InputActionConfig()
             active_profile = None
 
@@ -135,7 +144,9 @@ class InputOrchestrator:
             (
                 item
                 for item in mappings
-                if item.enabled and item.input_source == input_source and item.raw_input == raw_input
+                if item.enabled
+                and item.input_source == input_source
+                and item.raw_input == raw_input
             ),
             None,
         )
@@ -164,10 +175,14 @@ class InputOrchestrator:
         now = time.monotonic()
         with self._lock:
             global_cooldown_seconds = self._input_action_config.global_cooldown_seconds
-            repeat_same_action_window_seconds = self._input_action_config.repeat_same_action_window_seconds
+            repeat_same_action_window_seconds = (
+                self._input_action_config.repeat_same_action_window_seconds
+            )
             source_priorities = dict(self._input_action_config.source_priorities)
             current_priority = source_priorities.get(mapping.input_source, 0)
-            last_same_action_at = self._last_action_time_by_name.get(mapping.action, 0.0)
+            last_same_action_at = self._last_action_time_by_name.get(
+                mapping.action, 0.0
+            )
 
             if now - last_same_action_at < repeat_same_action_window_seconds:
                 self.publish_command_match_evaluated(
@@ -182,7 +197,10 @@ class InputOrchestrator:
                 )
                 return False
 
-            if now - self._last_action_at < global_cooldown_seconds and current_priority <= self._last_action_priority:
+            if (
+                now - self._last_action_at < global_cooldown_seconds
+                and current_priority <= self._last_action_priority
+            ):
                 self.publish_command_match_evaluated(
                     input_source=input_source,
                     raw_input=raw_input,

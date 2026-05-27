@@ -19,7 +19,7 @@ vosk>=0.3.45
 sounddevice>=0.4.7
 
 # Musical audio command recognition
-aubio>=0.4.9
+aubio>=0.4.9; platform_system != "Windows"
 dtaidistance>=2.3.12
 
 # Smart home and IoT

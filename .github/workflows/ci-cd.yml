@@ -4,8 +4,13 @@ on:
   push:
     branches: [main, dev]
   pull_request:
-    branches: [main]
+    branches: [main, dev]
+  workflow_dispatch:
 
+concurrency:
+  group: ci-cd-${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+      
 env:
   PYTHON_VERSION: "3.12"
   NODE_VERSION: "20"
@@ -17,6 +22,7 @@ jobs:
   lint-backend:
     name: "Backend – Lint & Format"
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     steps:
       - uses: actions/checkout@v4
 
@@ -44,6 +50,7 @@ jobs:
   test-backend:
     name: "Backend – Tests & Coverage"
     runs-on: ubuntu-latest
+    timeout-minutes: 20
     steps:
       - uses: actions/checkout@v4
 
@@ -60,10 +67,9 @@ jobs:
         working-directory: Backend
         env:
           DATABASE_URL: "sqlite:///./ci_test.db"
-          # Sensitive Werte kommen aus GitHub Secrets (Settings → Secrets and variables → Actions)
-          SECRET_KEY: ${{ secrets.CI_SECRET_KEY }}
-          MQTT_USERNAME: ${{ secrets.MQTT_USERNAME }}
-          MQTT_PASSWORD: ${{ secrets.MQTT_PASSWORD }}
+          SECRET_KEY: "ci-test-secret-key"
+          MQTT_USERNAME: ""
+          MQTT_PASSWORD: ""
         run: >
           pytest tests/ -v
           --cov=src
@@ -144,7 +150,8 @@ jobs:
   quality-gates:
     name: "Quality Gates"
     runs-on: ubuntu-latest
-    needs: [test-backend, test-frontend]
+    timeout-minutes: 10
+    needs: [lint-backend, test-backend, test-frontend]
     steps:
       - uses: actions/checkout@v4
 
@@ -184,7 +191,7 @@ jobs:
   deploy:
     name: "Deploy – Artefakte ablegen"
     runs-on: ubuntu-latest
-    needs: [test-backend, build-frontend, quality-gates]
+    needs: [lint-backend, test-backend, build-frontend, quality-gates]
     if: github.ref == 'refs/heads/main' && github.event_name == 'push'
     steps:
       - uses: actions/checkout@v4
@@ -202,15 +209,16 @@ jobs:
           path: reports/
 
       - name: Package frontend release
+        id: package_frontend_release
         run: |
           VERSION=$(git rev-parse --short HEAD)
           tar -czf "nimrag-frontend-${VERSION}.tar.gz" -C dist/frontend .
-          echo "RELEASE_VERSION=${VERSION}" >> "$GITHUB_ENV"
+          echo "release_version=${VERSION}" >> "$GITHUB_OUTPUT"
 
       - name: Upload release bundle
         uses: actions/upload-artifact@v4
         with:
-          name: nimrag-release-${{ env.RELEASE_VERSION }}
+          name: nimrag-release-${{ steps.package_frontend_release.outputs.release_version }}
           path: |
             nimrag-frontend-*.tar.gz
             reports/

@@ -32,7 +32,10 @@ from services.gesture.detection import (
     extract_gesture_features,
     select_best_gesture_candidate,
 )
-from services.gesture.push_runtime import compute_push_pose_snapshot, detect_push_gesture
+from services.gesture.push_runtime import (
+    compute_push_pose_snapshot,
+    detect_push_gesture,
+)
 from services.gesture.runtime import GestureService, GestureServiceError
 from services.gesture.tracking import (
     HandPoseFeatures,
@@ -139,7 +142,9 @@ class SequenceAdapter:
             "frames_processed": 6,
             "trajectory_points": len(trajectory),
             "confidence": detection.confidence if detection else None,
-            "tracking_source": detection.tracking_source if detection else tracking_source,
+            "tracking_source": (
+                detection.tracking_source if detection else tracking_source
+            ),
         }
 
 
@@ -258,9 +263,31 @@ def make_sequence_profile_set(gesture: str = "swipe_left") -> GestureSequencePro
                     origin_y=0.5,
                     normalized_by_hand_size=True,
                     frames=[
-                        GestureSequenceFrame(t=0.0, x=0.0, y=0.0, active_phase="preparing"),
-                        GestureSequenceFrame(t=0.1, x=0.75, y=0.0, velocity_x=7.5, velocity_y=0.0, hand_openness=0.3, index_extension_ratio=1.2, center_distance=0.14, active_phase="committing"),
-                        GestureSequenceFrame(t=0.2, x=1.5, y=0.0, velocity_x=7.5, velocity_y=0.0, hand_openness=0.3, index_extension_ratio=1.2, center_distance=0.14, active_phase="releasing"),
+                        GestureSequenceFrame(
+                            t=0.0, x=0.0, y=0.0, active_phase="preparing"
+                        ),
+                        GestureSequenceFrame(
+                            t=0.1,
+                            x=0.75,
+                            y=0.0,
+                            velocity_x=7.5,
+                            velocity_y=0.0,
+                            hand_openness=0.3,
+                            index_extension_ratio=1.2,
+                            center_distance=0.14,
+                            active_phase="committing",
+                        ),
+                        GestureSequenceFrame(
+                            t=0.2,
+                            x=1.5,
+                            y=0.0,
+                            velocity_x=7.5,
+                            velocity_y=0.0,
+                            hand_openness=0.3,
+                            index_extension_ratio=1.2,
+                            center_distance=0.14,
+                            active_phase="releasing",
+                        ),
                     ],
                 ),
             )
@@ -282,7 +309,9 @@ def build_push_landmarks():
     }
 
 
-def make_push_observation(index_tip_depth: float, captured_at: float) -> GestureObservation:
+def make_push_observation(
+    index_tip_depth: float, captured_at: float
+) -> GestureObservation:
     landmarks = build_push_landmarks()
     landmark_depths = {
         "index_mcp": 0.0,
@@ -306,7 +335,9 @@ def make_push_observation(index_tip_depth: float, captured_at: float) -> Gesture
 
 
 def test_extract_hand_pose_features_builds_finger_scores_for_push_like_pose():
-    observation = make_push_observation(index_tip_depth=-0.16, captured_at=time.monotonic())
+    observation = make_push_observation(
+        index_tip_depth=-0.16, captured_at=time.monotonic()
+    )
 
     pose = extract_hand_pose_features(observation)
 
@@ -337,7 +368,9 @@ def test_extract_hand_pose_features_normalizes_missing_point_to_palm_center():
     assert pose.center_distance > 0.0
 
 
-def test_compute_push_pose_snapshot_accepts_depth_assisted_pose_for_off_center_camera_angle(monkeypatch):
+def test_compute_push_pose_snapshot_accepts_depth_assisted_pose_for_off_center_camera_angle(
+    monkeypatch,
+):
     observation = make_push_observation(index_tip_depth=-0.03, captured_at=0.12)
     observation.point = (0.89, 0.5)
 
@@ -663,11 +696,21 @@ def make_two_hand_observation(
     captured_at: float,
 ) -> GestureObservation:
     hands = [
-        TrackedHandObservation(point=left_point, hand="left", hand_size=0.16, tracking_source="palm_center"),
-        TrackedHandObservation(point=right_point, hand="right", hand_size=0.16, tracking_source="palm_center"),
+        TrackedHandObservation(
+            point=left_point, hand="left", hand_size=0.16, tracking_source="palm_center"
+        ),
+        TrackedHandObservation(
+            point=right_point,
+            hand="right",
+            hand_size=0.16,
+            tracking_source="palm_center",
+        ),
     ]
     return GestureObservation(
-        point=((left_point[0] + right_point[0]) / 2, (left_point[1] + right_point[1]) / 2),
+        point=(
+            (left_point[0] + right_point[0]) / 2,
+            (left_point[1] + right_point[1]) / 2,
+        ),
         hand="right",
         hand_size=0.16,
         hands=hands,
@@ -786,8 +829,7 @@ def test_detect_swipe_up():
 def test_detect_circle():
     angles = [index * (2 * math.pi * 1.3 / 31) for index in range(32)]
     trajectory = [
-        (0.5 + 0.08 * math.cos(angle), 0.5 + 0.08 * math.sin(angle))
-        for angle in angles
+        (0.5 + 0.08 * math.cos(angle), 0.5 + 0.08 * math.sin(angle)) for angle in angles
     ]
     gesture = detect_gesture_from_trajectory(
         trajectory=trajectory,
@@ -1039,7 +1081,9 @@ def test_start_and_stop_session():
 
 def test_service_uses_adapter_resolved_camera_index_on_start():
     service = GestureService(
-        adapter_factory=lambda: ResolvedIndexAdapter(observations=[GestureObservation(point=None)]),
+        adapter_factory=lambda: ResolvedIndexAdapter(
+            observations=[GestureObservation(point=None)]
+        ),
         realtime=CapturingRealtimeHub(),
         config_repository_factory=lambda: StaticGestureConfigRepository(),
     )
@@ -1141,11 +1185,15 @@ def test_append_active_calibration_capture_frame_accepts_normalized_landmark_dic
         target_id="swipe_right",
     )
 
-    observation = make_push_observation(index_tip_depth=-0.16, captured_at=time.monotonic())
+    observation = make_push_observation(
+        index_tip_depth=-0.16, captured_at=time.monotonic()
+    )
 
     service._append_active_calibration_capture_frame(
         observation=observation,
-        analysis=SimpleNamespace(active_phase="holding", dominant_hand_pose="pointing", detection=None),
+        analysis=SimpleNamespace(
+            active_phase="holding", dominant_hand_pose="pointing", detection=None
+        ),
         detection=None,
         observed_at=observation.captured_at or time.monotonic(),
     )
@@ -1169,9 +1217,27 @@ def test_stop_calibration_take_capture_builds_local_sequence_artifact():
     )
 
     frames = [
-        GestureObservation(point=(0.50, 0.50), hand="right", hand_size=0.16, tracking_source="palm_center", captured_at=0.0),
-        GestureObservation(point=(0.62, 0.50), hand="right", hand_size=0.16, tracking_source="palm_center", captured_at=0.1),
-        GestureObservation(point=(0.74, 0.50), hand="right", hand_size=0.16, tracking_source="palm_center", captured_at=0.2),
+        GestureObservation(
+            point=(0.50, 0.50),
+            hand="right",
+            hand_size=0.16,
+            tracking_source="palm_center",
+            captured_at=0.0,
+        ),
+        GestureObservation(
+            point=(0.62, 0.50),
+            hand="right",
+            hand_size=0.16,
+            tracking_source="palm_center",
+            captured_at=0.1,
+        ),
+        GestureObservation(
+            point=(0.74, 0.50),
+            hand="right",
+            hand_size=0.16,
+            tracking_source="palm_center",
+            captured_at=0.2,
+        ),
     ]
 
     for index, observation in enumerate(frames):
@@ -1227,12 +1293,42 @@ def test_runtime_sequence_artifact_reanchors_at_first_stable_phase():
 def test_service_retries_transient_adapter_failure_and_recovers():
     hub = CapturingRealtimeHub()
     observations = [
-        GestureObservation(point=(0.2, 0.5), hand="right", hand_size=0.16, tracking_source="palm_center"),
-        GestureObservation(point=(0.3, 0.5), hand="right", hand_size=0.16, tracking_source="palm_center"),
-        GestureObservation(point=(0.4, 0.5), hand="right", hand_size=0.16, tracking_source="palm_center"),
-        GestureObservation(point=(0.5, 0.5), hand="right", hand_size=0.16, tracking_source="palm_center"),
-        GestureObservation(point=(0.6, 0.5), hand="right", hand_size=0.16, tracking_source="palm_center"),
-        GestureObservation(point=(0.8, 0.5), hand="right", hand_size=0.16, tracking_source="palm_center"),
+        GestureObservation(
+            point=(0.2, 0.5),
+            hand="right",
+            hand_size=0.16,
+            tracking_source="palm_center",
+        ),
+        GestureObservation(
+            point=(0.3, 0.5),
+            hand="right",
+            hand_size=0.16,
+            tracking_source="palm_center",
+        ),
+        GestureObservation(
+            point=(0.4, 0.5),
+            hand="right",
+            hand_size=0.16,
+            tracking_source="palm_center",
+        ),
+        GestureObservation(
+            point=(0.5, 0.5),
+            hand="right",
+            hand_size=0.16,
+            tracking_source="palm_center",
+        ),
+        GestureObservation(
+            point=(0.6, 0.5),
+            hand="right",
+            hand_size=0.16,
+            tracking_source="palm_center",
+        ),
+        GestureObservation(
+            point=(0.8, 0.5),
+            hand="right",
+            hand_size=0.16,
+            tracking_source="palm_center",
+        ),
     ]
     adapter = FlakyAdapter(observations=observations, failures_before_success=1)
     service = GestureService(
@@ -1274,7 +1370,10 @@ def test_stop_sets_error_when_thread_does_not_finish_in_time():
     stopped = service.stop()
 
     assert stopped["running"] is False
-    assert stopped["last_error"] == "Gesten-Thread konnte nicht rechtzeitig beendet werden."
+    assert (
+        stopped["last_error"]
+        == "Gesten-Thread konnte nicht rechtzeitig beendet werden."
+    )
 
 
 def test_reload_config_safe_during_detection():
@@ -1291,12 +1390,42 @@ def test_reload_config_safe_during_detection():
     observations = [
         GestureObservation(point=None),
         GestureObservation(point=None),
-        GestureObservation(point=(0.20, 0.5), hand="right", hand_size=0.08, tracking_source="palm_center"),
-        GestureObservation(point=(0.22, 0.5), hand="right", hand_size=0.08, tracking_source="palm_center"),
-        GestureObservation(point=(0.24, 0.5), hand="right", hand_size=0.08, tracking_source="palm_center"),
-        GestureObservation(point=(0.26, 0.5), hand="right", hand_size=0.08, tracking_source="palm_center"),
-        GestureObservation(point=(0.28, 0.5), hand="right", hand_size=0.08, tracking_source="palm_center"),
-        GestureObservation(point=(0.30, 0.5), hand="right", hand_size=0.08, tracking_source="palm_center"),
+        GestureObservation(
+            point=(0.20, 0.5),
+            hand="right",
+            hand_size=0.08,
+            tracking_source="palm_center",
+        ),
+        GestureObservation(
+            point=(0.22, 0.5),
+            hand="right",
+            hand_size=0.08,
+            tracking_source="palm_center",
+        ),
+        GestureObservation(
+            point=(0.24, 0.5),
+            hand="right",
+            hand_size=0.08,
+            tracking_source="palm_center",
+        ),
+        GestureObservation(
+            point=(0.26, 0.5),
+            hand="right",
+            hand_size=0.08,
+            tracking_source="palm_center",
+        ),
+        GestureObservation(
+            point=(0.28, 0.5),
+            hand="right",
+            hand_size=0.08,
+            tracking_source="palm_center",
+        ),
+        GestureObservation(
+            point=(0.30, 0.5),
+            hand="right",
+            hand_size=0.08,
+            tracking_source="palm_center",
+        ),
     ]
     adapter = TimedObservationAdapter(observations=observations, event_after=2)
     service = GestureService(
@@ -1328,12 +1457,16 @@ def test_service_instances_keep_separate_configs():
     left_service = GestureService(
         adapter_factory=lambda: SequenceAdapter(),
         realtime=CapturingRealtimeHub(),
-        config_repository_factory=lambda: StaticGestureConfigRepository(GestureConfig(swipe_threshold=0.11)),
+        config_repository_factory=lambda: StaticGestureConfigRepository(
+            GestureConfig(swipe_threshold=0.11)
+        ),
     )
     right_service = GestureService(
         adapter_factory=lambda: SequenceAdapter(),
         realtime=CapturingRealtimeHub(),
-        config_repository_factory=lambda: StaticGestureConfigRepository(GestureConfig(swipe_threshold=0.25)),
+        config_repository_factory=lambda: StaticGestureConfigRepository(
+            GestureConfig(swipe_threshold=0.25)
+        ),
     )
 
     left_service.reload_config()
@@ -1346,12 +1479,24 @@ def test_service_instances_keep_separate_configs():
 def test_service_detects_and_exposes_confidence_metadata():
     hub = CapturingRealtimeHub()
     observations = [
-        GestureObservation(point=(0.2, 0.5), hand="right", tracking_source="palm_center"),
-        GestureObservation(point=(0.3, 0.5), hand="right", tracking_source="palm_center"),
-        GestureObservation(point=(0.4, 0.5), hand="right", tracking_source="palm_center"),
-        GestureObservation(point=(0.5, 0.5), hand="right", tracking_source="palm_center"),
-        GestureObservation(point=(0.6, 0.5), hand="right", tracking_source="palm_center"),
-        GestureObservation(point=(0.8, 0.5), hand="right", tracking_source="palm_center"),
+        GestureObservation(
+            point=(0.2, 0.5), hand="right", tracking_source="palm_center"
+        ),
+        GestureObservation(
+            point=(0.3, 0.5), hand="right", tracking_source="palm_center"
+        ),
+        GestureObservation(
+            point=(0.4, 0.5), hand="right", tracking_source="palm_center"
+        ),
+        GestureObservation(
+            point=(0.5, 0.5), hand="right", tracking_source="palm_center"
+        ),
+        GestureObservation(
+            point=(0.6, 0.5), hand="right", tracking_source="palm_center"
+        ),
+        GestureObservation(
+            point=(0.8, 0.5), hand="right", tracking_source="palm_center"
+        ),
     ]
     service = GestureService(
         adapter_factory=lambda: SequenceAdapter(observations=observations),
@@ -1373,18 +1518,78 @@ def test_service_detects_and_exposes_confidence_metadata():
 def test_cooldown_prevents_spam_and_emits_event():
     hub = CapturingRealtimeHub()
     observations = [
-        GestureObservation(point=(0.2, 0.5), hand="right", preview_bytes=b"frame", tracking_source="palm_center"),
-        GestureObservation(point=(0.3, 0.5), hand="right", preview_bytes=b"frame", tracking_source="palm_center"),
-        GestureObservation(point=(0.4, 0.5), hand="right", preview_bytes=b"frame", tracking_source="palm_center"),
-        GestureObservation(point=(0.5, 0.5), hand="right", preview_bytes=b"frame", tracking_source="palm_center"),
-        GestureObservation(point=(0.6, 0.5), hand="right", preview_bytes=b"frame", tracking_source="palm_center"),
-        GestureObservation(point=(0.8, 0.5), hand="right", preview_bytes=b"frame", tracking_source="palm_center"),
-        GestureObservation(point=(0.2, 0.5), hand="right", preview_bytes=b"frame", tracking_source="palm_center"),
-        GestureObservation(point=(0.3, 0.5), hand="right", preview_bytes=b"frame", tracking_source="palm_center"),
-        GestureObservation(point=(0.4, 0.5), hand="right", preview_bytes=b"frame", tracking_source="palm_center"),
-        GestureObservation(point=(0.5, 0.5), hand="right", preview_bytes=b"frame", tracking_source="palm_center"),
-        GestureObservation(point=(0.6, 0.5), hand="right", preview_bytes=b"frame", tracking_source="palm_center"),
-        GestureObservation(point=(0.8, 0.5), hand="right", preview_bytes=b"frame", tracking_source="palm_center"),
+        GestureObservation(
+            point=(0.2, 0.5),
+            hand="right",
+            preview_bytes=b"frame",
+            tracking_source="palm_center",
+        ),
+        GestureObservation(
+            point=(0.3, 0.5),
+            hand="right",
+            preview_bytes=b"frame",
+            tracking_source="palm_center",
+        ),
+        GestureObservation(
+            point=(0.4, 0.5),
+            hand="right",
+            preview_bytes=b"frame",
+            tracking_source="palm_center",
+        ),
+        GestureObservation(
+            point=(0.5, 0.5),
+            hand="right",
+            preview_bytes=b"frame",
+            tracking_source="palm_center",
+        ),
+        GestureObservation(
+            point=(0.6, 0.5),
+            hand="right",
+            preview_bytes=b"frame",
+            tracking_source="palm_center",
+        ),
+        GestureObservation(
+            point=(0.8, 0.5),
+            hand="right",
+            preview_bytes=b"frame",
+            tracking_source="palm_center",
+        ),
+        GestureObservation(
+            point=(0.2, 0.5),
+            hand="right",
+            preview_bytes=b"frame",
+            tracking_source="palm_center",
+        ),
+        GestureObservation(
+            point=(0.3, 0.5),
+            hand="right",
+            preview_bytes=b"frame",
+            tracking_source="palm_center",
+        ),
+        GestureObservation(
+            point=(0.4, 0.5),
+            hand="right",
+            preview_bytes=b"frame",
+            tracking_source="palm_center",
+        ),
+        GestureObservation(
+            point=(0.5, 0.5),
+            hand="right",
+            preview_bytes=b"frame",
+            tracking_source="palm_center",
+        ),
+        GestureObservation(
+            point=(0.6, 0.5),
+            hand="right",
+            preview_bytes=b"frame",
+            tracking_source="palm_center",
+        ),
+        GestureObservation(
+            point=(0.8, 0.5),
+            hand="right",
+            preview_bytes=b"frame",
+            tracking_source="palm_center",
+        ),
     ]
     service = GestureService(
         adapter_factory=lambda: SequenceAdapter(observations=observations),
@@ -1409,12 +1614,42 @@ def test_cooldown_prevents_spam_and_emits_event():
 def test_service_publishes_ui_action_requested_event_for_swipe():
     hub = CapturingRealtimeHub()
     observations = [
-        GestureObservation(point=(0.2, 0.5), hand="right", hand_size=0.16, tracking_source="palm_center"),
-        GestureObservation(point=(0.3, 0.5), hand="right", hand_size=0.16, tracking_source="palm_center"),
-        GestureObservation(point=(0.4, 0.5), hand="right", hand_size=0.16, tracking_source="palm_center"),
-        GestureObservation(point=(0.5, 0.5), hand="right", hand_size=0.16, tracking_source="palm_center"),
-        GestureObservation(point=(0.6, 0.5), hand="right", hand_size=0.16, tracking_source="palm_center"),
-        GestureObservation(point=(0.8, 0.5), hand="right", hand_size=0.16, tracking_source="palm_center"),
+        GestureObservation(
+            point=(0.2, 0.5),
+            hand="right",
+            hand_size=0.16,
+            tracking_source="palm_center",
+        ),
+        GestureObservation(
+            point=(0.3, 0.5),
+            hand="right",
+            hand_size=0.16,
+            tracking_source="palm_center",
+        ),
+        GestureObservation(
+            point=(0.4, 0.5),
+            hand="right",
+            hand_size=0.16,
+            tracking_source="palm_center",
+        ),
+        GestureObservation(
+            point=(0.5, 0.5),
+            hand="right",
+            hand_size=0.16,
+            tracking_source="palm_center",
+        ),
+        GestureObservation(
+            point=(0.6, 0.5),
+            hand="right",
+            hand_size=0.16,
+            tracking_source="palm_center",
+        ),
+        GestureObservation(
+            point=(0.8, 0.5),
+            hand="right",
+            hand_size=0.16,
+            tracking_source="palm_center",
+        ),
     ]
     repository = StaticGestureConfigRepository(
         input_action_config=InputActionConfig(
@@ -1434,7 +1669,9 @@ def test_service_publishes_ui_action_requested_event_for_swipe():
     )
 
     service.start()
-    assert wait_until(lambda: len(filter_messages(hub.messages, "UIActionRequested")) >= 1)
+    assert wait_until(
+        lambda: len(filter_messages(hub.messages, "UIActionRequested")) >= 1
+    )
     service.stop()
 
     action_message = filter_messages(hub.messages, "UIActionRequested")[0]
@@ -1445,15 +1682,53 @@ def test_service_publishes_ui_action_requested_event_for_swipe():
 def test_service_exposes_sequence_shadow_diagnostics_without_changing_action():
     hub = CapturingRealtimeHub()
     observations = [
-        GestureObservation(point=(0.2, 0.5), hand="right", hand_size=0.16, tracking_source="palm_center", captured_at=0.00),
-        GestureObservation(point=(0.3, 0.5), hand="right", hand_size=0.16, tracking_source="palm_center", captured_at=0.05),
-        GestureObservation(point=(0.4, 0.5), hand="right", hand_size=0.16, tracking_source="palm_center", captured_at=0.10),
-        GestureObservation(point=(0.5, 0.5), hand="right", hand_size=0.16, tracking_source="palm_center", captured_at=0.15),
-        GestureObservation(point=(0.6, 0.5), hand="right", hand_size=0.16, tracking_source="palm_center", captured_at=0.20),
-        GestureObservation(point=(0.8, 0.5), hand="right", hand_size=0.16, tracking_source="palm_center", captured_at=0.25),
+        GestureObservation(
+            point=(0.2, 0.5),
+            hand="right",
+            hand_size=0.16,
+            tracking_source="palm_center",
+            captured_at=0.00,
+        ),
+        GestureObservation(
+            point=(0.3, 0.5),
+            hand="right",
+            hand_size=0.16,
+            tracking_source="palm_center",
+            captured_at=0.05,
+        ),
+        GestureObservation(
+            point=(0.4, 0.5),
+            hand="right",
+            hand_size=0.16,
+            tracking_source="palm_center",
+            captured_at=0.10,
+        ),
+        GestureObservation(
+            point=(0.5, 0.5),
+            hand="right",
+            hand_size=0.16,
+            tracking_source="palm_center",
+            captured_at=0.15,
+        ),
+        GestureObservation(
+            point=(0.6, 0.5),
+            hand="right",
+            hand_size=0.16,
+            tracking_source="palm_center",
+            captured_at=0.20,
+        ),
+        GestureObservation(
+            point=(0.8, 0.5),
+            hand="right",
+            hand_size=0.16,
+            tracking_source="palm_center",
+            captured_at=0.25,
+        ),
     ]
     repository = StaticGestureConfigRepository(
-        config=GestureConfig(sequence_shadow_mode=True, sequence_matching_enabled=False),
+        config=GestureConfig(
+            sequence_shadow_mode=True, sequence_matching_enabled=False
+        ),
         input_action_config=InputActionConfig(
             mappings=[
                 InputActionMapping(
@@ -1472,7 +1747,9 @@ def test_service_exposes_sequence_shadow_diagnostics_without_changing_action():
     )
 
     service.start()
-    assert wait_until(lambda: len(filter_messages(hub.messages, "UIActionRequested")) >= 1)
+    assert wait_until(
+        lambda: len(filter_messages(hub.messages, "UIActionRequested")) >= 1
+    )
     service.stop()
 
     action_message = filter_messages(hub.messages, "UIActionRequested")[0]
@@ -1481,8 +1758,16 @@ def test_service_exposes_sequence_shadow_diagnostics_without_changing_action():
 
     assert action_message["payload"]["raw_input"] == "swipe_left"
     assert action_message["payload"]["action"] == "move_focus_left"
-    assert raw_input_message["payload"]["metadata"]["sequence_scores"].get("swipe_left", 0.0) > 0.0
-    assert raw_input_message["payload"]["metadata"]["sequence_profile_ids"]["swipe_left"] == "swipe_left:primary"
+    assert (
+        raw_input_message["payload"]["metadata"]["sequence_scores"].get(
+            "swipe_left", 0.0
+        )
+        > 0.0
+    )
+    assert (
+        raw_input_message["payload"]["metadata"]["sequence_profile_ids"]["swipe_left"]
+        == "swipe_left:primary"
+    )
     assert status["sequence_shadow_mode"] is True
     assert status["sequence_matching_enabled"] is False
     assert status["sequence_scores"].get("swipe_left", 0.0) > 0.0
@@ -1493,12 +1778,48 @@ def test_service_gates_ui_actions_while_calibration_is_active():
     hub = CapturingRealtimeHub()
     calibration_runtime = CapturingCalibrationRuntime()
     observations = [
-        GestureObservation(point=(0.2, 0.5), hand="right", hand_size=0.16, tracking_source="palm_center", captured_at=0.00),
-        GestureObservation(point=(0.3, 0.5), hand="right", hand_size=0.16, tracking_source="palm_center", captured_at=0.05),
-        GestureObservation(point=(0.4, 0.5), hand="right", hand_size=0.16, tracking_source="palm_center", captured_at=0.10),
-        GestureObservation(point=(0.5, 0.5), hand="right", hand_size=0.16, tracking_source="palm_center", captured_at=0.15),
-        GestureObservation(point=(0.6, 0.5), hand="right", hand_size=0.16, tracking_source="palm_center", captured_at=0.20),
-        GestureObservation(point=(0.8, 0.5), hand="right", hand_size=0.16, tracking_source="palm_center", captured_at=0.25),
+        GestureObservation(
+            point=(0.2, 0.5),
+            hand="right",
+            hand_size=0.16,
+            tracking_source="palm_center",
+            captured_at=0.00,
+        ),
+        GestureObservation(
+            point=(0.3, 0.5),
+            hand="right",
+            hand_size=0.16,
+            tracking_source="palm_center",
+            captured_at=0.05,
+        ),
+        GestureObservation(
+            point=(0.4, 0.5),
+            hand="right",
+            hand_size=0.16,
+            tracking_source="palm_center",
+            captured_at=0.10,
+        ),
+        GestureObservation(
+            point=(0.5, 0.5),
+            hand="right",
+            hand_size=0.16,
+            tracking_source="palm_center",
+            captured_at=0.15,
+        ),
+        GestureObservation(
+            point=(0.6, 0.5),
+            hand="right",
+            hand_size=0.16,
+            tracking_source="palm_center",
+            captured_at=0.20,
+        ),
+        GestureObservation(
+            point=(0.8, 0.5),
+            hand="right",
+            hand_size=0.16,
+            tracking_source="palm_center",
+            captured_at=0.25,
+        ),
     ]
     service = GestureService(
         adapter_factory=lambda: SequenceAdapter(observations=observations),
@@ -1508,7 +1829,9 @@ def test_service_gates_ui_actions_while_calibration_is_active():
     )
 
     service.start()
-    assert wait_until(lambda: len(filter_messages(hub.messages, "GestureDetected")) >= 1)
+    assert wait_until(
+        lambda: len(filter_messages(hub.messages, "GestureDetected")) >= 1
+    )
     service.stop()
 
     assert filter_messages(hub.messages, "UIActionRequested") == []
@@ -1530,7 +1853,9 @@ def test_service_detects_short_push_click():
     )
 
     service.start()
-    assert wait_until(lambda: len(filter_messages(hub.messages, "GestureDetected")) >= 1)
+    assert wait_until(
+        lambda: len(filter_messages(hub.messages, "GestureDetected")) >= 1
+    )
     service.stop()
 
     gesture_message = filter_messages(hub.messages, "GestureDetected")[0]
@@ -1553,7 +1878,9 @@ def test_service_detects_long_push_click():
     )
 
     service.start()
-    assert wait_until(lambda: len(filter_messages(hub.messages, "GestureDetected")) >= 1)
+    assert wait_until(
+        lambda: len(filter_messages(hub.messages, "GestureDetected")) >= 1
+    )
     service.stop()
 
     gesture_message = filter_messages(hub.messages, "GestureDetected")[0]
@@ -1576,7 +1903,9 @@ def test_service_detects_long_push_click_when_release_crosses_threshold():
     )
 
     service.start()
-    assert wait_until(lambda: len(filter_messages(hub.messages, "GestureDetected")) >= 1)
+    assert wait_until(
+        lambda: len(filter_messages(hub.messages, "GestureDetected")) >= 1
+    )
     service.stop()
 
     gesture_message = filter_messages(hub.messages, "GestureDetected")[0]
@@ -1598,7 +1927,9 @@ def test_service_detects_long_push_click_despite_brief_tracking_gap():
     )
 
     service.start()
-    assert wait_until(lambda: len(filter_messages(hub.messages, "GestureDetected")) >= 1)
+    assert wait_until(
+        lambda: len(filter_messages(hub.messages, "GestureDetected")) >= 1
+    )
     service.stop()
 
     gesture_message = filter_messages(hub.messages, "GestureDetected")[0]
@@ -1609,11 +1940,41 @@ def test_service_defers_swipe_event_until_motion_finishes():
     hub = CapturingRealtimeHub()
     adapter = PausingSequenceAdapter(
         observations=[
-            GestureObservation(point=(0.72, 0.5), hand="right", hand_size=0.16, tracking_source="palm_center", captured_at=0.00),
-            GestureObservation(point=(0.64, 0.5), hand="right", hand_size=0.16, tracking_source="palm_center", captured_at=0.08),
-            GestureObservation(point=(0.56, 0.5), hand="right", hand_size=0.16, tracking_source="palm_center", captured_at=0.16),
-            GestureObservation(point=(0.48, 0.5), hand="right", hand_size=0.16, tracking_source="palm_center", captured_at=0.24),
-            GestureObservation(point=(0.36, 0.5), hand="right", hand_size=0.16, tracking_source="palm_center", captured_at=0.32),
+            GestureObservation(
+                point=(0.72, 0.5),
+                hand="right",
+                hand_size=0.16,
+                tracking_source="palm_center",
+                captured_at=0.00,
+            ),
+            GestureObservation(
+                point=(0.64, 0.5),
+                hand="right",
+                hand_size=0.16,
+                tracking_source="palm_center",
+                captured_at=0.08,
+            ),
+            GestureObservation(
+                point=(0.56, 0.5),
+                hand="right",
+                hand_size=0.16,
+                tracking_source="palm_center",
+                captured_at=0.16,
+            ),
+            GestureObservation(
+                point=(0.48, 0.5),
+                hand="right",
+                hand_size=0.16,
+                tracking_source="palm_center",
+                captured_at=0.24,
+            ),
+            GestureObservation(
+                point=(0.36, 0.5),
+                hand="right",
+                hand_size=0.16,
+                tracking_source="palm_center",
+                captured_at=0.32,
+            ),
         ],
         pause_after_reads=5,
     )
@@ -1628,7 +1989,9 @@ def test_service_defers_swipe_event_until_motion_finishes():
     assert filter_messages(hub.messages, "GestureDetected") == []
 
     adapter.resume_event.set()
-    assert wait_until(lambda: len(filter_messages(hub.messages, "GestureDetected")) >= 1)
+    assert wait_until(
+        lambda: len(filter_messages(hub.messages, "GestureDetected")) >= 1
+    )
     service.stop()
 
     gesture_message = filter_messages(hub.messages, "GestureDetected")[0]
@@ -1656,7 +2019,9 @@ def test_service_defers_long_push_until_completion():
     assert filter_messages(hub.messages, "GestureDetected") == []
 
     adapter.resume_event.set()
-    assert wait_until(lambda: len(filter_messages(hub.messages, "GestureDetected")) >= 1)
+    assert wait_until(
+        lambda: len(filter_messages(hub.messages, "GestureDetected")) >= 1
+    )
     service.stop()
 
     gesture_message = filter_messages(hub.messages, "GestureDetected")[0]
@@ -1679,7 +2044,9 @@ def test_service_detects_short_push_click_with_left_hand():
     )
 
     service.start()
-    assert wait_until(lambda: len(filter_messages(hub.messages, "GestureDetected")) >= 1)
+    assert wait_until(
+        lambda: len(filter_messages(hub.messages, "GestureDetected")) >= 1
+    )
     service.stop()
 
     gesture_message = filter_messages(hub.messages, "GestureDetected")[0]
@@ -1702,7 +2069,9 @@ def test_service_detects_zoom_in_hands():
     )
 
     service.start()
-    assert wait_until(lambda: len(filter_messages(hub.messages, "GestureDetected")) >= 1)
+    assert wait_until(
+        lambda: len(filter_messages(hub.messages, "GestureDetected")) >= 1
+    )
     service.stop()
 
     gesture_message = filter_messages(hub.messages, "GestureDetected")[0]
@@ -1726,7 +2095,9 @@ def test_service_detects_zoom_out_hands():
     )
 
     service.start()
-    assert wait_until(lambda: len(filter_messages(hub.messages, "GestureDetected")) >= 1)
+    assert wait_until(
+        lambda: len(filter_messages(hub.messages, "GestureDetected")) >= 1
+    )
     service.stop()
 
     gesture_message = filter_messages(hub.messages, "GestureDetected")[0]
@@ -1757,7 +2128,9 @@ def test_service_prefers_recent_runtime_motion_window_for_swipes():
     timestamps = [0.00, 0.10, 0.20, 0.30, 0.72, 0.80, 0.88, 0.96, 1.04, 1.12]
 
     detection = service._detect_runtime_gesture(
-        observation=GestureObservation(point=trajectory[-1], tracking_source="palm_center"),
+        observation=GestureObservation(
+            point=trajectory[-1], tracking_source="palm_center"
+        ),
         observed_at=timestamps[-1],
         trajectory=trajectory,
         trajectory_timestamps=timestamps,
@@ -1899,7 +2272,9 @@ def test_service_rejects_upward_centering_motion_before_true_swipe_up():
     timestamps = [0.00, 0.10, 0.20, 0.30, 0.40, 0.50]
 
     detection = service._detect_runtime_gesture(
-        observation=GestureObservation(point=trajectory[-1], tracking_source="palm_center"),
+        observation=GestureObservation(
+            point=trajectory[-1], tracking_source="palm_center"
+        ),
         observed_at=timestamps[-1],
         trajectory=trajectory,
         trajectory_timestamps=timestamps,
@@ -1938,7 +2313,9 @@ def test_service_suppresses_swipe_when_push_commit_is_active():
     timestamps = [0.00, 0.08, 0.16, 0.24, 0.32, 0.40]
 
     detection = service._detect_runtime_gesture(
-        observation=make_push_observation(index_tip_depth=-0.12, captured_at=timestamps[-1]),
+        observation=make_push_observation(
+            index_tip_depth=-0.12, captured_at=timestamps[-1]
+        ),
         observed_at=timestamps[-1],
         trajectory=trajectory,
         trajectory_timestamps=timestamps,
@@ -1966,7 +2343,9 @@ def test_service_allows_horizontal_swipe_during_click_pose_arming():
     timestamps = [0.00, 0.08, 0.16, 0.24, 0.32, 0.40]
 
     detection = service._detect_runtime_gesture(
-        observation=make_push_observation(index_tip_depth=-0.01, captured_at=timestamps[-1]),
+        observation=make_push_observation(
+            index_tip_depth=-0.01, captured_at=timestamps[-1]
+        ),
         observed_at=timestamps[-1],
         trajectory=trajectory,
         trajectory_timestamps=timestamps,
@@ -1996,7 +2375,9 @@ def test_service_detects_swipe_down_from_recent_upper_turning_point():
     timestamps = [0.00, 0.12, 0.24, 0.36, 0.48, 0.60, 0.72]
 
     detection = service._detect_runtime_gesture(
-        observation=GestureObservation(point=trajectory[-1], tracking_source="palm_center"),
+        observation=GestureObservation(
+            point=trajectory[-1], tracking_source="palm_center"
+        ),
         observed_at=timestamps[-1],
         trajectory=trajectory,
         trajectory_timestamps=timestamps,
@@ -2026,7 +2407,9 @@ def test_service_holds_swipe_when_recent_window_already_looks_circular():
     timestamps = [0.00, 0.12, 0.24, 0.36, 0.48, 0.60, 0.72]
 
     detection = service._detect_runtime_gesture(
-        observation=GestureObservation(point=trajectory[-1], tracking_source="palm_center"),
+        observation=GestureObservation(
+            point=trajectory[-1], tracking_source="palm_center"
+        ),
         observed_at=timestamps[-1],
         trajectory=trajectory,
         trajectory_timestamps=timestamps,
@@ -2072,7 +2455,9 @@ def test_service_does_not_prefer_circle_for_open_hand_pose(monkeypatch):
     ]
 
     candidates = service._collect_runtime_single_hand_candidates(
-        observation=GestureObservation(point=trajectory[-1], tracking_source="palm_center"),
+        observation=GestureObservation(
+            point=trajectory[-1], tracking_source="palm_center"
+        ),
         trajectory=trajectory,
         hand_size=0.16,
         tracking_source="palm_center",
@@ -2115,7 +2500,9 @@ def test_service_suppresses_swipe_candidates_for_closed_hand_pose(monkeypatch):
     ]
 
     candidates = service._collect_runtime_single_hand_candidates(
-        observation=GestureObservation(point=trajectory[-1], tracking_source="palm_center"),
+        observation=GestureObservation(
+            point=trajectory[-1], tracking_source="palm_center"
+        ),
         trajectory=trajectory,
         hand_size=0.16,
         tracking_source="palm_center",
@@ -2183,7 +2570,9 @@ async def test_get_preview_frame_not_found(client, override_gesture_dependency):
 
 
 @pytest.mark.asyncio
-async def test_get_preview_frame_includes_freshness_metadata(client, override_gesture_dependency):
+async def test_get_preview_frame_includes_freshness_metadata(
+    client, override_gesture_dependency
+):
     override_gesture_dependency.frame = "data:image/jpeg;base64,dGVzdA=="
 
     response = await client.get("/api/v1/gestures/frame")
@@ -2198,12 +2587,16 @@ async def test_get_preview_frame_includes_freshness_metadata(client, override_ge
 @pytest.mark.asyncio
 async def test_dev_process_video_endpoint_disabled(client, override_gesture_dependency):
     _ = override_gesture_dependency
-    response = await client.post("/api/v1/gestures/dev/process-video?video_path=/tmp/demo.mp4")
+    response = await client.post(
+        "/api/v1/gestures/dev/process-video?video_path=/tmp/demo.mp4"
+    )
     assert response.status_code == 404
 
 
 @pytest.mark.asyncio
-async def test_dev_process_video_requires_absolute_path(client, override_gesture_dependency):
+async def test_dev_process_video_requires_absolute_path(
+    client, override_gesture_dependency
+):
     _ = override_gesture_dependency
     original_value = settings.GESTURES_DEV_ENDPOINT_ENABLED
     settings.GESTURES_DEV_ENDPOINT_ENABLED = True

@@ -35,7 +35,9 @@ class ConfigRepository:
 
         return LayoutConfig.model_validate_json(row["payload"])
 
-    def save_layout(self, layout: LayoutConfig, profile: str = "default") -> LayoutConfig:
+    def save_layout(
+        self, layout: LayoutConfig, profile: str = "default"
+    ) -> LayoutConfig:
         timestamp = datetime.now(timezone.utc)
         updated_layout = layout.model_copy(update={"updated_at": timestamp})
         config_key = self._layout_key(profile)
@@ -138,17 +140,25 @@ class ConfigRepository:
                 (config_key,),
             ).fetchone()
 
-        config = VoiceConfig() if row is None else VoiceConfig.model_validate_json(row["payload"])
+        config = (
+            VoiceConfig()
+            if row is None
+            else VoiceConfig.model_validate_json(row["payload"])
+        )
         active_profile = self._get_active_command_profile_from_row()
         if active_profile is None:
             return config
 
-        modality = active_profile.modality_settings.get("voice", CommandModalitySettings(enabled=config.enabled))
+        modality = active_profile.modality_settings.get(
+            "voice", CommandModalitySettings(enabled=config.enabled)
+        )
         device_index = active_profile.device_preferences.voice_device_index
         return config.model_copy(
             update={
                 "enabled": modality.enabled,
-                "device_index": device_index if device_index is not None else config.device_index,
+                "device_index": (
+                    device_index if device_index is not None else config.device_index
+                ),
             }
         )
 
@@ -194,7 +204,11 @@ class ConfigRepository:
             command_profiles.model_copy(
                 update={
                     "profiles": [
-                        updated_profile if profile.profile_id == updated_profile.profile_id else profile
+                        (
+                            updated_profile
+                            if profile.profile_id == updated_profile.profile_id
+                            else profile
+                        )
                         for profile in command_profiles.profiles
                     ],
                     "updated_at": timestamp,
@@ -207,7 +221,9 @@ class ConfigRepository:
     def get_input_action_config(self) -> InputActionConfig:
         command_profiles = self._get_command_profiles_row()
         if command_profiles is not None:
-            config = CommandProfilesConfig.model_validate_json(command_profiles["payload"])
+            config = CommandProfilesConfig.model_validate_json(
+                command_profiles["payload"]
+            )
             return self._select_active_command_profile(config).input_action_config
 
         return self._get_legacy_input_action_config()
@@ -245,7 +261,11 @@ class ConfigRepository:
             command_profiles.model_copy(
                 update={
                     "profiles": [
-                        updated_profile if profile.profile_id == updated_profile.profile_id else profile
+                        (
+                            updated_profile
+                            if profile.profile_id == updated_profile.profile_id
+                            else profile
+                        )
                         for profile in command_profiles.profiles
                     ],
                     "updated_at": timestamp,
@@ -283,7 +303,9 @@ class ConfigRepository:
             ],
         )
 
-    def save_command_profiles_config(self, config: CommandProfilesConfig) -> CommandProfilesConfig:
+    def save_command_profiles_config(
+        self, config: CommandProfilesConfig
+    ) -> CommandProfilesConfig:
         timestamp = datetime.now(timezone.utc)
         updated_config = config.model_copy(
             update={
@@ -313,7 +335,9 @@ class ConfigRepository:
             )
 
         active_profile = self._select_active_command_profile(updated_config)
-        legacy_input_actions = active_profile.input_action_config.model_copy(update={"updated_at": timestamp})
+        legacy_input_actions = active_profile.input_action_config.model_copy(
+            update={"updated_at": timestamp}
+        )
         with get_db_connection() as connection:
             connection.execute(
                 """
@@ -340,7 +364,9 @@ class ConfigRepository:
         active_profile = self.get_active_command_profile()
         return self._compose_musical_audio_config(config, active_profile)
 
-    def save_musical_audio_config(self, config: MusicalAudioConfig) -> MusicalAudioConfig:
+    def save_musical_audio_config(
+        self, config: MusicalAudioConfig
+    ) -> MusicalAudioConfig:
         timestamp = datetime.now(timezone.utc)
         updated_config = MusicalAudioConfig(
             sample_rate=config.sample_rate,
@@ -397,7 +423,11 @@ class ConfigRepository:
             command_profiles.model_copy(
                 update={
                     "profiles": [
-                        updated_profile if profile.profile_id == updated_profile.profile_id else profile
+                        (
+                            updated_profile
+                            if profile.profile_id == updated_profile.profile_id
+                            else profile
+                        )
                         for profile in command_profiles.profiles
                     ],
                     "updated_at": timestamp,
@@ -407,7 +437,9 @@ class ConfigRepository:
 
         return self.get_musical_audio_config()
 
-    def list_musical_audio_training_artifacts(self, profile_id: str = "default") -> list[MusicalAudioTrainingArtifact]:
+    def list_musical_audio_training_artifacts(
+        self, profile_id: str = "default"
+    ) -> list[MusicalAudioTrainingArtifact]:
         like_pattern = self._musical_audio_artifact_prefix(profile_id)
         with get_db_connection() as connection:
             rows = connection.execute(
@@ -415,14 +447,19 @@ class ConfigRepository:
                 (f"{like_pattern}%",),
             ).fetchall()
 
-        return [MusicalAudioTrainingArtifact.model_validate_json(row["payload"]) for row in rows]
+        return [
+            MusicalAudioTrainingArtifact.model_validate_json(row["payload"])
+            for row in rows
+        ]
 
     def get_musical_audio_training_artifact(
         self,
         artifact_id: str,
         profile_id: str = "default",
     ) -> MusicalAudioTrainingArtifact | None:
-        config_key = self._musical_audio_artifact_key(profile_id=profile_id, artifact_id=artifact_id)
+        config_key = self._musical_audio_artifact_key(
+            profile_id=profile_id, artifact_id=artifact_id
+        )
         with get_db_connection() as connection:
             row = connection.execute(
                 "SELECT payload FROM app_config WHERE config_key = ?",
@@ -439,9 +476,13 @@ class ConfigRepository:
         artifact: MusicalAudioTrainingArtifact,
     ) -> MusicalAudioTrainingArtifact:
         timestamp = datetime.now(timezone.utc)
-        existing = self.get_musical_audio_training_artifact(artifact.artifact_id, profile_id=artifact.profile_id)
+        existing = self.get_musical_audio_training_artifact(
+            artifact.artifact_id, profile_id=artifact.profile_id
+        )
         created_at = existing.created_at if existing is not None else timestamp
-        updated_artifact = artifact.model_copy(update={"created_at": created_at, "updated_at": timestamp})
+        updated_artifact = artifact.model_copy(
+            update={"created_at": created_at, "updated_at": timestamp}
+        )
         config_key = self._musical_audio_artifact_key(
             profile_id=updated_artifact.profile_id,
             artifact_id=updated_artifact.artifact_id,
@@ -465,8 +506,12 @@ class ConfigRepository:
 
         return updated_artifact
 
-    def delete_musical_audio_training_artifact(self, artifact_id: str, profile_id: str = "default") -> bool:
-        config_key = self._musical_audio_artifact_key(profile_id=profile_id, artifact_id=artifact_id)
+    def delete_musical_audio_training_artifact(
+        self, artifact_id: str, profile_id: str = "default"
+    ) -> bool:
+        config_key = self._musical_audio_artifact_key(
+            profile_id=profile_id, artifact_id=artifact_id
+        )
         with get_db_connection() as connection:
             cursor = connection.execute(
                 "DELETE FROM app_config WHERE config_key = ?",
@@ -474,7 +519,9 @@ class ConfigRepository:
             )
         return cursor.rowcount > 0
 
-    def get_calibration_session(self, session_id: str) -> CalibrationSessionRecord | None:
+    def get_calibration_session(
+        self, session_id: str
+    ) -> CalibrationSessionRecord | None:
         config_key = self._calibration_session_key(session_id)
         with get_db_connection() as connection:
             row = connection.execute(
@@ -498,12 +545,16 @@ class ConfigRepository:
                 (f"{like_pattern}%",),
             ).fetchall()
 
-        sessions = [CalibrationSessionRecord.model_validate_json(row["payload"]) for row in rows]
+        sessions = [
+            CalibrationSessionRecord.model_validate_json(row["payload"]) for row in rows
+        ]
         if modality is None:
             return sessions
         return [session for session in sessions if session.modality == modality]
 
-    def save_calibration_session(self, session: CalibrationSessionRecord) -> CalibrationSessionRecord:
+    def save_calibration_session(
+        self, session: CalibrationSessionRecord
+    ) -> CalibrationSessionRecord:
         timestamp = datetime.now(timezone.utc)
         updated_session = session.model_copy(update={"updated_at": timestamp})
         config_key = self._calibration_session_key(session.session_id)
@@ -543,10 +594,14 @@ class ConfigRepository:
 
         return CalibrationProfile.model_validate_json(row["payload"])
 
-    def save_calibration_profile(self, profile: CalibrationProfile) -> CalibrationProfile:
+    def save_calibration_profile(
+        self, profile: CalibrationProfile
+    ) -> CalibrationProfile:
         timestamp = datetime.now(timezone.utc)
         updated_profile = profile.model_copy(update={"saved_at": timestamp})
-        config_key = self._calibration_profile_key(modality=profile.modality, profile=profile.profile)
+        config_key = self._calibration_profile_key(
+            modality=profile.modality, profile=profile.profile
+        )
 
         with get_db_connection() as connection:
             connection.execute(
@@ -571,7 +626,9 @@ class ConfigRepository:
         modality: CalibrationModality,
         profile: str = "default",
     ) -> CalibrationAppliedSnapshot | None:
-        config_key = self._calibration_last_applied_key(modality=modality, profile=profile)
+        config_key = self._calibration_last_applied_key(
+            modality=modality, profile=profile
+        )
         with get_db_connection() as connection:
             row = connection.execute(
                 "SELECT payload FROM app_config WHERE config_key = ?",
@@ -589,7 +646,9 @@ class ConfigRepository:
     ) -> CalibrationAppliedSnapshot:
         timestamp = datetime.now(timezone.utc)
         updated_snapshot = snapshot.model_copy(update={"captured_at": timestamp})
-        config_key = self._calibration_last_applied_key(modality=snapshot.modality, profile=snapshot.profile)
+        config_key = self._calibration_last_applied_key(
+            modality=snapshot.modality, profile=snapshot.profile
+        )
 
         with get_db_connection() as connection:
             connection.execute(
@@ -609,7 +668,9 @@ class ConfigRepository:
 
         return updated_snapshot
 
-    def get_active_gesture_sequence_profile_set(self) -> GestureSequenceProfileSet | None:
+    def get_active_gesture_sequence_profile_set(
+        self,
+    ) -> GestureSequenceProfileSet | None:
         config_key = self._active_gesture_sequence_profile_key()
         with get_db_connection() as connection:
             row = connection.execute(
@@ -656,7 +717,9 @@ class ConfigRepository:
 
     def count_entries(self) -> int:
         with get_db_connection() as connection:
-            row = connection.execute("SELECT COUNT(*) AS count FROM app_config").fetchone()
+            row = connection.execute(
+                "SELECT COUNT(*) AS count FROM app_config"
+            ).fetchone()
         return int(row["count"])
 
     def _get_legacy_input_action_config(self) -> InputActionConfig:
@@ -680,7 +743,9 @@ class ConfigRepository:
                 (config_key,),
             ).fetchone()
 
-    def _apply_voice_command_profile_overrides(self, config: VoiceConfig) -> VoiceConfig:
+    def _apply_voice_command_profile_overrides(
+        self, config: VoiceConfig
+    ) -> VoiceConfig:
         command_profiles_row = self._get_command_profiles_row()
         if command_profiles_row is None:
             return config
@@ -688,12 +753,16 @@ class ConfigRepository:
         active_profile = self._select_active_command_profile(
             CommandProfilesConfig.model_validate_json(command_profiles_row["payload"])
         )
-        voice_settings = active_profile.modality_settings.get("voice", CommandModalitySettings(enabled=config.enabled))
+        voice_settings = active_profile.modality_settings.get(
+            "voice", CommandModalitySettings(enabled=config.enabled)
+        )
         device_index = active_profile.device_preferences.voice_device_index
         return config.model_copy(
             update={
                 "enabled": voice_settings.enabled,
-                "device_index": device_index if device_index is not None else config.device_index,
+                "device_index": (
+                    device_index if device_index is not None else config.device_index
+                ),
             }
         )
 
@@ -736,7 +805,9 @@ class ConfigRepository:
         return config.model_copy(
             update={
                 "enabled": musical_settings.enabled,
-                "device_index": device_index if device_index is not None else config.device_index,
+                "device_index": (
+                    device_index if device_index is not None else config.device_index
+                ),
                 "active_artifact_id": musical_settings.active_training_artifact_id,
             }
         )
@@ -804,10 +875,11 @@ class ConfigRepository:
         return f"calibration:profile:{modality}:{profile}"
 
     @staticmethod
-    def _calibration_last_applied_key(modality: CalibrationModality, profile: str) -> str:
+    def _calibration_last_applied_key(
+        modality: CalibrationModality, profile: str
+    ) -> str:
         return f"calibration:last-applied:{modality}:{profile}"
 
     @staticmethod
     def _active_gesture_sequence_profile_key() -> str:
         return "gestures:sequence-profile:active"
-

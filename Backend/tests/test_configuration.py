@@ -1,6 +1,5 @@
 import pytest
 
-
 pytestmark = pytest.mark.usefixtures("override_config_dependency")
 
 
@@ -86,7 +85,9 @@ async def test_layout_profiles_are_isolated(client):
         ],
     }
 
-    save_response = await client.put("/api/v1/config/layout?profile=focus", json=payload)
+    save_response = await client.put(
+        "/api/v1/config/layout?profile=focus", json=payload
+    )
     assert save_response.status_code == 200
 
     default_response = await client.get("/api/v1/config/layout")
@@ -213,7 +214,9 @@ async def test_save_and_reload_voice_config(client):
     profiles_response = await client.get("/api/v1/config/command-profiles")
     assert profiles_response.status_code == 200
     profile = profiles_response.json()["config"]["profiles"][0]
-    assert profile["device_preferences"]["voice_device_index"] == payload["device_index"]
+    assert (
+        profile["device_preferences"]["voice_device_index"] == payload["device_index"]
+    )
     assert profile["modality_settings"]["voice"]["enabled"] is True
 
 
@@ -302,11 +305,31 @@ async def test_save_command_profiles_config_updates_legacy_input_actions(client)
                     },
                 },
                 "modality_settings": {
-                    "gesture": {"enabled": True, "active_training_artifact_id": None, "metadata": {}},
-                    "voice": {"enabled": False, "active_training_artifact_id": None, "metadata": {}},
-                    "musical_audio": {"enabled": True, "active_training_artifact_id": "focus-a" , "metadata": {}},
-                    "keyboard": {"enabled": True, "active_training_artifact_id": None, "metadata": {}},
-                    "dev": {"enabled": True, "active_training_artifact_id": None, "metadata": {}},
+                    "gesture": {
+                        "enabled": True,
+                        "active_training_artifact_id": None,
+                        "metadata": {},
+                    },
+                    "voice": {
+                        "enabled": False,
+                        "active_training_artifact_id": None,
+                        "metadata": {},
+                    },
+                    "musical_audio": {
+                        "enabled": True,
+                        "active_training_artifact_id": "focus-a",
+                        "metadata": {},
+                    },
+                    "keyboard": {
+                        "enabled": True,
+                        "active_training_artifact_id": None,
+                        "metadata": {},
+                    },
+                    "dev": {
+                        "enabled": True,
+                        "active_training_artifact_id": None,
+                        "metadata": {},
+                    },
                 },
                 "device_preferences": {
                     "gesture_camera_index": 0,
@@ -320,7 +343,12 @@ async def test_save_command_profiles_config_updates_legacy_input_actions(client)
     save_response = await client.put("/api/v1/config/command-profiles", json=payload)
     assert save_response.status_code == 200
     saved = save_response.json()
-    assert saved["config"]["profiles"][0]["device_preferences"]["musical_audio_device_index"] == 3
+    assert (
+        saved["config"]["profiles"][0]["device_preferences"][
+            "musical_audio_device_index"
+        ]
+        == 3
+    )
 
     legacy_response = await client.get("/api/v1/config/input-actions")
     assert legacy_response.status_code == 200
@@ -358,11 +386,31 @@ async def test_save_command_profiles_config_reloads_voice_and_musical_audio_runt
                     "display_name": "Default",
                     "input_action_config": {"mappings": []},
                     "modality_settings": {
-                        "gesture": {"enabled": True, "active_training_artifact_id": None, "metadata": {}},
-                        "voice": {"enabled": True, "active_training_artifact_id": None, "metadata": {}},
-                        "musical_audio": {"enabled": True, "active_training_artifact_id": None, "metadata": {}},
-                        "keyboard": {"enabled": True, "active_training_artifact_id": None, "metadata": {}},
-                        "dev": {"enabled": True, "active_training_artifact_id": None, "metadata": {}},
+                        "gesture": {
+                            "enabled": True,
+                            "active_training_artifact_id": None,
+                            "metadata": {},
+                        },
+                        "voice": {
+                            "enabled": True,
+                            "active_training_artifact_id": None,
+                            "metadata": {},
+                        },
+                        "musical_audio": {
+                            "enabled": True,
+                            "active_training_artifact_id": None,
+                            "metadata": {},
+                        },
+                        "keyboard": {
+                            "enabled": True,
+                            "active_training_artifact_id": None,
+                            "metadata": {},
+                        },
+                        "dev": {
+                            "enabled": True,
+                            "active_training_artifact_id": None,
+                            "metadata": {},
+                        },
                     },
                     "device_preferences": {
                         "gesture_camera_index": 1,
@@ -416,7 +464,10 @@ async def test_get_and_save_musical_audio_config(client):
     assert profiles_response.status_code == 200
     profile = profiles_response.json()["config"]["profiles"][0]
     assert profile["modality_settings"]["musical_audio"]["enabled"] is True
-    assert profile["modality_settings"]["musical_audio"]["active_training_artifact_id"] == "whistle-main"
+    assert (
+        profile["modality_settings"]["musical_audio"]["active_training_artifact_id"]
+        == "whistle-main"
+    )
     assert profile["device_preferences"]["musical_audio_device_index"] == 4
 
 
@@ -449,7 +500,9 @@ async def test_save_list_get_and_delete_musical_audio_artifact(client):
         "metadata": {"trained_from": "unit-test"},
     }
 
-    save_response = await client.put("/api/v1/config/musical-audio/artifacts/whistle-main", json=payload)
+    save_response = await client.put(
+        "/api/v1/config/musical-audio/artifacts/whistle-main", json=payload
+    )
     assert save_response.status_code == 200
     saved = save_response.json()["artifact"]
     assert saved["created_at"] is not None
@@ -460,18 +513,24 @@ async def test_save_list_get_and_delete_musical_audio_artifact(client):
     artifacts = list_response.json()["artifacts"]
     assert artifacts[0]["raw_input"] == "melody.whistle_main"
 
-    get_response = await client.get("/api/v1/config/musical-audio/artifacts/whistle-main")
+    get_response = await client.get(
+        "/api/v1/config/musical-audio/artifacts/whistle-main"
+    )
     assert get_response.status_code == 200
     artifact = get_response.json()["artifact"]
     assert artifact["notes"][1]["relative_pitch_semitones"] == 2.0
 
-    delete_response = await client.delete("/api/v1/config/musical-audio/artifacts/whistle-main")
+    delete_response = await client.delete(
+        "/api/v1/config/musical-audio/artifacts/whistle-main"
+    )
     assert delete_response.status_code == 200
     assert delete_response.json()["deleted"] is True
 
 
 @pytest.mark.asyncio
-async def test_save_input_actions_reloads_musical_audio_runtime(client, override_musical_audio_dependency):
+async def test_save_input_actions_reloads_musical_audio_runtime(
+    client, override_musical_audio_dependency
+):
     response = await client.put(
         "/api/v1/config/input-actions",
         json={
@@ -492,7 +551,9 @@ async def test_save_input_actions_reloads_musical_audio_runtime(client, override
 
 
 @pytest.mark.asyncio
-async def test_save_musical_audio_artifact_reloads_runtime(client, override_musical_audio_dependency):
+async def test_save_musical_audio_artifact_reloads_runtime(
+    client, override_musical_audio_dependency
+):
     payload = {
         "artifact_id": "whistle-main",
         "profile_id": "default",
@@ -507,11 +568,15 @@ async def test_save_musical_audio_artifact_reloads_runtime(client, override_musi
         "metadata": {},
     }
 
-    save_response = await client.put("/api/v1/config/musical-audio/artifacts/whistle-main", json=payload)
+    save_response = await client.put(
+        "/api/v1/config/musical-audio/artifacts/whistle-main", json=payload
+    )
     assert save_response.status_code == 200
     assert override_musical_audio_dependency.reload_count == 1
 
-    delete_response = await client.delete("/api/v1/config/musical-audio/artifacts/whistle-main")
+    delete_response = await client.delete(
+        "/api/v1/config/musical-audio/artifacts/whistle-main"
+    )
     assert delete_response.status_code == 200
     assert override_musical_audio_dependency.reload_count == 2
 

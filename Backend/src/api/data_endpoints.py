@@ -8,7 +8,6 @@ from schemas.weather import (
 )
 from services.weather import WeatherService
 
-
 weather_router = APIRouter()
 calendar_router = APIRouter()
 smart_home_router = APIRouter()
@@ -52,7 +51,9 @@ async def get_weather_forecast(
     weather_service: WeatherService = Depends(get_weather_service),
 ):
     try:
-        return await weather_service.get_forecast(days=days, lat=lat, lon=lon, city=city)
+        return await weather_service.get_forecast(
+            days=days, lat=lat, lon=lon, city=city
+        )
     except WeatherRepositoryError as exc:
         raise HTTPException(status_code=exc.status_code, detail=str(exc)) from exc
 

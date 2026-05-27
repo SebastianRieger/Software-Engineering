@@ -73,13 +73,21 @@ class VoiceConfig(BaseModel):
     sample_rate: int = Field(default=settings.VOICE_SAMPLE_RATE, ge=8000, le=48000)
     block_size: int = Field(default=settings.VOICE_BLOCK_SIZE, ge=256, le=8192)
     queue_max_chunks: int = Field(default=settings.VOICE_QUEUE_MAX_CHUNKS, ge=1, le=256)
-    energy_threshold: float = Field(default=settings.VOICE_ENERGY_THRESHOLD, ge=0, le=32768)
-    command_cooldown_seconds: float = Field(default=settings.VOICE_COMMAND_COOLDOWN_SECONDS, ge=0, le=30)
+    energy_threshold: float = Field(
+        default=settings.VOICE_ENERGY_THRESHOLD, ge=0, le=32768
+    )
+    command_cooldown_seconds: float = Field(
+        default=settings.VOICE_COMMAND_COOLDOWN_SECONDS, ge=0, le=30
+    )
     partial_results_enabled: bool = settings.VOICE_PARTIAL_RESULTS_ENABLED
     grid_cell_count: int = Field(default=settings.VOICE_GRID_CELL_COUNT, ge=1, le=64)
     commands: list[str] = Field(default_factory=lambda: list(settings.VOICE_COMMANDS))
-    signals: list[VoiceSignalDefinition] = Field(default_factory=build_default_voice_signals)
-    widget_aliases: dict[str, list[str]] = Field(default_factory=build_default_widget_aliases)
+    signals: list[VoiceSignalDefinition] = Field(
+        default_factory=build_default_voice_signals
+    )
+    widget_aliases: dict[str, list[str]] = Field(
+        default_factory=build_default_widget_aliases
+    )
     updated_at: datetime | None = None
 
 

@@ -61,10 +61,20 @@ class GestureSequenceMatcher:
                     distance_threshold=profile.distance_threshold,
                 )
 
-        ordered_matches = sorted(matches_by_gesture.values(), key=lambda match: match.distance)
+        ordered_matches = sorted(
+            matches_by_gesture.values(), key=lambda match: match.distance
+        )
         for index, match in enumerate(ordered_matches):
-            next_distance = ordered_matches[index + 1].distance if index + 1 < len(ordered_matches) else None
-            match.margin = None if next_distance is None else max(0.0, next_distance - match.distance)
+            next_distance = (
+                ordered_matches[index + 1].distance
+                if index + 1 < len(ordered_matches)
+                else None
+            )
+            match.margin = (
+                None
+                if next_distance is None
+                else max(0.0, next_distance - match.distance)
+            )
         return ordered_matches
 
 

@@ -7,7 +7,6 @@ import numpy as np
 from schemas.calibration import GestureSequenceArtifact, GestureSequenceFrame
 from schemas.gestures import GestureType
 
-
 ACTIVE_SEQUENCE_GESTURES: frozenset[GestureType] = frozenset(
     {
         "swipe_left",
@@ -53,7 +52,9 @@ def resample_sequence_artifact(
         raise ValueError("gesture sequence artifact must contain at least one frame")
 
     source_times = _normalize_source_times(artifact.frames)
-    target_times = np.linspace(float(source_times[0]), float(source_times[-1]), target_points)
+    target_times = np.linspace(
+        float(source_times[0]), float(source_times[-1]), target_points
+    )
     resampled_columns = [
         _resample_channel(
             values=np.array(

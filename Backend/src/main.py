@@ -18,7 +18,6 @@ from services.led import led_service
 from services.musical_audio import musical_audio_service
 from services.voice import voice_service
 
-
 logger = logging.getLogger(__name__)
 
 
@@ -98,6 +97,7 @@ async def websocket_endpoint(websocket: WebSocket):
     finally:
         realtime_hub.disconnect(websocket)
         logger.debug("WebSocket connection closed")
+
 
 if __name__ == "__main__":
     import uvicorn

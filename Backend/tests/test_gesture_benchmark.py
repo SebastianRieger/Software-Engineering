@@ -3,8 +3,12 @@ from pathlib import Path
 
 
 def _load_gesture_benchmark_module():
-    module_path = Path(__file__).resolve().parents[1] / "scripts" / "gesture_benchmark.py"
-    spec = importlib.util.spec_from_file_location("gesture_benchmark_under_test", module_path)
+    module_path = (
+        Path(__file__).resolve().parents[1] / "scripts" / "gesture_benchmark.py"
+    )
+    spec = importlib.util.spec_from_file_location(
+        "gesture_benchmark_under_test", module_path
+    )
     assert spec is not None
     assert spec.loader is not None
     module = importlib.util.module_from_spec(spec)
@@ -18,8 +22,16 @@ def test_build_summary_passes_sequence_promotion_gate_when_shadow_is_better():
     summary = module._build_summary(
         {
             "samples": [
-                {"file_name": "left.mp4", "label": "swipe_left", "detected_gesture": "swipe_left"},
-                {"file_name": "right.mp4", "label": "swipe_right", "detected_gesture": "swipe_left"},
+                {
+                    "file_name": "left.mp4",
+                    "label": "swipe_left",
+                    "detected_gesture": "swipe_left",
+                },
+                {
+                    "file_name": "right.mp4",
+                    "label": "swipe_right",
+                    "detected_gesture": "swipe_left",
+                },
             ],
             "sequence_shadow_summary": {
                 "promotion_ready": True,
@@ -41,8 +53,16 @@ def test_build_summary_blocks_sequence_promotion_gate_when_shadow_regresses():
     summary = module._build_summary(
         {
             "samples": [
-                {"file_name": "left.mp4", "label": "swipe_left", "detected_gesture": "swipe_left"},
-                {"file_name": "right.mp4", "label": "swipe_right", "detected_gesture": "swipe_right"},
+                {
+                    "file_name": "left.mp4",
+                    "label": "swipe_left",
+                    "detected_gesture": "swipe_left",
+                },
+                {
+                    "file_name": "right.mp4",
+                    "label": "swipe_right",
+                    "detected_gesture": "swipe_right",
+                },
             ],
             "sequence_shadow_summary": {
                 "promotion_ready": True,

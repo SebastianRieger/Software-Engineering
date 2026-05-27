@@ -1,7 +1,6 @@
 from pathlib import Path
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
-
 BASE_DIR = Path(__file__).resolve().parents[2]
 
 
@@ -170,7 +169,11 @@ class Settings(BaseSettings):
         "voice.confirm_selection": ["bestaetigen", "platzieren", "fertig"],
         "voice.cancel_selection": ["abbrechen", "zurueck"],
         "voice.enter_arrange_mode": ["verschieben", "anordnen", "bearbeiten"],
-        "voice.exit_arrange_mode": ["anordnung beenden", "verschieben fertig", "bearbeiten fertig"],
+        "voice.exit_arrange_mode": [
+            "anordnung beenden",
+            "verschieben fertig",
+            "bearbeiten fertig",
+        ],
         "voice.resize_expand": ["groesser", "vergroessern"],
         "voice.resize_shrink": ["kleiner", "verkleinern"],
     }

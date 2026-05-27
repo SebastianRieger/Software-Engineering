@@ -5,7 +5,6 @@ from typing import Iterator
 
 from core.config import settings
 
-
 SCHEMA_STATEMENTS = (
     """
     CREATE TABLE IF NOT EXISTS weather_cache (
