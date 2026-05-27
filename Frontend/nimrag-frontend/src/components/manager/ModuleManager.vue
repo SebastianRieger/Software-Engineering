@@ -1,118 +1,233 @@
 <script setup lang="ts">
-import { createApp, ref, onMounted, onBeforeUnmount} from 'vue';
+import { ref, computed, onMounted, onBeforeUnmount, watch } from 'vue';
 import type { ComponentPublicInstance } from 'vue';
 import GridBoard from './GridBoard.vue';
 import ModuleShop from './ModuleShop.vue';
+import { useWidgetManager } from '../../composables/useWidgetManager';
+import { useWidgetResize } from '../../composables/useWidgetResize';
+import { useEditMode } from '../../composables/useEditMode';
+import { useModuleShop } from '../../composables/useModuleShop';
+import { useClockWidgetMode } from '../../composables/useClockWidgetMode';
+import { useActionDispatcher } from '../../composables/useActionDispatcher';
+import { realtimeClient } from '../../services/realtime';
 
-// Define an interface for the exposed methods
+// Interface für die Methoden des ModuleShop
 interface ModuleShopExposed {
+  addCurrentWidgetToCell: (cellId: number) => void;
   nextModule: () => void;
   prevModule: () => void;
 }
 
-// Store for active widgets
-const activeWidgets = ref<{[key: string]: any}>({});
-const isShopOpen = ref(false);
+// Composables initialisieren
+const { insertWidgetIntoCell, clearCell, moveWidgets, occupiedCells } = useWidgetManager();
+const { getVisibleCells, resizeCell } = useWidgetResize();
+
+const availableCells = computed(() => {
+  const occupied = new Set(occupiedCells.value)
+  return getVisibleCells().filter(id => !occupied.has(id))
+});
+const { isEditMode, setEditMode, setupKeyboardListener } = useEditMode();
+const { isShopOpen, toggleShop, openShop, closeShop } = useModuleShop();
+const { clockAnalogMode, toggleClockMode } = useClockWidgetMode();
+
 const moduleShopRef = ref<ComponentPublicInstance<{}, ModuleShopExposed> | null>(null);
+let unsubscribeRealtime: (() => void) | null = null;
 
-// Function to insert a Vue component into a cell
-const insertVueWidgetIntoCell = (cellId: number, widgetComponent: any) => {
-  const cell = document.getElementById(cellId.toString());
-  if (!cell) {
-    console.error(`Cell with ID ${cellId} not found`);
-    return;
-  }
+const { focusedCellId, handleRealtimeEvent, syncFocusedCell } = useActionDispatcher({
+  isShopOpen,
+  openShop,
+  closeShop,
+  toggleShop,
+  isEditMode,
+  setEditMode,
+  visibleCellIds: getVisibleCells,
+  isCellAvailable: (cellId: number) => availableCells.value.includes(cellId),
+  resizeCell,
+  moduleShopRef,
+});
 
-  // Clean up old component if exists
-  if (activeWidgets.value[cellId]) {
-    activeWidgets.value[cellId].unmount();
-  }
-
-  // Clear cell content
-  cell.innerHTML = '';
-
-  // Create container for Vue component
-  const widgetContainer = document.createElement('div');
-  widgetContainer.className = 'w-full h-full';
-  cell.appendChild(widgetContainer);
-
-  // Create and mount Vue app for this component
-  const app = createApp(widgetComponent);
-  app.mount(widgetContainer);
-
-  // Store app for later cleanup
-  activeWidgets.value[cellId] = app;
-
-  // Update cell styling
-  cell.className = 'rounded-xl bg-neutral-800 shadow-inner overflow-hidden';
-};
-
-// Handle adding widget from shop
+/**
+ * Verarbeitet das Hinzufügen eines Widgets aus dem Shop
+ */
 const handleAddWidget = ({ cellId, component }: { cellId: number; component: any }) => {
-  insertVueWidgetIntoCell(cellId, component);
+  insertWidgetIntoCell(cellId, component);
+  syncFocusedCell();
+  console.log('Widget zu Zelle hinzugefügt:', cellId);
 };
 
-// // Clear a cell
-// const clearCell = (cellId: number) => {
-//   const cell = document.getElementById(cellId.toString());
-//   if (!cell) return;
-//
-//   // Clean up Vue app if exists
-//   if (activeWidgets.value[cellId]) {
-//     activeWidgets.value[cellId].unmount();
-//     delete activeWidgets.value[cellId];
-//   }
-//
-//   cell.innerHTML = `
-//     <div class="w-full h-full grid place-items-center text-2xl font-semibold opacity-70">
-//       ${String(cellId).padStart(2, '0')}
-//     </div>
-//   `;
-//   cell.className = 'rounded-xl bg-neutral-800 shadow-inner overflow-hidden';
-// };
+/**
+ * Verarbeitet das Verschieben von Widgets
+ */
+const handleWidgetsMoved = ({ sourceCellId, targetCellId }: { sourceCellId: number; targetCellId: number }) => {
+  moveWidgets({ sourceCellId, targetCellId });
+  syncFocusedCell();
+};
 
-// Handle keydown events
-const handleKeydown = (event: KeyboardEvent) => {
-  if (event.key === 'e') {
-    isShopOpen.value = !isShopOpen.value;
-  } else if (event.key === 'Escape') {
-    isShopOpen.value = false;
-  } else if (isShopOpen.value && moduleShopRef.value) {
-    // Only when shop is open and ref is available
-    if (event.key === 'ArrowRight') {
+/**
+ * Verarbeitet das Löschen eines Widgets
+ */
+const handleDeleteWidget = (cellId: number) => {
+  clearCell(cellId);
+  syncFocusedCell();
+};
+
+/**
+ * Keyboard-Event Handler mit Shop-Navigation
+ */
+const handleShopNavigation = (key: string) => {
+  if (isShopOpen.value && moduleShopRef.value) {
+    if (key === 'ArrowRight') {
       moduleShopRef.value.nextModule();
-    } else if (event.key === 'ArrowLeft') {
+    } else if (key === 'ArrowLeft') {
       moduleShopRef.value.prevModule();
     }
   }
 };
 
+// Keyboard-Listener Setup
+setupKeyboardListener({
+  onShopToggle: toggleShop,
+  onShopNavigate: handleShopNavigation,
+  onClockToggle: toggleClockMode,
+});
+
+watch(availableCells, () => {
+  syncFocusedCell();
+});
+
 onMounted(() => {
-  // Add keyboard event listener
-  window.addEventListener('keydown', handleKeydown);
+  syncFocusedCell();
+  unsubscribeRealtime = realtimeClient.subscribe((event) => {
+    handleRealtimeEvent(event);
+  });
 });
 
 onBeforeUnmount(() => {
-  // Remove keyboard event listener
-  window.removeEventListener('keydown', handleKeydown);
+  unsubscribeRealtime?.();
+  unsubscribeRealtime = null;
 });
+
 </script>
 
 <template>
   <div>
+    <!-- Edit Mode Banner -->
+    <Transition name="slide-down">
+      <div v-if="isEditMode" class="edit-mode-banner">
+        <div class="edit-mode-content">
+          <span class="edit-mode-text">Editor Modus aktiv</span>
+          <div class="edit-mode-shortcuts">
+            <span class="shortcut">E – Shop</span>
+            <span class="shortcut">F – Beenden</span>
+            <span class="shortcut">Klick ⤡ – Größe ändern</span>
+            <button
+              class="shortcut shortcut-btn"
+              @click="toggleClockMode"
+              :title="clockAnalogMode ? 'Digitale Uhr' : 'Analoge Uhr'"
+            >
+              {{ clockAnalogMode ? '🔢 Digital' : '🕐 Analog' }} – A
+            </button>
+          </div>
+        </div>
+      </div>
+    </Transition>
+
     <!-- Module Shop Popup -->
-    <div v-if="isShopOpen" class="shop-overlay" @click.self="isShopOpen = false">
+    <div v-if="isShopOpen" class="shop-overlay" @click.self="closeShop">
       <div class="shop-modal">
-        <button class="close-btn" @click="isShopOpen = false">×</button>
-        <ModuleShop ref="moduleShopRef" @addWidget="handleAddWidget" />
+        <button class="close-btn" @click="closeShop">×</button>
+        <ModuleShop ref="moduleShopRef" :available-cells="availableCells" @addWidget="handleAddWidget" />
       </div>
     </div>
 
-    <GridBoard />
+    <!-- GridBoard mit Event-Listener für widgetsMoved -->
+    <GridBoard
+        :is-edit-mode="isEditMode"
+      :focused-cell-id="focusedCellId"
+        @widgets-moved="handleWidgetsMoved"
+        @delete-widget="handleDeleteWidget"
+    />
   </div>
 </template>
 
 <style scoped>
+.edit-mode-banner {
+  position: fixed;
+  bottom: 20px;
+  left: 50%;
+  transform: translateX(-50%);
+  background: linear-gradient(135deg, #6366f1 0%, #8b5cf6 100%);
+  color: white;
+  padding: 16px 24px;
+  border-radius: 12px;
+  box-shadow: 0 4px 16px rgba(99, 102, 241, 0.4);
+  z-index: 999;
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  font-weight: 600;
+}
+
+.edit-mode-content {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.shortcut {
+  opacity: 0.9;
+  background: rgba(255, 255, 255, 0.2);
+  padding: 4px 10px;
+  border-radius: 6px;
+  white-space: nowrap;
+}
+
+.shortcut-btn {
+  border: none;
+  color: white;
+  cursor: pointer;
+  font-size: 12px;
+  font-weight: 600;
+  transition: all 0.2s ease;
+  display: inline-block;
+}
+
+.shortcut-btn:hover {
+  background: rgba(255, 255, 255, 0.3) !important;
+  transform: scale(1.05);
+}
+
+.shortcut-btn:active {
+  transform: scale(0.95);
+}
+
+.edit-mode-text {
+  font-size: 16px;
+  font-weight: 700;
+}
+
+.edit-mode-shortcuts {
+  display: flex;
+  gap: 12px;
+  font-size: 12px;
+  flex-wrap: wrap;
+}
+
+.slide-down-enter-active,
+.slide-down-leave-active {
+  transition: all 0.3s ease;
+}
+
+.slide-down-enter-from {
+  transform: translateX(-50%) translateY(-100%);
+  opacity: 0;
+}
+
+.slide-down-leave-to {
+  transform: translateX(-50%) translateY(-100%);
+  opacity: 0;
+}
+
 .shop-overlay {
   position: fixed;
   top: 0;
@@ -131,9 +246,13 @@ onBeforeUnmount(() => {
   background: #222;
   border-radius: 8px;
   padding: 20px;
-  max-width: 80%;
-  max-height: 80%;
+  width: 95vw;
+  height: 95vh;
+  max-width: 1200px;
+  max-height: 800px;
   overflow: auto;
+  display: flex;
+  flex-direction: column;
 }
 
 .close-btn {
@@ -145,5 +264,11 @@ onBeforeUnmount(() => {
   color: white;
   font-size: 24px;
   cursor: pointer;
+  transition: all 0.2s;
+}
+
+.close-btn:hover {
+  transform: scale(1.2);
+  color: #ef4444;
 }
 </style>

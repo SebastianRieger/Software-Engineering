@@ -1,32 +1,47 @@
-from fastapi.testclient import TestClient
 import pytest
 
-def test_set_led_color(client, mock_led_service):
-    """
-    Test LED color setting endpoint
-    """
-    test_color = [1.0, 0.5, 0.0]  # Orange
-    response = client.post("/api/v1/led/color", json=test_color)
+
+@pytest.mark.asyncio
+async def test_get_led_status(client, override_led_dependency):
+    _ = override_led_dependency
+    response = await client.get("/api/v1/led/status")
+    assert response.status_code == 200
+    data = response.json()
+    assert data["message"] == "LED status"
+    assert data["mode"] == "mock"
+    assert data["available"] is True
+
+
+@pytest.mark.asyncio
+async def test_set_led_color(client, override_led_dependency):
+    _ = override_led_dependency
+    response = await client.post(
+        "/api/v1/led/color",
+        json={"red": 1.0, "green": 0.5, "blue": 0.0},
+    )
     assert response.status_code == 200
     data = response.json()
     assert data["message"] == "LED color set"
-    assert data["rgb"] == test_color
+    assert data["red"] == 1.0
+    assert data["green"] == 0.5
+    assert data["blue"] == 0.0
+    assert data["mode"] == "mock"
 
-def test_set_led_brightness(client, mock_led_service):
-    """
-    Test LED brightness setting endpoint
-    """
-    test_brightness = 0.75
-    response = client.post("/api/v1/led/brightness", json=test_brightness)
+
+@pytest.mark.asyncio
+async def test_set_led_brightness(client, override_led_dependency):
+    _ = override_led_dependency
+    response = await client.post("/api/v1/led/brightness", json={"brightness": 0.75})
     assert response.status_code == 200
     data = response.json()
     assert data["message"] == "LED brightness set"
-    assert data["brightness"] == test_brightness
+    assert data["brightness"] == 0.75
 
-def test_invalid_color_values(client):
-    """
-    Test LED endpoint handles invalid color values
-    """
-    invalid_color = [2.0, -1.0, 0.5]  # Values outside 0-1 range
-    response = client.post("/api/v1/led/color", json=invalid_color)
-    assert response.status_code == 422  # Validation error
+
+@pytest.mark.asyncio
+async def test_invalid_color_values(client):
+    response = await client.post(
+        "/api/v1/led/color",
+        json={"red": 2.0, "green": -1.0, "blue": 0.5},
+    )
+    assert response.status_code == 422

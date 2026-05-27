@@ -1,18 +1,3 @@
-from fastapi import APIRouter
-from typing import Tuple
+from ...device_endpoints import led_router as router
 
-router = APIRouter()
-
-@router.post("/color")
-async def set_led_color(rgb: Tuple[float, float, float]):
-    """
-    Set LED color (placeholder)
-    """
-    return {"message": "LED color set", "rgb": rgb}
-
-@router.post("/brightness")
-async def set_led_brightness(brightness: float):
-    """
-    Set LED brightness (placeholder)
-    """
-    return {"message": "LED brightness set", "brightness": brightness}
+__all__ = ["router"]

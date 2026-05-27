@@ -1,10 +1,3 @@
-from fastapi import APIRouter
+from ...data_endpoints import smart_home_router as router
 
-router = APIRouter()
-
-@router.get("/devices")
-async def get_devices():
-    """
-    Get list of smart home devices (placeholder)
-    """
-    return {"message": "Smart home functionality coming soon"}
+__all__ = ["router"]

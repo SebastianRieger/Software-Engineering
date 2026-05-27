@@ -5,8 +5,12 @@
   "main": "setup.js",
   "scripts": {
     "setup": "node setup.js",
-    "dev": "node setup.js --dev",
-    "start": "node setup.js --start"
+    "setup:frontend": "node setup.js --setup-frontend",
+    "setup:backend": "node setup.js --setup-backend",
+    "dev": "node setup.js --dev-frontend",
+    "dev:frontend": "node setup.js --dev-frontend",
+    "dev:backend": "node setup.js --dev-backend",
+    "start": "node setup.js --dev-frontend"
   },
   "dependencies": {},
   "devDependencies": {},

@@ -1,0 +1,245 @@
+name: CI/CD Pipeline
+
+on:
+  push:
+    branches: [main, dev]
+  pull_request:
+    branches: [main, dev]
+  workflow_dispatch:
+
+concurrency:
+  group: ci-cd-${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+      
+env:
+  PYTHON_VERSION: "3.12"
+  NODE_VERSION: "20"
+
+# ──────────────────────────────────────────────
+# JOB 1 – Backend lint (fast check, no install)
+# ──────────────────────────────────────────────
+jobs:
+  lint-backend:
+    name: "Backend – Lint & Format"
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+          cache: pip
+          cache-dependency-path: Backend/requirements-ci.txt
+
+      - name: Install lint tools
+        run: pip install black flake8
+
+      - name: black (format check)
+        run: black --check Backend/src Backend/tests
+
+      - name: flake8 (style & errors)
+        run: >
+          flake8 Backend/src Backend/tests
+          --max-line-length=120
+          --extend-ignore=E203,W503
+
+  # ──────────────────────────────────────────────
+  # JOB 2 – Backend tests + coverage
+  # ──────────────────────────────────────────────
+  test-backend:
+    name: "Backend – Tests & Coverage"
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+          cache: pip
+          cache-dependency-path: Backend/requirements-ci.txt
+
+      - name: Install dependencies
+        run: pip install -r Backend/requirements-ci.txt
+
+      - name: Run pytest with coverage
+        working-directory: Backend
+        env:
+          DATABASE_URL: "sqlite:///./ci_test.db"
+          SECRET_KEY: "ci-test-secret-key"
+          MQTT_USERNAME: ""
+          MQTT_PASSWORD: ""
+        run: >
+          pytest tests/ -v
+          --cov=src
+          --cov-report=xml:coverage.xml
+          --cov-report=term-missing
+
+      - name: Upload coverage report
+        uses: actions/upload-artifact@v4
+        with:
+          name: backend-coverage
+          path: Backend/coverage.xml
+          retention-days: 14
+
+  # ──────────────────────────────────────────────
+  # JOB 3 – Frontend tests + coverage
+  # ──────────────────────────────────────────────
+  test-frontend:
+    name: "Frontend – Tests & Coverage"
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+          cache-dependency-path: Frontend/nimrag-frontend/package-lock.json
+
+      - name: Install dependencies
+        working-directory: Frontend/nimrag-frontend
+        run: npm ci
+
+      - name: Run vitest with coverage
+        working-directory: Frontend/nimrag-frontend
+        run: npm run test:coverage
+
+      - name: Upload frontend coverage
+        uses: actions/upload-artifact@v4
+        with:
+          name: frontend-coverage
+          path: Frontend/nimrag-frontend/coverage/
+          retention-days: 14
+
+  # ──────────────────────────────────────────────
+  # JOB 4 – Frontend build (TypeScript check + Vite)
+  # ──────────────────────────────────────────────
+  build-frontend:
+    name: "Frontend – Build"
+    runs-on: ubuntu-latest
+    needs: test-frontend
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+          cache-dependency-path: Frontend/nimrag-frontend/package-lock.json
+
+      - name: Install dependencies
+        working-directory: Frontend/nimrag-frontend
+        run: npm ci
+
+      - name: Build (tsc + vite)
+        working-directory: Frontend/nimrag-frontend
+        run: npm run build
+
+      - name: Upload dist artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: frontend-dist
+          path: Frontend/nimrag-frontend/dist/
+          retention-days: 30
+
+  # ──────────────────────────────────────────────
+  # JOB 5 – Quality gates (radon + coverage check)
+  # ──────────────────────────────────────────────
+  quality-gates:
+    name: "Quality Gates"
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    needs: [lint-backend, test-backend, test-frontend]
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+
+      - name: Install radon
+        run: pip install radon
+
+      - name: Cyclomatic Complexity (warn if avg > B)
+        run: radon cc Backend/src -a -nb --min B
+
+      - name: Maintainability Index
+        run: radon mi Backend/src -nb
+
+      - name: Download backend coverage
+        uses: actions/download-artifact@v4
+        with:
+          name: backend-coverage
+          path: reports/
+
+      # ── SonarCloud (Quality Gate) ──────────────────────────────
+      # Aktivieren: SONAR_TOKEN als GitHub Secret hinterlegen,
+      # sonar-project.properties ins Root-Verzeichnis legen.
+      # Dokumentation: https://docs.sonarcloud.io/getting-started/github/
+      #
+      # - name: SonarCloud Scan
+      #   uses: SonarSource/sonarcloud-github-action@master
+      #   env:
+      #     GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      #     SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
+
+  # ──────────────────────────────────────────────
+  # JOB 6 – Deploy (nur auf main, nach allen Tests)
+  # ──────────────────────────────────────────────
+  deploy:
+    name: "Deploy – Artefakte ablegen"
+    runs-on: ubuntu-latest
+    needs: [lint-backend, test-backend, build-frontend, quality-gates]
+    if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Download frontend dist
+        uses: actions/download-artifact@v4
+        with:
+          name: frontend-dist
+          path: dist/frontend
+
+      - name: Download backend coverage
+        uses: actions/download-artifact@v4
+        with:
+          name: backend-coverage
+          path: reports/
+
+      - name: Package frontend release
+        id: package_frontend_release
+        run: |
+          VERSION=$(git rev-parse --short HEAD)
+          tar -czf "nimrag-frontend-${VERSION}.tar.gz" -C dist/frontend .
+          echo "release_version=${VERSION}" >> "$GITHUB_OUTPUT"
+
+      - name: Upload release bundle
+        uses: actions/upload-artifact@v4
+        with:
+          name: nimrag-release-${{ steps.package_frontend_release.outputs.release_version }}
+          path: |
+            nimrag-frontend-*.tar.gz
+            reports/
+          retention-days: 90
+
+      # ── Deployment auf Testumgebung ────────────────────────────
+      # Für einen vollständigen Deployment-Workflow z. B. auf einen
+      # Raspberry Pi oder eine VM kann hier ein SSH-Deploy-Schritt
+      # ergänzt werden, der das Frontend-Artefakt überträgt und die
+      # FastAPI-Anwendung neu startet (z. B. via systemd).
+      # Benötigte Secrets: SSH_PRIVATE_KEY, DEPLOY_HOST, DEPLOY_USER
+      #
+      # - name: Deploy to test server
+      #   uses: appleboy/ssh-action@v1
+      #   with:
+      #     host: ${{ secrets.DEPLOY_HOST }}
+      #     username: ${{ secrets.DEPLOY_USER }}
+      #     key: ${{ secrets.SSH_PRIVATE_KEY }}
+      #     script: |
+      #       cd /opt/nimrag
+      #       git pull origin main
+      #       pip install -r Backend/requirements.txt
+      #       sudo systemctl restart nimrag-backend
+      #       curl -f http://localhost:8000/api/v1/system/health || exit 1

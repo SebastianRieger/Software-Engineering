@@ -1,104 +1,128 @@
-# Nimrag Smart Mirror Backend
+# Nimrag Backend
 
-This is the backend service for the Nimrag Smart Mirror project. It's built with FastAPI and provides various APIs for the smart mirror functionality.
+FastAPI-Backend fuer den Nimrag Smart Mirror.
 
-## Features
+## Status
 
-- RESTful APIs for all mirror functionalities
-- WebSocket support for real-time updates
-- Smart home integration via MQTT
-- GPIO control for LED strips
-- Gesture recognition with MediaPipe
-- Voice commands with Vosk
+Das Backend ist jetzt eine kleine, konsistente Basis statt nur eines reinen Prototyps.
+Die Kernpfade fuer Wetter, Konfiguration, Systemstatus und einen optionalen Gesten-Backend-Kern sind umgesetzt, weitere Bereiche sind noch bewusst reduziert oder Platzhalter.
 
-## Requirements
+## Derzeit vorhanden
 
-- Python 3.12+
-- FastAPI
-- MediaPipe
-- OpenCV
-- Vosk
-- MQTT Client
-- GPIO (for Raspberry Pi)
+- flacher API-Router unter `src/api/` mit `system_endpoints.py`, `device_endpoints.py` und `data_endpoints.py`
+- Wetter-Service mit OpenWeatherMap-Anbindung
+- SQLite fuer Wetter-Cache und Layout-Konfiguration
+- Repository- und Schema-Schicht fuer zentrale Backend-Daten
+- Konfigurations-Endpunkte unter `/api/v1/config/layout`, `/api/v1/config/system` und `/api/v1/config/gestures`
+- System-Status-Endpunkt mit Datenbank- und Cache-Metadaten
+- Gesten-Endpunkte unter `/api/v1/gestures` mit Start, Stop, Status, Debug-Frame, handzentrierter Tracking-Basis, handgroessenbasierter Schwellen-Normalisierung und Confidence-/Tracking-Metadaten
+- gemeinsamer WebSocket-Endpunkt `/ws` fuer Realtime-Events wie `GestureDetected`
+- Testbasis fuer Wetter, LED, Konfiguration und Gesten
 
-## Installation
+## Noch nicht stabil umgesetzt
 
-1. Create a virtual environment:
-   ```bash
-   python3.12 -m venv venv
-   source venv/bin/activate
-   ```
+- belastbare Kalenderintegration
+- echte LED-Steuerung ueber GPIO oder Hardware-Adapter
+- MQTT-Integration fuer reale Smart-Home-Faelle
+- breitere Frontend-Anbindung ueber Wetter, Konfiguration und den aktuellen Hardware-Status-Slice hinaus
+- weitergehende Frontend-Nutzung der Gesture- und WebSocket-Events
+- echte Kamera-Validierung auf Zielhardware
+- Authentifizierung und produktionsreife Secret-Verwaltung
 
-2. Install dependencies:
-   ```bash
-   pip install -r requirements.txt
-   ```
+## Gesten-Konfiguration
 
-3. Create a `.env` file with your configuration:
-   ```
-   PROJECT_NAME=Nimrag Smart Mirror
-   VERSION=1.0.0
-   SECRET_KEY=your-secret-key
-   WEATHER_API_KEY=your-api-key
-   ```
+Die Gestenbasis bleibt ueber `/api/v1/config/gestures` konfigurierbar. Dort liegen neben Glättung, Cooldown und Schwellenwerten jetzt auch die Parameter fuer die Handgroessen-Normalisierung. ENV-Werte in `src/core/config.py` bleiben die Defaults; die eigentliche Laufzeitabstimmung erfolgt ueber die bestehende SQLite-basierte Konfigurationsstrategie.
 
-## Project Structure
+Eine manuelle Zielplattform-Pruefung ist weiterhin noetig. Die aktuelle Checkliste dafuer steht in [docs/GESTURE_VALIDATION.md](../docs/GESTURE_VALIDATION.md).
 
-```
-Backend/
-├── src/
-│   ├── api/
-│   │   └── api_v1/
-│   │       ├── endpoints/
-│   │       │   ├── weather.py
-│   │       │   ├── calendar.py
-│   │       │   ├── led.py
-│   │       │   └── smart_home.py
-│   │       └── api.py
-│   ├── core/
-│   │   └── config.py
-│   ├── models/
-│   │   └── ...
-│   ├── services/
-│   │   ├── weather.py
-│   │   ├── led.py
-│   │   └── mqtt.py
-│   └── utils/
-│       └── ...
-├── venv/
-├── requirements.txt
-└── .env
-```
+## Wochenstand Gesten
 
-## Running the Application
+Der aktuelle Zwischenstand ist bewusst backendzentriert:
 
-1. Activate the virtual environment:
-   ```bash
-   source venv/bin/activate
-   ```
+- handzentrierte Tracking-Basis statt Wrist-only
+- modularisierte Klassifikation mit Features, Kandidaten und Confidence
+- persistierbare GestureConfig inklusive Handgroessen-Skalierung
+- robusterer Start/Stop- und Fehlerpfad fuer Sessions
+- vorbereitete, aber noch nicht implementierte Erweiterungspfade fuer Arm-/Pose-Kontext
 
-2. Start the server:
-   ```bash
-   cd src
-   uvicorn main:app --reload --host 0.0.0.0 --port 8000
-   ```
+## Starten
 
-The API will be available at `http://localhost:8000` with documentation at `/docs`.
-
-## Development
-
-- API endpoints are in `src/api/api_v1/endpoints/`
-- Core services are in `src/services/`
-- Configuration is managed in `src/core/config.py`
-- Environment variables are stored in `.env`
-
-## Testing
-
-Run tests using pytest:
 ```bash
-pytest
+cd ..
+npm run setup:backend
+npm run dev:backend
 ```
 
-## License
+Falls auch das Frontend vorbereitet werden soll:
 
-This project is licensed under the MIT License.
+```bash
+cd ..
+npm run setup
+```
+
+Der Root-Bootstrapper erstellt bei Bedarf `Backend/.venv`, installiert `requirements.txt` mit einem unterstuetzten Python-Interpreter und startet das Backend anschliessend ohne manuelle Venv-Aktivierung. Unterstuetzt sind Python 3.11 bis 3.13, bevorzugt wird 3.12. Fuer Linux zieht das Setup `numpy<2` vor, baut `aubio` separat ohne Build-Isolation und installiert danach die restlichen Requirements.
+
+## Windows-Hinweis
+
+Wenn `npm run setup:backend` unter Windows mit einer Meldung wie `Gefunden, aber nicht unterstuetzt: py -3 (Python 3.14.x), python (Python 3.14.x)` abbricht, ist meist nur Python 3.14 installiert. Das ist kein PATH-Bug: Der Root-Bootstrapper akzeptiert aktuell bewusst nur Python 3.11 bis 3.13, bevorzugt 3.12, um ungetestete Kombinationen mit nativen Paketen wie MediaPipe, OpenCV und Audio-Abhaengigkeiten zu vermeiden.
+
+Empfohlener Fix:
+
+```powershell
+py -3.12 --version
+npm run setup:backend
+npm run dev:backend
+```
+
+Falls `py -3.12 --version` fehlschlaegt, Python 3.12 fuer Windows x64 inklusive Python Launcher installieren und den Befehl erneut ausfuehren.
+
+Falls Python 3.12 bereits installiert ist, aber nicht automatisch gefunden wird, kann der Interpreter explizit ueber `SMART_MIRROR_PYTHON` gesetzt werden:
+
+```powershell
+$env:SMART_MIRROR_PYTHON="C:\Users\<Name>\AppData\Local\Programs\Python\Python312\python.exe"
+npm run setup:backend
+```
+
+`SMART_MIRROR_PYTHON` ist eine Environment-Variable fuer den absoluten Pfad zum gewuenschten `python.exe`. Der Root-Bootstrapper prueft diese Variable vor den Standardkandidaten `py -3.12`, `py -3.11`, `py -3.13`, `py -3` und `python`.
+
+## Native Abhaengigkeiten
+
+Der Musical-Audio-Pfad nutzt aubio bewusst als Pflichtkomponente fuer Live-Pitch- und Onset-Erkennung. Auf Fedora muss vor der Python-Installation der Requirements mindestens Folgendes vorhanden sein:
+
+```bash
+sudo dnf install -y python3.12-devel aubio-devel aubio-lib
+```
+
+`python3.12-devel` liefert `Python.h` fuer native Builds, `aubio-devel` liefert `aubio.pc` fuer `pkg-config`, und `aubio-lib` stellt die Laufzeitbibliothek bereit. Unter Windows sollte Python 3.12 inklusive Python Launcher installiert sein, damit `py -3.12` vom Root-Bootstrapper gefunden wird. Der Root-Bootstrapper ueberspringt `aubio` auf Windows bewusst, wenn keine nativen Build-Werkzeuge vorhanden sind; das Backend startet trotzdem, waehrend der optionale Musical-Audio-Pfad dann als nicht verfuegbar markiert bleibt. Falls die automatische Interpreter-Erkennung nicht greift, kann der Pfad ueber `SMART_MIRROR_PYTHON` gesetzt werden.
+
+## Tests
+
+```bash
+./.venv/bin/python -m pytest -q tests
+```
+
+Unter Windows entspricht das `./.venv/Scripts/python.exe -m pytest -q tests`.
+
+## Quality-Metriken
+
+Der repo-weite Quality-Lauf wird am Root des Repos gestartet:
+
+```bash
+npm run quality
+```
+
+Einzelne Teilketten lassen sich separat ausfuehren:
+
+```bash
+npm run quality:backend
+npm run quality:frontend
+npm run quality:duplication
+npm run quality:aggregate
+```
+
+Die erzeugten Artefakte landen unter `reports/quality/`. Die erste Ausbaustufe arbeitet bewusst report-only: Test-, Coverage-, Lint-, Typecheck-, Complexity- und Duplication-Daten werden gesammelt und aggregiert, aber noch nicht als harte Merge-Gates verwendet.
+
+## Relevante aktive Doku
+
+- [Ist-Zustand](../docs/CURRENT_STATE.md)
+- [Zielarchitektur](../docs/TARGET_ARCHITECTURE.md)
