@@ -1,0 +1,14 @@
+# Utility Tree für das Nimrag Smart Mirror Projekt
+
+| Qualitätsattribut | Verfeinerung | Szenario (6-Part-Form) | Business Value | Technical Risk |
+| :-- | :-- | :-- | :-- | :-- |
+| Performance | Response Time | Source: Benutzer<br>Stimulus: Touch-Interaktion auf Widget<br>Artifact: Frontend UI<br>Environment: Normalbetrieb<br>Response: Widget öffnet Detailansicht<br>Measure: Reaktion erfolgt in < 200ms | H | M |
+| Performance | Startup Time | Source: System<br>Stimulus: Raspberry Pi bootet<br>Artifact: Gesamtsystem<br>Environment: Kaltstart<br>Response: System ist vollständig einsatzbereit<br>Measure: Boot in < 60 Sekunden | H | H |
+| Performance | Real-time Processing | Source: Benutzer<br>Stimulus: Sprachkommando 'Spiegel, zeige Wetter'<br>Artifact: Vosk ASR + Backend<br>Environment: Normalbetrieb<br>Response: Wetter-Widget wird angezeigt<br>Measure: Latenz < 500ms | H | H |
+| Usability | Ease of Use | Source: Neuer Benutzer<br>Stimulus: Erste Nutzung des Spiegels<br>Artifact: Frontend UI<br>Environment: Ohne Schulung<br>Response: Benutzer navigiert erfolgreich zu Kalender-Widget<br>Measure: Innerhalb von 2 Minuten ohne Anleitung | H | L |
+| Usability | Multi-modal Interaction | Source: Benutzer<br>Stimulus: Gestensteuerung (Swipe nach links)<br>Artifact: MediaPipe + Frontend<br>Environment: 2m Entfernung zum Spiegel<br>Response: Widget wechselt zum nächsten<br>Measure: Geste erkannt und ausgeführt in < 500ms | M | H |
+| Reliability | Availability | Source: Externe API<br>Stimulus: OpenWeatherMap API ist nicht erreichbar<br>Artifact: Backend Weather Service<br>Environment: Normalbetrieb<br>Response: System zeigt gecachte Wetterdaten<br>Measure: Keine Unterbrechung, 99.9% Verfügbarkeit | H | M |
+| Reliability | Fault Tolerance | Source: System<br>Stimulus: USB-Kamera für Gestensteuerung trennt Verbindung<br>Artifact: Gesture Recognition Service<br>Environment: Laufender Betrieb<br>Response: System deaktiviert Gestensteuerung, andere Funktionen bleiben verfügbar<br>Measure: Auto-Erkennung in < 5 Sek, kein Absturz | M | M |
+| Modifiability | Extensibility | Source: Entwickler<br>Stimulus: Neues Widget (z.B. News-Feed) hinzufügen<br>Artifact: Frontend + Backend<br>Environment: Entwicklungszeit<br>Response: Widget wird implementiert und integriert<br>Measure: Integration in < 4h ohne Änderung bestehender Widgets | H | M |
+| Modifiability | Configurability | Source: Benutzer<br>Stimulus: Layout-Konfiguration ändern (Drag \& Drop)<br>Artifact: Configuration Interface<br>Environment: Laufzeit<br>Response: Layout gespeichert \& sofort angewendet<br>Measure: Änderung persistiert in < 2s mit Live-Vorschau | M | L |
+| Security | Confidentiality | Source: Angreifer<br>Stimulus: Versuch, auf Kalender-API-Credentials zuzugreifen<br>Artifact: Backend Credential Storage<br>Environment: Laufzeit<br>Response: Zugriff verweigert, Credentials verschlüsselt<br>Measure: Keine Credentials im Klartext | H | M |
