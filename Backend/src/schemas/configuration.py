@@ -78,3 +78,45 @@ class SystemConfig(BaseModel):
 
 class SystemConfigEnvelope(BaseModel):
     config: SystemConfig
+
+
+NewsRessort = Literal[
+    "inland",
+    "ausland",
+    "wirtschaft",
+    "sport",
+    "video",
+    "investigativ",
+    "wissen",
+]
+
+
+class WeatherWidgetConfig(BaseModel):
+    refresh_seconds: int = Field(default=900, ge=60, le=86400)
+
+
+class NewsWidgetConfig(BaseModel):
+    ressort: NewsRessort | None = None
+    regions: list[int] = Field(default_factory=lambda: [1])
+    refresh_seconds: int = Field(default=3600, ge=60, le=86400)
+
+
+class CameraWidgetConfig(BaseModel):
+    preferred_device_id: str | None = None
+    preferred_device_label: str | None = None
+
+
+class WidgetDefaultsConfig(BaseModel):
+    weather: WeatherWidgetConfig = Field(default_factory=WeatherWidgetConfig)
+    news: NewsWidgetConfig = Field(default_factory=NewsWidgetConfig)
+    camera: CameraWidgetConfig = Field(default_factory=CameraWidgetConfig)
+
+
+class AppConfig(BaseModel):
+    version: int = 1
+    system: SystemConfig = Field(default_factory=SystemConfig)
+    widgets: WidgetDefaultsConfig = Field(default_factory=WidgetDefaultsConfig)
+
+
+class AppConfigEnvelope(BaseModel):
+    config: AppConfig

@@ -2,16 +2,40 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { flushPromises, mount } from '@vue/test-utils'
 
 import WeatherWidget from '@/components/widgets/WeatherWidget.vue'
+import { loadAppConfig } from '@/composables/useAppConfig'
 import { getCurrentWeather } from '@/services/weather'
+
+vi.mock('@/composables/useAppConfig', () => ({
+  loadAppConfig: vi.fn(),
+}))
 
 vi.mock('@/services/weather', () => ({
   getCurrentWeather: vi.fn(),
 }))
 
+const mockedLoadAppConfig = vi.mocked(loadAppConfig)
 const mockedGetCurrentWeather = vi.mocked(getCurrentWeather)
 
 beforeEach(() => {
+  mockedLoadAppConfig.mockReset()
   mockedGetCurrentWeather.mockReset()
+  mockedLoadAppConfig.mockResolvedValue({
+    version: 1,
+    system: {
+      location_name: 'Stuttgart',
+      latitude: 48.7758,
+      longitude: 9.1829,
+      units: 'metric',
+      theme: 'dark',
+      weather_refresh_seconds: 900,
+      updated_at: null,
+    },
+    widgets: {
+      weather: { refresh_seconds: 900 },
+      news: { ressort: null, regions: [1], refresh_seconds: 3600 },
+      camera: { preferred_device_id: null, preferred_device_label: null },
+    },
+  })
   mockedGetCurrentWeather.mockResolvedValue({
     location_name: 'Karlsruhe',
     coordinates: { lat: 49.0069, lon: 8.4037 },

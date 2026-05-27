@@ -27,12 +27,15 @@ class Settings(BaseSettings):
 
     # Database settings
     DATABASE_URL: str = "sqlite:///./nimrag.db"
+    APP_CONFIG_FILE: str = "config/app_config.json"
 
     # External API settings
     WEATHER_API_KEY: str = ""
     WEATHER_TIMEOUT_SECONDS: float = 5.0
     WEATHER_CACHE_TTL_SECONDS: int = 600
     FORECAST_CACHE_TTL_SECONDS: int = 1800
+    NEWS_TIMEOUT_SECONDS: float = 5.0
+    NEWS_CACHE_TTL_SECONDS: int = 900
     DEFAULT_LAT: float = 48.7758
     DEFAULT_LON: float = 9.1829
     GOOGLE_CLIENT_ID: str = ""
@@ -212,6 +215,13 @@ class Settings(BaseSettings):
             return path.resolve()
 
         return (BASE_DIR / "nimrag.db").resolve()
+
+    @property
+    def app_config_path(self) -> Path:
+        path = Path(self.APP_CONFIG_FILE)
+        if not path.is_absolute():
+            path = BASE_DIR / path
+        return path.resolve()
 
 
 settings = Settings()

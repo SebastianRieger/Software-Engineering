@@ -1,5 +1,6 @@
 import { ref, computed, markRaw, watch } from 'vue'
 import type { Component } from 'vue'
+import CameraWidget from '../components/widgets/CameraWidget.vue'
 import { getWidgetComponent, getWidgetName } from './widgetRegistry'
 
 const STORAGE_KEY = 'nimrag-widget-map'
@@ -12,7 +13,7 @@ const STORAGE_KEY = 'nimrag-widget-map'
 function loadFromStorage(): Record<number, Component> {
   try {
     const raw = localStorage.getItem(STORAGE_KEY)
-    if (!raw) return {}
+    if (!raw) return { 1: markRaw(CameraWidget) }
 
     const saved = JSON.parse(raw) as Record<string, string>
     const result: Record<number, Component> = {}

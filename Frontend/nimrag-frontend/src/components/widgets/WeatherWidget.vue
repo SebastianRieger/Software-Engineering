@@ -2,6 +2,7 @@
 import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
 
 import { ApiError } from '../../services/api'
+import { loadAppConfig } from '../../composables/useAppConfig'
 import { getCurrentWeather } from '../../services/weather'
 import type { WeatherCurrentResponse } from '../../types/weather'
 
@@ -51,10 +52,12 @@ const temperatureLabel = computed(() => {
 })
 
 onMounted(() => {
-  refreshTimer = window.setInterval(() => {
+  void loadAppConfig().then((appConfig) => {
+    refreshTimer = window.setInterval(() => {
+      void loadWeather()
+    }, appConfig.widgets.weather.refresh_seconds * 1000)
     void loadWeather()
-  }, 15 * 60 * 1000)
-  void loadWeather()
+  })
 })
 
 onBeforeUnmount(() => {
