@@ -7,7 +7,6 @@ import aiohttp
 from core.config import settings
 from core.database import get_db_connection
 
-
 TAGESSCHAU_API_URL = "https://www.tagesschau.de/api2u/news/"
 
 

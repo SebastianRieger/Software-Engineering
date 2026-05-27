@@ -80,9 +80,7 @@ async def test_get_news_uses_config_defaults(client, mock_news_dependencies):
 
     assert response.status_code == 200
     assert response.json()["news"][0]["title"] == "Testmeldung"
-    assert mock_news_dependencies.calls == [
-        {"ressort": "wissen", "regions": [4, 5]}
-    ]
+    assert mock_news_dependencies.calls == [{"ressort": "wissen", "regions": [4, 5]}]
 
 
 @pytest.mark.asyncio

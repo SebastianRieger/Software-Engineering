@@ -135,20 +135,20 @@ async def test_save_and_reload_system_config(client):
 
 
 def test_app_config_repository_returns_defaults_for_missing_file(tmp_path):
-        repository = AppConfigRepository(config_path=tmp_path / "missing.json")
+    repository = AppConfigRepository(config_path=tmp_path / "missing.json")
 
-        config = repository.get_app_config()
+    config = repository.get_app_config()
 
-        assert config.system.latitude == settings.DEFAULT_LAT
-        assert config.system.longitude == settings.DEFAULT_LON
-        assert config.widgets.news.regions == [1]
-        assert config.widgets.weather.refresh_seconds == 900
+    assert config.system.latitude == settings.DEFAULT_LAT
+    assert config.system.longitude == settings.DEFAULT_LON
+    assert config.widgets.news.regions == [1]
+    assert config.widgets.weather.refresh_seconds == 900
 
 
 def test_app_config_repository_reads_json_file(tmp_path):
-        config_path = tmp_path / "app_config.json"
-        config_path.write_text(
-                """
+    config_path = tmp_path / "app_config.json"
+    config_path.write_text(
+        """
                 {
                     "version": 1,
                     "system": {
@@ -166,30 +166,30 @@ def test_app_config_repository_reads_json_file(tmp_path):
                     }
                 }
                 """,
-                encoding="utf-8",
-        )
+        encoding="utf-8",
+    )
 
-        config = AppConfigRepository(config_path=config_path).get_app_config()
+    config = AppConfigRepository(config_path=config_path).get_app_config()
 
-        assert config.system.location_name == "Karlsruhe"
-        assert config.widgets.news.ressort == "wissen"
-        assert config.widgets.news.regions == [4, 5]
-        assert config.widgets.camera.preferred_device_label == "USB Camera"
+    assert config.system.location_name == "Karlsruhe"
+    assert config.widgets.news.ressort == "wissen"
+    assert config.widgets.news.regions == [4, 5]
+    assert config.widgets.camera.preferred_device_label == "USB Camera"
 
 
 def test_app_config_repository_rejects_malformed_json(tmp_path):
-        config_path = tmp_path / "app_config.json"
-        config_path.write_text("{ not-json", encoding="utf-8")
+    config_path = tmp_path / "app_config.json"
+    config_path.write_text("{ not-json", encoding="utf-8")
 
-        with pytest.raises(AppConfigRepositoryError):
-                AppConfigRepository(config_path=config_path).get_app_config()
+    with pytest.raises(AppConfigRepositoryError):
+        AppConfigRepository(config_path=config_path).get_app_config()
 
 
 @pytest.mark.asyncio
 async def test_get_app_config_endpoint(client, tmp_path):
-        config_path = tmp_path / "app_config.json"
-        config_path.write_text(
-                """
+    config_path = tmp_path / "app_config.json"
+    config_path.write_text(
+        """
                 {
                     "system": {
                         "location_name": "Berlin",
@@ -206,19 +206,19 @@ async def test_get_app_config_endpoint(client, tmp_path):
                     }
                 }
                 """,
-                encoding="utf-8",
-        )
-        old_config_file = settings.APP_CONFIG_FILE
-        settings.APP_CONFIG_FILE = str(config_path)
-        try:
-                response = await client.get("/api/v1/config/app")
-        finally:
-                settings.APP_CONFIG_FILE = old_config_file
+        encoding="utf-8",
+    )
+    old_config_file = settings.APP_CONFIG_FILE
+    settings.APP_CONFIG_FILE = str(config_path)
+    try:
+        response = await client.get("/api/v1/config/app")
+    finally:
+        settings.APP_CONFIG_FILE = old_config_file
 
-        assert response.status_code == 200
-        data = response.json()
-        assert data["config"]["system"]["location_name"] == "Berlin"
-        assert data["config"]["widgets"]["news"]["ressort"] == "inland"
+    assert response.status_code == 200
+    data = response.json()
+    assert data["config"]["system"]["location_name"] == "Berlin"
+    assert data["config"]["widgets"]["news"]["ressort"] == "inland"
 
 
 @pytest.mark.asyncio
