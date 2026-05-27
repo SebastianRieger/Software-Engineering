@@ -1,4 +1,5 @@
 # Smart Mirror Project "Nimrag"
+#https://sebastianrieger.github.io/Software-Engineering/#
 
 Ein intelligenter Spiegel mit modularer Software-Architektur, entwickelt für Raspberry Pi Hardware mit LED-Beleuchtung und webbasierter Benutzeroberfläche.
 
