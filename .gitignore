@@ -76,3 +76,5 @@ Backend/graphify-out/
 Frontend/nimrag-frontend/graphify-out/
 graphify
 sys
+# Claude
+.claude/
