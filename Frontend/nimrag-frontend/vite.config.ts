@@ -8,23 +8,17 @@ export default defineConfig(({ mode }: { mode: string }) => {
   const backendHttpOrigin = env.VITE_BACKEND_HTTP_ORIGIN || 'http://localhost:8000'
   const backendWsOrigin = env.VITE_BACKEND_WS_ORIGIN || 'ws://localhost:8000'
 
-  const config = {
+  return {
     plugins: [vue(), tailwindcss()],
+    base: '/Software-Engineering/',          // ← aus alter Config übernommen
     resolve: { alias: { '@': fileURLToPath(new URL('./src', import.meta.url)) } },
     server: {
       host: true,
       port: 5173,
       open: true,
       proxy: {
-        '/api': {
-          target: backendHttpOrigin,
-          changeOrigin: true,
-        },
-        '/ws': {
-          target: backendWsOrigin,
-          changeOrigin: true,
-          ws: true,
-        },
+        '/api': { target: backendHttpOrigin, changeOrigin: true },
+        '/ws':  { target: backendWsOrigin,  changeOrigin: true, ws: true },
       },
     },
     build: { outDir: 'dist', sourcemap: true, emptyOutDir: true },
@@ -44,22 +38,8 @@ export default defineConfig(({ mode }: { mode: string }) => {
           'dist/**',
           '**/node_modules/**',
         ],
-        thresholds: {
-          statements: 80,
-          branches: 80,
-          functions: 80,
-          lines: 80,
-        },
+        thresholds: { statements: 80, branches: 80, functions: 80, lines: 80 },
       },
     },
   }
-
-  return config
-})
-export default defineConfig({
-  plugins: [vue(), tailwindcss()],
-  base: '/Software-Engineering/',
-  resolve: { alias: { '@': fileURLToPath(new URL('./src', import.meta.url)) } },
-  server: { host: true, port: 5173, open: true },
-  build: { outDir: 'dist', sourcemap: true, emptyOutDir: true },
 })
