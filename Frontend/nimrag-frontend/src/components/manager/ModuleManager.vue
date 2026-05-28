@@ -10,6 +10,7 @@ import { useModuleShop } from '../../composables/useModuleShop';
 import { useClockWidgetMode } from '../../composables/useClockWidgetMode';
 import { useActionDispatcher } from '../../composables/useActionDispatcher';
 import { realtimeClient } from '../../services/realtime';
+import { checkExternalApiHealth } from '../../services/systemHealth';
 
 // Interface für die Methoden des ModuleShop
 interface ModuleShopExposed {
@@ -96,6 +97,9 @@ watch(availableCells, () => {
 });
 
 onMounted(() => {
+  void checkExternalApiHealth().catch((error) => {
+    console.warn('External API health check failed', error);
+  });
   syncFocusedCell();
   unsubscribeRealtime = realtimeClient.subscribe((event) => {
     handleRealtimeEvent(event);

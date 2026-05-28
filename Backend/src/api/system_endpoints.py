@@ -5,6 +5,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 
 from core.config import settings
 from api.device_endpoints import get_musical_audio_service, get_voice_service
+from repositories.app_config import AppConfigRepository, AppConfigRepositoryError
 from repositories.config import ConfigRepository
 from repositories.weather import WeatherRepository
 from schemas.calibration import (
@@ -16,6 +17,7 @@ from schemas.calibration import (
 )
 from schemas.commands import CommandProfilesConfig, CommandProfilesConfigEnvelope
 from schemas.configuration import (
+    AppConfigEnvelope,
     LayoutConfig,
     LayoutConfigEnvelope,
     SystemConfig,
@@ -39,17 +41,20 @@ from schemas.musical_audio import (
     MusicalAudioTrainingArtifactEnvelope,
     MusicalAudioTrainingArtifactListEnvelope,
 )
-from schemas.system import SystemStatusResponse
+from schemas.system import ExternalApiHealthResponse, SystemStatusResponse
 from schemas.voice import VoiceConfig, VoiceConfigEnvelope
 from services.calibration import (
     CalibrationService,
     CalibrationServiceError,
     calibration_service,
 )
+from services.external_api_health import ExternalApiHealthService
 from services.gesture import GestureService, GestureServiceError, gesture_service
 from services.interactions import InputOrchestrator, input_orchestrator
 from services.musical_audio import MusicalAudioService
 from services.voice import VoiceService
+from services.weather import WeatherService
+from services.news import NewsService
 
 config_router = APIRouter()
 system_router = APIRouter()
@@ -59,6 +64,20 @@ calibration_router = APIRouter()
 
 async def get_config_repository() -> ConfigRepository:
     return ConfigRepository()
+
+
+async def get_app_config_repository() -> AppConfigRepository:
+    return AppConfigRepository()
+
+
+async def get_external_api_health_service(
+    app_config_repository: AppConfigRepository = Depends(get_app_config_repository),
+) -> ExternalApiHealthService:
+    return ExternalApiHealthService(
+        weather_service=WeatherService(),
+        news_service=NewsService(),
+        app_config_repository=app_config_repository,
+    )
 
 
 async def get_gesture_service() -> GestureService:
@@ -153,6 +172,16 @@ async def save_system_config(
 ):
     saved_config = repository.save_system_config(config=config)
     return SystemConfigEnvelope(config=saved_config)
+
+
+@config_router.get("/app", response_model=AppConfigEnvelope)
+async def get_app_config(
+    repository: AppConfigRepository = Depends(get_app_config_repository),
+):
+    try:
+        return AppConfigEnvelope(config=repository.get_app_config())
+    except AppConfigRepositoryError as exc:
+        raise HTTPException(status_code=exc.status_code, detail=str(exc)) from exc
 
 
 @config_router.get("/gestures", response_model=GestureConfigEnvelope)
@@ -392,6 +421,16 @@ async def get_system_status():
         "config_entries": config_repository.count_entries(),
         "weather_cache_entries": weather_repository.count_cache_entries(),
     }
+
+
+@system_router.get(
+    "/external-apis/health",
+    response_model=ExternalApiHealthResponse,
+)
+async def get_external_api_health(
+    health_service: ExternalApiHealthService = Depends(get_external_api_health_service),
+):
+    return await health_service.check_all()
 
 
 @system_router.post("/dev/simulate-input", response_model=SimulatedInputResponse)

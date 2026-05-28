@@ -2,46 +2,10 @@
 import { ref, computed, onMounted, onUnmounted, inject } from 'vue'
 import type { Ref } from 'vue'
 import type { CellSize } from '../../composables/useWidgetResize.ts'
-
-const config = {
-  ressort: undefined as Ressort | undefined,
-  regions: [1] as number[],
-  refreshIntervalMs: 3_600_000,
-}
-
-type Ressort = 'inland' | 'ausland' | 'wirtschaft' | 'sport' | 'video' | 'investigativ' | 'wissen'
-
-interface NewsItem {
-  sophoraId: string
-  title: string
-  topline: string
-  firstSentence: string
-  date: string
-  shareURL: string
-  detailsweb: string
-  ressort?: string
-  breakingNews?: boolean
-  teaserImage?: {
-    imageVariants?: Record<string, string>
-    alttext?: string
-  }
-}
-
-async function fetchNews(options?: { ressort?: Ressort; regions?: number[] }): Promise<NewsItem[]> {
-  const params = new URLSearchParams()
-  if (options?.ressort) params.set('ressort', options.ressort)
-  if (options?.regions?.length) params.set('regions', options.regions.join(','))
-
-  const base = 'https://www.tagesschau.de/api2u/news/'
-  const url = params.toString() ? `${base}?${params}` : base
-  const proxy = `https://corsproxy.io/?${encodeURIComponent(url)}`
-
-  const res = await fetch(proxy)
-  if (!res.ok) throw new Error(`HTTP ${res.status}`)
-
-  const parsed = await res.json()
-  return (parsed.news ?? []) as NewsItem[]
-}
+import { loadAppConfig } from '../../composables/useAppConfig.ts'
+import { getNews } from '../../services/news.ts'
+import type { AppConfig } from '../../types/appConfig.ts'
+import type { NewsItem } from '../../types/news.ts'
 
 const cellId    = inject<number>('cellId', 0)
 const cellSizes = inject<Ref<Record<number, CellSize>>>('cellSizes', ref({}))
@@ -74,11 +38,17 @@ function getImage(item: NewsItem): string | null {
   return v['16x9-960'] ?? v['16x9-640'] ?? v['16x9-480'] ?? Object.values(v)[0] ?? null
 }
 
-async function load() {
+async function load(appConfig?: AppConfig) {
   try {
     isLoading.value = true
     error.value = null
-    news.value = await fetchNews({ ressort: config.ressort, regions: config.regions })
+    const resolvedConfig = appConfig ?? await loadAppConfig()
+    const newsConfig = resolvedConfig.widgets.news
+    const response = await getNews({
+      ressort: newsConfig.ressort,
+      regions: newsConfig.regions,
+    })
+    news.value = response.news
   } catch (e) {
     error.value = e instanceof Error ? e.message : 'Fehler beim Laden'
   } finally {
@@ -87,8 +57,12 @@ async function load() {
 }
 
 onMounted(() => {
-  load()
-  intervalId = setInterval(load, config.refreshIntervalMs)
+  void loadAppConfig().then((appConfig) => {
+    void load(appConfig)
+    intervalId = setInterval(() => {
+      void load(appConfig)
+    }, appConfig.widgets.news.refresh_seconds * 1000)
+  })
 })
 
 onUnmounted(() => {

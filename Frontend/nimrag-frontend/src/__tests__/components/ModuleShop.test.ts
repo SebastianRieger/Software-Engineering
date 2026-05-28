@@ -8,6 +8,9 @@ import ModuleShop from '@/components/manager/ModuleShop.vue'
 vi.mock('@/components/widgets/ClockWidget.vue', () => ({
   default: defineComponent({ name: 'MockClock', template: '<div class="mock-clock">Clock</div>' }),
 }))
+vi.mock('@/components/widgets/CameraWidget.vue', () => ({
+  default: defineComponent({ name: 'MockCamera', template: '<div class="mock-camera">Camera</div>' }),
+}))
 vi.mock('@/components/widgets/News.vue', () => ({
   default: defineComponent({ name: 'MockNews', template: '<div class="mock-news">News</div>' }),
 }))
