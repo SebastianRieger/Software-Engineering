@@ -161,8 +161,8 @@ function onResizeClick(cellId: number) {
 
 .grid-cell-focused {
   box-shadow:
-    inset 0 0 0 2px rgba(96, 165, 250, 0.95),
-    0 0 0 4px rgba(59, 130, 246, 0.2);
+    inset 0 0 0 2px rgba(255, 255, 255, 0.95),
+    0 0 0 4px rgba(255, 255, 255, 0.2);
 }
 
 /* Grid-Spanning für verschiedene Größen */
@@ -216,7 +216,7 @@ function onResizeClick(cellId: number) {
   right: 8px;
   width: 36px;
   height: 36px;
-  background: linear-gradient(135deg, #3b82f6 0%, #2563eb 100%);
+  background: linear-gradient(135deg, #3a3a3a 0%, #2a2a2a 100%);
   color: white;
   border: none;
   border-radius: 6px;
@@ -232,9 +232,9 @@ function onResizeClick(cellId: number) {
 }
 
 .resize-widget-btn:hover {
-  background: linear-gradient(135deg, #2563eb 0%, #1d4ed8 100%);
+  background: linear-gradient(135deg, #4a4a4a 0%, #3a3a3a 100%);
   transform: scale(1.1);
-  box-shadow: 0 4px 12px rgba(37, 99, 235, 0.5);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.5);
 }
 
 .resize-widget-btn:active {
@@ -266,7 +266,7 @@ function onResizeClick(cellId: number) {
 }
 
 .cell-drop-target {
-  box-shadow: inset 0 0 0 2px rgba(80, 160, 255, 0.6);
+  box-shadow: inset 0 0 0 2px rgba(255, 255, 255, 0.6);
   transition: box-shadow 0.2s ease;
 }
 </style>

@@ -150,6 +150,9 @@ onBeforeUnmount(() => {
         :error="cameraError"
         :loading="cameraLoading"
         :slide-direction="slideDirection"
+        @swipe-left="goToGrid"
+        @swipe-up="() => navigateCamera('up')"
+        @swipe-down="() => navigateCamera('down')"
       />
     </Transition>
 
