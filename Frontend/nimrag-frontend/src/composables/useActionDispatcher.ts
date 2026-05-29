@@ -120,10 +120,6 @@ export function useActionDispatcher(options: ActionDispatcherOptions) {
   const dispatchAction = (payload: UIActionRequestedPayload): boolean => {
     switch (payload.action) {
       case 'move_focus_left':
-        if (options.currentView?.value === 'home') {
-          options.goToGrid?.()
-          return true
-        }
         if (options.isShopOpen.value && options.moduleShopRef.value) {
           options.moduleShopRef.value.prevModule()
           return true
@@ -131,6 +127,10 @@ export function useActionDispatcher(options: ActionDispatcherOptions) {
         return moveFocus('left')
 
       case 'move_focus_right':
+        if (options.currentView?.value === 'home') {
+          options.goToGrid?.()
+          return true
+        }
         if (options.isShopOpen.value && options.moduleShopRef.value) {
           options.moduleShopRef.value.nextModule()
           return true

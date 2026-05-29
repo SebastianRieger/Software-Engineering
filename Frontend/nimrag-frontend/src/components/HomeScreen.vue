@@ -12,36 +12,6 @@ const props = defineProps<{
   slideDirection: 'up' | 'down' | null
 }>()
 
-const emit = defineEmits<{
-  swipeLeft: []
-  swipeUp: []
-  swipeDown: []
-}>()
-
-// --- Touch / Pointer Wischgesten ---
-const touchStart = ref<{ x: number; y: number } | null>(null)
-const MIN_SWIPE_PX = 60
-
-function onPointerDown(e: PointerEvent): void {
-  touchStart.value = { x: e.clientX, y: e.clientY }
-}
-
-function onPointerUp(e: PointerEvent): void {
-  if (!touchStart.value) return
-  const dx = e.clientX - touchStart.value.x
-  const dy = e.clientY - touchStart.value.y
-  touchStart.value = null
-
-  if (Math.max(Math.abs(dx), Math.abs(dy)) < MIN_SWIPE_PX) return
-
-  if (Math.abs(dx) > Math.abs(dy)) {
-    if (dx < 0) emit('swipeLeft')
-  } else {
-    if (dy < 0) emit('swipeUp')
-    else emit('swipeDown')
-  }
-}
-
 // --- Camera display ---
 const currentCameraName = computed(() => {
   const camera = props.cameras[props.currentIndex]
@@ -155,11 +125,7 @@ watch(trackedHands, drawLandmarks, { deep: true })
 </script>
 
 <template>
-  <div
-    class="home-screen"
-    @pointerdown="onPointerDown"
-    @pointerup="onPointerUp"
-  >
+  <div class="home-screen">
 
     <!-- Kamerabild (gespiegelt) -->
     <div class="camera-feed" :class="slideClass">
@@ -595,8 +561,8 @@ watch(trackedHands, drawLandmarks, { deep: true })
 }
 
 @keyframes swipeLeft {
-  0%, 12%  { transform: translateX(0);    opacity: 0; }
-  22%      { transform: translateX(0);    opacity: 1; }
+  0%, 12%  { transform: translateX(0);     opacity: 0; }
+  22%      { transform: translateX(0);     opacity: 1; }
   74%      { transform: translateX(-40px); opacity: 1; }
   88%, 100%{ transform: translateX(-40px); opacity: 0; }
 }
@@ -768,7 +734,7 @@ watch(trackedHands, drawLandmarks, { deep: true })
   }
 
   .swipe-dot--left {
-    transform: translateX(-50%) translateX(20px);
+    transform: translateX(-20px);
   }
 
   .scan-ring,
