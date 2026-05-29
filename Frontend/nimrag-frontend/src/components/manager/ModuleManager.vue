@@ -3,12 +3,14 @@ import { ref, computed, onMounted, onBeforeUnmount, watch } from 'vue';
 import type { ComponentPublicInstance } from 'vue';
 import GridBoard from './GridBoard.vue';
 import ModuleShop from './ModuleShop.vue';
+import HomeScreen from '../HomeScreen.vue';
 import { useWidgetManager } from '../../composables/useWidgetManager';
 import { useWidgetResize } from '../../composables/useWidgetResize';
 import { useEditMode } from '../../composables/useEditMode';
 import { useModuleShop } from '../../composables/useModuleShop';
 import { useClockWidgetMode } from '../../composables/useClockWidgetMode';
 import { useActionDispatcher } from '../../composables/useActionDispatcher';
+import { useHomeScreen } from '../../composables/useHomeScreen';
 import { realtimeClient } from '../../services/realtime';
 import { checkExternalApiHealth } from '../../services/systemHealth';
 
@@ -18,6 +20,23 @@ interface ModuleShopExposed {
   nextModule: () => void;
   prevModule: () => void;
 }
+
+// View-State: home = Kamera-Homescreen, grid = GridBoard
+const currentView = ref<'home' | 'grid'>('home');
+function goToGrid(): void { currentView.value = 'grid'; }
+
+// HomeScreen Composable
+const {
+  cameras,
+  currentIndex,
+  frameUrl,
+  error: cameraError,
+  loading: cameraLoading,
+  slideDirection,
+  initializeCamera,
+  navigateCamera,
+  stopStream,
+} = useHomeScreen();
 
 // Composables initialisieren
 const { insertWidgetIntoCell, clearCell, moveWidgets, occupiedCells } = useWidgetManager();
@@ -45,6 +64,9 @@ const { focusedCellId, handleRealtimeEvent, syncFocusedCell } = useActionDispatc
   isCellAvailable: (cellId: number) => availableCells.value.includes(cellId),
   resizeCell,
   moduleShopRef,
+  currentView,
+  navigateCamera,
+  goToGrid,
 });
 
 /**
@@ -100,6 +122,7 @@ onMounted(() => {
   void checkExternalApiHealth().catch((error) => {
     console.warn('External API health check failed', error);
   });
+  void initializeCamera();
   syncFocusedCell();
   unsubscribeRealtime = realtimeClient.subscribe((event) => {
     handleRealtimeEvent(event);
@@ -109,52 +132,98 @@ onMounted(() => {
 onBeforeUnmount(() => {
   unsubscribeRealtime?.();
   unsubscribeRealtime = null;
+  stopStream();
 });
 
 </script>
 
 <template>
-  <div>
-    <!-- Edit Mode Banner -->
-    <Transition name="slide-down">
-      <div v-if="isEditMode" class="edit-mode-banner">
-        <div class="edit-mode-content">
-          <span class="edit-mode-text">Editor Modus aktiv</span>
-          <div class="edit-mode-shortcuts">
-            <span class="shortcut">E – Shop</span>
-            <span class="shortcut">F – Beenden</span>
-            <span class="shortcut">Klick ⤡ – Größe ändern</span>
-            <button
-              class="shortcut shortcut-btn"
-              @click="toggleClockMode"
-              :title="clockAnalogMode ? 'Digitale Uhr' : 'Analoge Uhr'"
-            >
-              {{ clockAnalogMode ? '🔢 Digital' : '🕐 Analog' }} – A
-            </button>
+  <div class="app-root">
+
+    <!-- HomeScreen (Kamera-Startseite) -->
+    <Transition name="view-to-grid">
+      <HomeScreen
+        v-if="currentView === 'home'"
+        :cameras="cameras"
+        :current-index="currentIndex"
+        :frame-url="frameUrl"
+        :error="cameraError"
+        :loading="cameraLoading"
+        :slide-direction="slideDirection"
+      />
+    </Transition>
+
+    <!-- Grid-Ansicht -->
+    <Transition name="view-from-right">
+      <div v-if="currentView === 'grid'" class="grid-view">
+
+        <!-- Edit Mode Banner -->
+        <Transition name="slide-down">
+          <div v-if="isEditMode" class="edit-mode-banner">
+            <div class="edit-mode-content">
+              <span class="edit-mode-text">Editor Modus aktiv</span>
+              <div class="edit-mode-shortcuts">
+                <span class="shortcut">E – Shop</span>
+                <span class="shortcut">F – Beenden</span>
+                <span class="shortcut">Klick ⤡ – Größe ändern</span>
+                <button
+                  class="shortcut shortcut-btn"
+                  @click="toggleClockMode"
+                  :title="clockAnalogMode ? 'Digitale Uhr' : 'Analoge Uhr'"
+                >
+                  {{ clockAnalogMode ? '🔢 Digital' : '🕐 Analog' }} – A
+                </button>
+              </div>
+            </div>
+          </div>
+        </Transition>
+
+        <!-- Module Shop Popup -->
+        <div v-if="isShopOpen" class="shop-overlay" @click.self="closeShop">
+          <div class="shop-modal">
+            <button class="close-btn" @click="closeShop">×</button>
+            <ModuleShop ref="moduleShopRef" :available-cells="availableCells" @addWidget="handleAddWidget" />
           </div>
         </div>
+
+        <GridBoard
+          :is-edit-mode="isEditMode"
+          :focused-cell-id="focusedCellId"
+          @widgets-moved="handleWidgetsMoved"
+          @delete-widget="handleDeleteWidget"
+        />
       </div>
     </Transition>
 
-    <!-- Module Shop Popup -->
-    <div v-if="isShopOpen" class="shop-overlay" @click.self="closeShop">
-      <div class="shop-modal">
-        <button class="close-btn" @click="closeShop">×</button>
-        <ModuleShop ref="moduleShopRef" :available-cells="availableCells" @addWidget="handleAddWidget" />
-      </div>
-    </div>
-
-    <!-- GridBoard mit Event-Listener für widgetsMoved -->
-    <GridBoard
-        :is-edit-mode="isEditMode"
-      :focused-cell-id="focusedCellId"
-        @widgets-moved="handleWidgetsMoved"
-        @delete-widget="handleDeleteWidget"
-    />
   </div>
 </template>
 
 <style scoped>
+.app-root {
+  position: fixed;
+  inset: 0;
+  overflow: hidden;
+}
+
+.grid-view {
+  position: absolute;
+  inset: 0;
+}
+
+/* View-Transition: HomeScreen → Grid (slide nach links) */
+.view-to-grid-leave-active,
+.view-from-right-enter-active {
+  transition: transform 0.4s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.view-to-grid-leave-to {
+  transform: translateX(-100%);
+}
+
+.view-from-right-enter-from {
+  transform: translateX(100%);
+}
+
 .edit-mode-banner {
   position: fixed;
   bottom: 20px;

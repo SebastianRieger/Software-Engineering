@@ -364,6 +364,7 @@ class GestureService:
         self.last_primitive_hits: dict[str, float] = {}
         self.last_error: str | None = None
         self._active_calibration_capture: ActiveCalibrationCapture | None = None
+        self._last_landmark_broadcast: float = 0.0
 
     @property
     def smoothed_point(self) -> tuple[float, float] | None:
@@ -1413,6 +1414,21 @@ class GestureService:
 
                 hand_count = len(observation.hands) if observation.hands else 1
                 pose_features = extract_hand_pose_features(observation)
+
+                _now = time.monotonic()
+                if _now - self._last_landmark_broadcast >= 1.0 / 15:
+                    self._last_landmark_broadcast = _now
+                    _hands_data = []
+                    for _h in observation.hands or [observation]:
+                        if _h.landmarks:
+                            _hands_data.append({
+                                "hand": _h.hand,
+                                "landmarks": {k: list(v) for k, v in _h.landmarks.items()},
+                            })
+                    self.realtime.publish_from_thread({
+                        "eventType": "HandTrackingUpdated",
+                        "payload": {"hands": _hands_data},
+                    })
                 with self._lock:
                     self.last_error = None
                     self.last_hand = observation.hand

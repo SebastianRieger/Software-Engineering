@@ -23,6 +23,9 @@ interface ActionDispatcherOptions {
   isCellAvailable: (cellId: number) => boolean
   resizeCell?: (cellId: number, direction: ResizeDirection) => void
   moduleShopRef: Ref<ModuleShopControl | null>
+  currentView?: Ref<'home' | 'grid'>
+  navigateCamera?: (dir: 'up' | 'down') => void
+  goToGrid?: () => void
 }
 
 const GRID_COLUMNS = 4
@@ -124,6 +127,10 @@ export function useActionDispatcher(options: ActionDispatcherOptions) {
         return moveFocus('left')
 
       case 'move_focus_right':
+        if (options.currentView?.value === 'home') {
+          options.goToGrid?.()
+          return true
+        }
         if (options.isShopOpen.value && options.moduleShopRef.value) {
           options.moduleShopRef.value.nextModule()
           return true
@@ -131,9 +138,17 @@ export function useActionDispatcher(options: ActionDispatcherOptions) {
         return moveFocus('right')
 
       case 'move_focus_up':
+        if (options.currentView?.value === 'home') {
+          options.navigateCamera?.('up')
+          return true
+        }
         return moveFocus('up')
 
       case 'move_focus_down':
+        if (options.currentView?.value === 'home') {
+          options.navigateCamera?.('down')
+          return true
+        }
         return moveFocus('down')
 
       case 'focus_grid_cell':
