@@ -26,6 +26,16 @@ export interface PongEvent {
   }
 }
 
+export interface HandTrackingUpdatedEvent {
+  eventType: 'HandTrackingUpdated'
+  payload: {
+    hands: Array<{
+      hand: string | null
+      landmarks: Record<string, [number, number]>
+    }>
+  }
+}
+
 export interface UnknownRealtimeEvent {
   eventType: string
   payload: Record<string, unknown> | null
@@ -36,4 +46,5 @@ export type RealtimeEvent =
   | CommandMatchEvaluatedEvent
   | RawInputDetectedEvent
   | PongEvent
+  | HandTrackingUpdatedEvent
   | UnknownRealtimeEvent
