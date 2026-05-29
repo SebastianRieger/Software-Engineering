@@ -18,7 +18,7 @@ const emit = defineEmits<{
   swipeDown: []
 }>()
 
-// --- Touch / Maus Wischgesten ---
+// --- Touch / Pointer Wischgesten ---
 const touchStart = ref<{ x: number; y: number } | null>(null)
 const MIN_SWIPE_PX = 60
 
@@ -42,6 +42,7 @@ function onPointerUp(e: PointerEvent): void {
   }
 }
 
+// --- Camera display ---
 const currentCameraName = computed(() => {
   const camera = props.cameras[props.currentIndex]
   if (!camera) return 'Kamera'
@@ -50,7 +51,7 @@ const currentCameraName = computed(() => {
 
 const slideClass = computed(() => {
   if (!props.slideDirection) return ''
-  return props.slideDirection === 'down' ? 'slide-in-bottom' : 'slide-in-top'
+  return props.slideDirection === 'down' ? 'slide-from-bottom' : 'slide-from-top'
 })
 
 // --- Hand landmark canvas ---
@@ -102,7 +103,6 @@ function drawLandmarks(): void {
     const x = (pt: [number, number]) => (1 - pt[0]) * canvas.width
     const y = (pt: [number, number]) => pt[1] * canvas.height
 
-    // Verbindungslinien
     ctx.strokeStyle = 'rgba(96, 165, 250, 0.85)'
     ctx.lineWidth = 2.5
     ctx.lineCap = 'round'
@@ -118,7 +118,6 @@ function drawLandmarks(): void {
       ctx.stroke()
     }
 
-    // Punkte
     for (const [name, pt] of Object.entries(lm)) {
       const isPalm = PALM_POINTS.has(name)
       const r = isPalm ? 7 : 5
@@ -162,7 +161,7 @@ watch(trackedHands, drawLandmarks, { deep: true })
     @pointerup="onPointerUp"
   >
 
-    <!-- Kamerabild vom Backend (gespiegelt) -->
+    <!-- Kamerabild (gespiegelt) -->
     <div class="camera-feed" :class="slideClass">
       <img
         v-if="frameUrl"
@@ -172,15 +171,27 @@ watch(trackedHands, drawLandmarks, { deep: true })
         draggable="false"
       />
       <div v-if="loading || !frameUrl" class="camera-state">
-        <div class="spinner" />
+        <div class="camera-state-inner">
+          <div class="scan-ring" />
+          <div class="scan-dot" />
+        </div>
       </div>
-      <div v-else-if="error" class="camera-state camera-state--error">{{ error }}</div>
+      <div v-else-if="error" class="camera-state camera-state--error">
+        <div class="error-inner">
+          <svg class="error-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+            <circle cx="12" cy="12" r="10"/>
+            <line x1="12" y1="8" x2="12" y2="12"/>
+            <line x1="12" y1="16" x2="12.01" y2="16"/>
+          </svg>
+          <span>{{ error }}</span>
+        </div>
+      </div>
     </div>
 
     <!-- Hand-Landmark-Canvas -->
     <canvas ref="canvasRef" class="landmark-canvas" />
 
-    <!-- Top Bar: Branding -->
+    <!-- Top Bar -->
     <div class="top-bar">
       <div class="brand">
         <span class="brand-name">NIMRAG</span>
@@ -188,48 +199,79 @@ watch(trackedHands, drawLandmarks, { deep: true })
       </div>
       <div v-if="cameras.length > 0" class="cam-status">
         <span class="cam-count">{{ currentIndex + 1 }} / {{ cameras.length }}</span>
-        <div class="cam-dot-strip">
+        <div class="cam-pips">
           <span
             v-for="i in cameras.length"
             :key="i"
-            class="strip-dot"
-            :class="{ 'strip-dot--active': i - 1 === currentIndex }"
+            class="pip"
+            :class="{ 'pip--active': i - 1 === currentIndex }"
           />
         </div>
       </div>
     </div>
 
-    <!-- Linke Seite: Wischgeste → Grid -->
+    <!-- Linke Seite: nach links wischen → Grid -->
     <div class="nav-hint nav-hint--left">
       <div class="nav-hint-card">
         <div class="swipe-demo swipe-demo--left">
           <div class="swipe-track swipe-track--h" />
           <div class="swipe-dot swipe-dot--left" />
         </div>
-        <span class="swipe-label">Grid</span>
+        <div class="hint-label-group">
+          <svg class="hint-dest-icon" viewBox="0 0 20 20" fill="none">
+            <rect x="1" y="1" width="8" height="8" rx="1.5" stroke="currentColor" stroke-width="1.5"/>
+            <rect x="11" y="1" width="8" height="8" rx="1.5" stroke="currentColor" stroke-width="1.5"/>
+            <rect x="1" y="11" width="8" height="8" rx="1.5" stroke="currentColor" stroke-width="1.5"/>
+            <rect x="11" y="11" width="8" height="8" rx="1.5" stroke="currentColor" stroke-width="1.5"/>
+          </svg>
+          <div class="hint-label-text">
+            <span class="hint-action">Wische links</span>
+            <span class="hint-dest">Grid öffnen</span>
+          </div>
+        </div>
       </div>
     </div>
 
-    <!-- Rechte Seite: Wischgeste ↕ Kamera -->
+    <!-- Rechte Seite: nach oben/unten wischen → Kamera -->
     <div v-if="cameras.length > 1" class="nav-hint nav-hint--right">
       <div class="nav-hint-card">
-        <div class="swipe-demo swipe-demo--up">
-          <div class="swipe-track swipe-track--v" />
-          <div class="swipe-dot swipe-dot--up" />
+
+        <div class="cam-nav-row cam-nav-row--up">
+          <span class="cam-nav-label">Vorherige</span>
+          <div class="swipe-demo swipe-demo--up">
+            <div class="swipe-track swipe-track--v" />
+            <div class="swipe-dot swipe-dot--up" />
+          </div>
         </div>
+
         <div class="camera-dots">
           <div
             v-for="i in cameras.length"
             :key="i"
-            class="dot"
-            :class="{ 'dot--active': i - 1 === currentIndex }"
+            class="cdot"
+            :class="{ 'cdot--active': i - 1 === currentIndex }"
           />
         </div>
-        <div class="swipe-demo swipe-demo--down">
-          <div class="swipe-track swipe-track--v" />
-          <div class="swipe-dot swipe-dot--down" />
+
+        <div class="cam-nav-row cam-nav-row--down">
+          <div class="swipe-demo swipe-demo--down">
+            <div class="swipe-track swipe-track--v" />
+            <div class="swipe-dot swipe-dot--down" />
+          </div>
+          <span class="cam-nav-label">Nächste</span>
         </div>
-        <span class="swipe-label">Kamera</span>
+
+        <div class="hint-label-group hint-label-group--cam">
+          <svg class="hint-dest-icon" viewBox="0 0 20 16" fill="none">
+            <path d="M19 3.5l-5.5 3.5 5.5 3.5V3.5z" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round"/>
+            <rect x="1" y="1" width="12" height="14" rx="2" stroke="currentColor" stroke-width="1.5"/>
+          </svg>
+          <div class="hint-label-text">
+            <span class="hint-action">Wische auf/ab</span>
+            <span class="hint-dest">Kamera wechseln</span>
+          </div>
+        </div>
+
       </div>
     </div>
 
@@ -237,21 +279,19 @@ watch(trackedHands, drawLandmarks, { deep: true })
     <div class="bottom-bar">
       <div class="bottom-gradient" />
       <div class="bottom-content">
-        <div class="camera-info">
-          <span class="camera-icon">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
-              <path d="M23 7l-7 5 7 5V7z"/>
-              <rect x="1" y="5" width="15" height="14" rx="2" ry="2"/>
-            </svg>
-          </span>
-          <span class="camera-name">{{ currentCameraName }}</span>
+        <div class="cam-info">
+          <svg class="cam-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round">
+            <path d="M23 7l-7 5 7 5V7z"/>
+            <rect x="1" y="5" width="15" height="14" rx="2" ry="2"/>
+          </svg>
+          <span class="cam-name">{{ currentCameraName }}</span>
         </div>
-        <div class="hints">
-          <span class="hint-chip">
-            <span class="hint-chip__gesture">←</span> Grid öffnen
+        <div class="hint-chips">
+          <span class="chip">
+            <span class="chip-key">←</span> Grid öffnen
           </span>
-          <span v-if="cameras.length > 1" class="hint-chip">
-            <span class="hint-chip__gesture">↑↓</span> Kamera wechseln
+          <span v-if="cameras.length > 1" class="chip">
+            <span class="chip-key">↑↓</span> Kamera wechseln
           </span>
         </div>
       </div>
@@ -261,14 +301,17 @@ watch(trackedHands, drawLandmarks, { deep: true })
 </template>
 
 <style scoped>
+/* ── Shell ── */
 .home-screen {
   position: fixed;
   inset: 0;
   background: #000;
   overflow: hidden;
+  cursor: default;
+  user-select: none;
 }
 
-/* ── Kamera (gespiegelt) ── */
+/* ── Kamera-Feed ── */
 .camera-feed {
   position: absolute;
   inset: 0;
@@ -280,41 +323,85 @@ watch(trackedHands, drawLandmarks, { deep: true })
   object-fit: cover;
   display: block;
   transform: scaleX(-1);
-  user-select: none;
+  pointer-events: none;
 }
 
-@keyframes slideInFromBottom {
-  from { transform: scaleX(-1) translateY(8%); opacity: 0; }
-  to   { transform: scaleX(-1) translateY(0);  opacity: 1; }
+/* Slide-Animationen auf dem Container, nicht dem Bild */
+@keyframes slideFromBottom {
+  from { opacity: 0; transform: translateY(6%); }
+  to   { opacity: 1; transform: translateY(0);   }
 }
-@keyframes slideInFromTop {
-  from { transform: scaleX(-1) translateY(-8%); opacity: 0; }
-  to   { transform: scaleX(-1) translateY(0);   opacity: 1; }
+@keyframes slideFromTop {
+  from { opacity: 0; transform: translateY(-6%); }
+  to   { opacity: 1; transform: translateY(0);   }
 }
 
-.slide-in-bottom .camera-video { animation: slideInFromBottom 0.35s ease-out; }
-.slide-in-top    .camera-video { animation: slideInFromTop    0.35s ease-out; }
+.slide-from-bottom { animation: slideFromBottom 0.38s cubic-bezier(0.4, 0, 0.2, 1); }
+.slide-from-top    { animation: slideFromTop    0.38s cubic-bezier(0.4, 0, 0.2, 1); }
 
-
+/* ── Camera States ── */
 .camera-state {
   position: absolute;
   inset: 0;
   display: grid;
   place-items: center;
-  background: rgba(0, 0, 0, 0.6);
+  background: rgba(0, 0, 0, 0.55);
 }
-.camera-state--error { color: #fca5a5; font-size: 0.9rem; padding: 24px; text-align: center; }
 
-.spinner {
-  width: 36px; height: 36px;
-  border: 3px solid rgba(255,255,255,0.2);
-  border-top-color: #fff;
+.camera-state-inner {
+  position: relative;
+  width: 48px;
+  height: 48px;
+  display: grid;
+  place-items: center;
+}
+
+.scan-ring {
+  position: absolute;
+  inset: 0;
   border-radius: 50%;
-  animation: spin 0.8s linear infinite;
+  border: 1.5px solid rgba(255, 255, 255, 0.18);
+  border-top-color: rgba(255, 255, 255, 0.75);
+  animation: spin 1s linear infinite;
 }
-@keyframes spin { to { transform: rotate(360deg); } }
 
-/* ── Canvas ── */
+.scan-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.5);
+  animation: pulse 1s ease-in-out infinite alternate;
+}
+
+@keyframes spin   { to { transform: rotate(360deg); } }
+@keyframes pulse  { from { opacity: 0.3; } to { opacity: 1; } }
+
+.camera-state--error { background: rgba(0, 0, 0, 0.68); }
+
+.error-inner {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 12px;
+  padding: 24px;
+  text-align: center;
+}
+
+.error-icon {
+  width: 32px;
+  height: 32px;
+  color: #fca5a5;
+  opacity: 0.8;
+}
+
+.camera-state--error span {
+  color: #fca5a5;
+  font-size: 0.88rem;
+  max-width: 28ch;
+  line-height: 1.5;
+}
+
+/* ── Landmark Canvas ── */
 .landmark-canvas {
   position: absolute;
   inset: 0;
@@ -326,81 +413,158 @@ watch(trackedHands, drawLandmarks, { deep: true })
 /* ── Top Bar ── */
 .top-bar {
   position: absolute;
-  top: 0; left: 0; right: 0;
-  padding: 18px 24px 32px;
-  background: linear-gradient(to bottom, rgba(0,0,0,0.75) 0%, transparent 100%);
+  top: 0;
+  left: 0;
+  right: 0;
+  padding: 18px 24px 36px;
+  background: linear-gradient(to bottom, rgba(0, 0, 0, 0.78) 0%, transparent 100%);
   display: flex;
   align-items: flex-start;
   justify-content: space-between;
   pointer-events: none;
 }
 
-.brand { display: flex; flex-direction: column; gap: 2px; }
+.brand {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
 
 .brand-name {
   font-size: 1.4rem;
   font-weight: 800;
   letter-spacing: 0.12em;
   color: #fff;
-  text-shadow: 0 1px 8px rgba(0,0,0,0.6);
+  text-shadow: 0 1px 10px rgba(0, 0, 0, 0.7);
 }
 
 .brand-sub {
-  font-size: 0.62rem;
-  letter-spacing: 0.18em;
+  font-size: 0.58rem;
+  letter-spacing: 0.2em;
   text-transform: uppercase;
-  color: rgba(255,255,255,0.45);
+  color: rgba(255, 255, 255, 0.38);
 }
 
-.cam-status { display: flex; flex-direction: column; align-items: flex-end; gap: 6px; }
+.cam-status {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 6px;
+}
 
-.cam-count { font-size: 0.72rem; color: rgba(255,255,255,0.55); letter-spacing: 0.06em; }
+.cam-count {
+  font-size: 0.68rem;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  color: rgba(255, 255, 255, 0.40);
+}
 
-.cam-dot-strip { display: flex; gap: 5px; }
+.cam-pips {
+  display: flex;
+  gap: 5px;
+}
 
-.strip-dot {
-  width: 5px; height: 5px;
+.pip {
+  width: 5px;
+  height: 5px;
   border-radius: 50%;
-  background: rgba(255,255,255,0.3);
-  transition: all 0.25s ease;
+  background: rgba(255, 255, 255, 0.25);
+  transition: background 0.25s ease, transform 0.25s ease;
 }
-.strip-dot--active { background: #fff; transform: scale(1.3); }
 
-/* ── Nav hints ── */
+.pip--active {
+  background: #fff;
+  transform: scale(1.35);
+}
+
+/* ── Nav Hints ── */
 .nav-hint {
   position: absolute;
   top: 50%;
   transform: translateY(-50%);
-  display: flex;
-  flex-direction: column;
-  align-items: center;
   pointer-events: none;
 }
 
-.nav-hint--left  { left: 12px; }
-.nav-hint--right { right: 12px; }
+.nav-hint--left  { left: 14px; }
+.nav-hint--right { right: 14px; }
 
 .nav-hint-card {
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: 12px;
-  background: rgba(0, 0, 0, 0.45);
-  backdrop-filter: blur(12px);
-  border: 1px solid rgba(255, 255, 255, 0.12);
-  border-radius: 20px;
-  padding: 16px 12px;
+  gap: 10px;
+  background: rgba(0, 0, 0, 0.50);
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+  border: 1px solid rgba(255, 255, 255, 0.10);
+  border-radius: 18px;
+  padding: 14px 12px;
+  width: 96px;
 }
 
-.swipe-label {
-  font-size: 0.68rem;
+/* Shared label group below swipe animation */
+.hint-label-group {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding-top: 2px;
+  border-top: 1px solid rgba(255, 255, 255, 0.07);
+  width: 100%;
+}
+
+.hint-label-group--cam {
+  padding-top: 4px;
+  margin-top: 2px;
+}
+
+.hint-dest-icon {
+  width: 18px;
+  height: 18px;
+  flex-shrink: 0;
+  color: rgba(255, 255, 255, 0.35);
+}
+
+.hint-label-text {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+}
+
+.hint-action {
+  font-size: 0.58rem;
   font-weight: 600;
-  letter-spacing: 0.16em;
+  letter-spacing: 0.08em;
+  color: rgba(255, 255, 255, 0.32);
   text-transform: uppercase;
-  color: rgba(255, 255, 255, 0.65);
 }
 
-/* ── Swipe-Demos ── */
+.hint-dest {
+  font-size: 0.72rem;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  color: rgba(255, 255, 255, 0.75);
+}
+
+/* Camera nav rows */
+.cam-nav-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+}
+
+.cam-nav-row--up  { flex-direction: column; }
+.cam-nav-row--down { flex-direction: column; }
+
+.cam-nav-label {
+  font-size: 0.6rem;
+  font-weight: 600;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: rgba(255, 255, 255, 0.38);
+}
+
+/* ── Swipe Demos ── */
 .swipe-demo {
   position: relative;
   display: flex;
@@ -408,162 +572,215 @@ watch(trackedHands, drawLandmarks, { deep: true })
   justify-content: center;
 }
 
-/* Horizontal (links) */
-.swipe-demo--left {
-  width: 64px;
-  height: 22px;
-}
+.swipe-demo--left { width: 60px; height: 20px; }
 
 .swipe-track--h {
   position: absolute;
   inset: 0;
-  border-radius: 11px;
-  background: linear-gradient(to left, rgba(255,255,255,0.25), rgba(255,255,255,0.03));
+  border-radius: 10px;
+  background: linear-gradient(to left, rgba(255, 255, 255, 0.22), rgba(255, 255, 255, 0.02));
 }
 
 .swipe-dot--left {
   position: absolute;
-  right: 1px;
-  width: 22px; height: 22px;
+  right: 0;
+  width: 20px;
+  height: 20px;
   border-radius: 50%;
-  background: radial-gradient(circle at 35% 35%, #fff 0%, rgba(255,255,255,0.85) 100%);
-  box-shadow: 0 0 14px rgba(255,255,255,0.8), 0 0 28px rgba(255,255,255,0.3), 0 0 0 3px rgba(255,255,255,0.15);
-  animation: swipe-left 2.8s cubic-bezier(0.4, 0, 0.2, 1) infinite;
+  background: radial-gradient(circle at 38% 38%, #fff 0%, rgba(255,255,255,0.88) 100%);
+  box-shadow:
+    0 0 12px rgba(255, 255, 255, 0.75),
+    0 0 0 2.5px rgba(255, 255, 255, 0.12);
+  animation: swipeLeft 3s cubic-bezier(0.4, 0, 0.2, 1) infinite;
 }
 
-@keyframes swipe-left {
-  0%, 10%  { transform: translateX(0);    opacity: 0; }
-  20%      { transform: translateX(0);    opacity: 1; }
-  75%      { transform: translateX(-42px); opacity: 1; }
-  90%, 100%{ transform: translateX(-42px); opacity: 0; }
+@keyframes swipeLeft {
+  0%, 12%  { transform: translateX(0);    opacity: 0; }
+  22%      { transform: translateX(0);    opacity: 1; }
+  74%      { transform: translateX(-40px); opacity: 1; }
+  88%, 100%{ transform: translateX(-40px); opacity: 0; }
 }
 
-/* Vertikal (hoch / runter) */
 .swipe-demo--up,
 .swipe-demo--down {
-  width: 22px;
-  height: 64px;
+  width: 20px;
+  height: 60px;
 }
 
 .swipe-track--v {
   position: absolute;
   inset: 0;
-  border-radius: 11px;
+  border-radius: 10px;
 }
 
-.swipe-demo--up .swipe-track--v {
-  background: linear-gradient(to top, rgba(255,255,255,0.25), rgba(255,255,255,0.03));
-}
-
-.swipe-demo--down .swipe-track--v {
-  background: linear-gradient(to bottom, rgba(255,255,255,0.25), rgba(255,255,255,0.03));
-}
+.swipe-demo--up   .swipe-track--v { background: linear-gradient(to top,    rgba(255,255,255,0.22), rgba(255,255,255,0.02)); }
+.swipe-demo--down .swipe-track--v { background: linear-gradient(to bottom, rgba(255,255,255,0.22), rgba(255,255,255,0.02)); }
 
 .swipe-dot--up {
   position: absolute;
-  bottom: 1px;
+  bottom: 0;
   left: 50%;
   transform: translateX(-50%);
-  width: 22px; height: 22px;
+  width: 20px;
+  height: 20px;
   border-radius: 50%;
-  background: radial-gradient(circle at 35% 35%, #fff 0%, rgba(255,255,255,0.85) 100%);
-  box-shadow: 0 0 14px rgba(255,255,255,0.8), 0 0 28px rgba(255,255,255,0.3), 0 0 0 3px rgba(255,255,255,0.15);
-  animation: swipe-up 2.8s cubic-bezier(0.4, 0, 0.2, 1) infinite;
+  background: radial-gradient(circle at 38% 38%, #fff 0%, rgba(255,255,255,0.88) 100%);
+  box-shadow:
+    0 0 12px rgba(255, 255, 255, 0.75),
+    0 0 0 2.5px rgba(255, 255, 255, 0.12);
+  animation: swipeUp 3s cubic-bezier(0.4, 0, 0.2, 1) infinite;
 }
 
-@keyframes swipe-up {
-  0%, 10%  { transform: translateX(-50%) translateY(0);    opacity: 0; }
-  20%      { transform: translateX(-50%) translateY(0);    opacity: 1; }
-  75%      { transform: translateX(-50%) translateY(-42px); opacity: 1; }
-  90%, 100%{ transform: translateX(-50%) translateY(-42px); opacity: 0; }
+@keyframes swipeUp {
+  0%, 12%  { transform: translateX(-50%) translateY(0);    opacity: 0; }
+  22%      { transform: translateX(-50%) translateY(0);    opacity: 1; }
+  74%      { transform: translateX(-50%) translateY(-40px); opacity: 1; }
+  88%, 100%{ transform: translateX(-50%) translateY(-40px); opacity: 0; }
 }
 
 .swipe-dot--down {
   position: absolute;
-  top: 1px;
+  top: 0;
   left: 50%;
   transform: translateX(-50%);
-  width: 22px; height: 22px;
+  width: 20px;
+  height: 20px;
   border-radius: 50%;
-  background: radial-gradient(circle at 35% 35%, #fff 0%, rgba(255,255,255,0.85) 100%);
-  box-shadow: 0 0 14px rgba(255,255,255,0.8), 0 0 28px rgba(255,255,255,0.3), 0 0 0 3px rgba(255,255,255,0.15);
-  animation: swipe-down 2.8s cubic-bezier(0.4, 0, 0.2, 1) infinite;
-  animation-delay: 1.4s;
+  background: radial-gradient(circle at 38% 38%, #fff 0%, rgba(255,255,255,0.88) 100%);
+  box-shadow:
+    0 0 12px rgba(255, 255, 255, 0.75),
+    0 0 0 2.5px rgba(255, 255, 255, 0.12);
+  animation: swipeDown 3s cubic-bezier(0.4, 0, 0.2, 1) infinite;
+  animation-delay: 1.5s;
 }
 
-@keyframes swipe-down {
-  0%, 10%  { transform: translateX(-50%) translateY(0);    opacity: 0; }
-  20%      { transform: translateX(-50%) translateY(0);    opacity: 1; }
-  75%      { transform: translateX(-50%) translateY(42px);  opacity: 1; }
-  90%, 100%{ transform: translateX(-50%) translateY(42px);  opacity: 0; }
+@keyframes swipeDown {
+  0%, 12%  { transform: translateX(-50%) translateY(0);    opacity: 0; }
+  22%      { transform: translateX(-50%) translateY(0);    opacity: 1; }
+  74%      { transform: translateX(-50%) translateY(40px);  opacity: 1; }
+  88%, 100%{ transform: translateX(-50%) translateY(40px);  opacity: 0; }
 }
 
-/* ── Camera dots (rechts) ── */
-.camera-dots { display: flex; flex-direction: column; gap: 7px; }
+/* Camera position dots */
+.camera-dots { display: flex; flex-direction: column; gap: 6px; }
 
-.dot {
-  width: 6px; height: 6px;
+.cdot {
+  width: 5px;
+  height: 5px;
   border-radius: 50%;
-  background: rgba(255,255,255,0.3);
-  transition: all 0.25s ease;
+  background: rgba(255, 255, 255, 0.25);
+  transition: background 0.25s ease, transform 0.25s ease;
 }
-.dot--active { background: #fff; transform: scale(1.5); }
+
+.cdot--active {
+  background: #fff;
+  transform: scale(1.5);
+}
 
 /* ── Bottom Bar ── */
 .bottom-bar {
   position: absolute;
-  bottom: 0; left: 0; right: 0;
+  bottom: 0;
+  left: 0;
+  right: 0;
   pointer-events: none;
 }
 
 .bottom-gradient {
   position: absolute;
   inset: 0;
-  background: linear-gradient(to top, rgba(0,0,0,0.82) 0%, transparent 100%);
+  background: linear-gradient(to top, rgba(0, 0, 0, 0.85) 0%, transparent 100%);
 }
 
 .bottom-content {
   position: relative;
-  padding: 36px 24px 28px;
+  padding: 40px 24px 28px;
   display: flex;
   flex-direction: column;
-  gap: 12px;
+  gap: 10px;
 }
 
-.camera-info { display: flex; align-items: center; gap: 8px; }
+.cam-info {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+}
 
-.camera-icon { width: 18px; height: 18px; color: rgba(255,255,255,0.6); flex-shrink: 0; }
-.camera-icon svg { width: 100%; height: 100%; }
+.cam-icon {
+  width: 17px;
+  height: 17px;
+  flex-shrink: 0;
+  color: rgba(255, 255, 255, 0.55);
+}
 
-.camera-name {
-  font-size: 1.05rem;
+.cam-name {
+  font-size: 1.1rem;
   font-weight: 600;
-  color: #fff;
   letter-spacing: 0.01em;
+  color: #fff;
 }
 
-.hints { display: flex; gap: 10px; flex-wrap: wrap; }
+.hint-chips {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
 
-.hint-chip {
+.chip {
   display: inline-flex;
   align-items: center;
   gap: 6px;
-  padding: 5px 12px;
-  background: rgba(255,255,255,0.1);
+  padding: 5px 11px;
+  background: rgba(255, 255, 255, 0.09);
   backdrop-filter: blur(10px);
-  border: 1px solid rgba(255,255,255,0.14);
+  -webkit-backdrop-filter: blur(10px);
+  border: 1px solid rgba(255, 255, 255, 0.12);
   border-radius: 20px;
-  font-size: 0.75rem;
-  color: rgba(255,255,255,0.8);
+  font-size: 0.72rem;
+  color: rgba(255, 255, 255, 0.72);
   letter-spacing: 0.02em;
 }
 
-.hint-chip__gesture {
+.chip-key {
   font-weight: 700;
   color: #fff;
-  background: rgba(255,255,255,0.18);
+  background: rgba(255, 255, 255, 0.16);
   padding: 1px 6px;
   border-radius: 4px;
-  font-size: 0.8rem;
+  font-size: 0.78rem;
+}
+
+/* ── Reduced Motion ── */
+@media (prefers-reduced-motion: reduce) {
+  .slide-from-bottom,
+  .slide-from-top {
+    animation: none;
+    opacity: 1;
+    transform: none;
+  }
+
+  .swipe-dot--left,
+  .swipe-dot--up,
+  .swipe-dot--down {
+    animation: none;
+    opacity: 0.6;
+    transform: translateX(-50%);
+  }
+
+  .swipe-dot--left {
+    transform: translateX(-50%) translateX(20px);
+  }
+
+  .scan-ring,
+  .scan-dot {
+    animation: none;
+    border-top-color: rgba(255, 255, 255, 0.5);
+    opacity: 0.7;
+  }
+
+  .pip,
+  .cdot {
+    transition: none;
+  }
 }
 </style>
