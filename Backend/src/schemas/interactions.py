@@ -168,8 +168,8 @@ class InputActionConfig(BaseModel):
     mappings: list[InputActionMapping] = Field(
         default_factory=build_default_input_action_mappings
     )
-    global_cooldown_seconds: float = Field(default=0.75, ge=0, le=30)
-    repeat_same_action_window_seconds: float = Field(default=1.25, ge=0, le=30)
+    global_cooldown_seconds: float = Field(default=0.3, ge=0, le=30)
+    repeat_same_action_window_seconds: float = Field(default=0.4, ge=0, le=30)
     source_priorities: dict[InputSourceType, int] = Field(
         default_factory=build_default_source_priorities
     )
