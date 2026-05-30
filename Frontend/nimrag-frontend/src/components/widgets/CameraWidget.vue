@@ -1,50 +1,44 @@
 <script setup lang="ts">
 import { onBeforeUnmount, onMounted, ref } from 'vue'
+import { buildApiUrl } from '../../services/apiConfig'
 
-const CAMERA_STORAGE_KEY = 'nimrag-camera-device-id'
+const POLL_MS = 250
 
-const videoRef = ref<HTMLVideoElement | null>(null)
-const cameras = ref<MediaDeviceInfo[]>([])
-const selectedDeviceId = ref(localStorage.getItem(CAMERA_STORAGE_KEY) ?? '')
+const frameUrl = ref<string | null>(null)
+const cameraName = ref<string | null>(null)
+const frameAgeMs = ref<number | null>(null)
 const error = ref<string | null>(null)
 const loading = ref(true)
 
-let currentStream: MediaStream | null = null
+let pollTimer: ReturnType<typeof setInterval> | null = null
 
-function stopStream(): void {
-  currentStream?.getTracks().forEach((track) => track.stop())
-  currentStream = null
+async function fetchStatus(): Promise<void> {
+  const response = await fetch(buildApiUrl('gestures/status'))
+  if (!response.ok) return
+  const status = (await response.json()) as {
+    running: boolean
+    camera_name: string | null
+  }
+  cameraName.value = status.camera_name
+  if (!status.running) {
+    error.value = 'Backend-Kamera ist nicht aktiv.'
+  }
 }
 
-async function refreshCameraList(): Promise<void> {
-  if (!navigator.mediaDevices?.enumerateDevices) {
-    cameras.value = []
+async function fetchFrame(): Promise<void> {
+  const response = await fetch(buildApiUrl('gestures/frame'))
+  if (!response.ok) {
+    error.value = 'Kein Backend-Kamerabild verfuegbar.'
     return
   }
-
-  const devices = await navigator.mediaDevices.enumerateDevices()
-  cameras.value = devices.filter((device) => device.kind === 'videoinput')
-}
-
-async function startPreview(): Promise<void> {
-  if (!navigator.mediaDevices?.getUserMedia) {
-    throw new Error('Kamera wird von diesem Browser nicht unterstuetzt.')
+  const data = (await response.json()) as {
+    image: string
+    frame_age_ms: number | null
   }
-
-  stopStream()
-  const videoConstraint = selectedDeviceId.value
-    ? { deviceId: { exact: selectedDeviceId.value } }
-    : true
-
-  currentStream = await navigator.mediaDevices.getUserMedia({
-    video: videoConstraint,
-    audio: false,
-  })
-
-  if (videoRef.value) {
-    videoRef.value.srcObject = currentStream
-    await videoRef.value.play().catch(() => undefined)
-  }
+  frameUrl.value = data.image
+  frameAgeMs.value = data.frame_age_ms
+  error.value = null
+  loading.value = false
 }
 
 async function initializeCamera(): Promise<void> {
@@ -52,32 +46,29 @@ async function initializeCamera(): Promise<void> {
   error.value = null
 
   try {
-    await startPreview()
-    await refreshCameraList()
+    await fetchStatus()
+    await fetchFrame()
   } catch (cameraError) {
     error.value = cameraError instanceof Error
       ? cameraError.message
-      : 'Kamera nicht verfuegbar.'
+      : 'Backend-Kamera nicht verfuegbar.'
   } finally {
     loading.value = false
   }
 }
 
-async function handleDeviceChange(): Promise<void> {
-  if (selectedDeviceId.value) {
-    localStorage.setItem(CAMERA_STORAGE_KEY, selectedDeviceId.value)
-  } else {
-    localStorage.removeItem(CAMERA_STORAGE_KEY)
-  }
-  await initializeCamera()
-}
-
 onMounted(() => {
   void initializeCamera()
+  pollTimer = setInterval(() => {
+    void fetchFrame()
+  }, POLL_MS)
 })
 
 onBeforeUnmount(() => {
-  stopStream()
+  if (pollTimer !== null) {
+    clearInterval(pollTimer)
+    pollTimer = null
+  }
 })
 </script>
 
@@ -85,34 +76,19 @@ onBeforeUnmount(() => {
   <div class="camera-widget">
     <header class="camera-header">
       <span>Kamera</span>
-      <select
-        v-if="cameras.length > 1"
-        v-model="selectedDeviceId"
-        class="camera-select"
-        aria-label="Kamera auswaehlen"
-        @change="handleDeviceChange"
-      >
-        <option value="">Standardkamera</option>
-        <option
-          v-for="(camera, index) in cameras"
-          :key="camera.deviceId || index"
-          :value="camera.deviceId"
-        >
-          {{ camera.label || `Kamera ${index + 1}` }}
-        </option>
-      </select>
+      <span class="camera-source">{{ cameraName ?? 'Backend' }}</span>
     </header>
 
     <div class="camera-preview">
-      <video
-        ref="videoRef"
+      <img
+        v-if="frameUrl"
         class="camera-video"
-        autoplay
-        muted
-        playsinline
+        :src="frameUrl"
+        alt="Backend camera preview"
       />
-      <div v-if="loading" class="camera-state">Lädt...</div>
-      <div v-else-if="error" class="camera-state camera-state--error">Kamera nicht verfuegbar</div>
+      <div v-if="loading" class="camera-state">Laedt...</div>
+      <div v-else-if="error" class="camera-state camera-state--error">{{ error }}</div>
+      <div v-else-if="frameAgeMs !== null" class="camera-age">{{ frameAgeMs }} ms</div>
     </div>
   </div>
 </template>
@@ -140,15 +116,15 @@ onBeforeUnmount(() => {
   min-height: 42px;
 }
 
-.camera-select {
+.camera-source {
   min-width: 0;
   max-width: 65%;
-  height: 28px;
-  border: 1px solid rgba(148, 163, 184, 0.45);
-  border-radius: 6px;
-  background: #111827;
-  color: #f8fafc;
-  font-size: 0.78rem;
+  color: #cbd5e1;
+  font-size: 0.76rem;
+  font-weight: 600;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .camera-preview {
@@ -178,5 +154,17 @@ onBeforeUnmount(() => {
 
 .camera-state--error {
   color: #fca5a5;
+}
+
+.camera-age {
+  position: absolute;
+  right: 8px;
+  bottom: 8px;
+  padding: 3px 7px;
+  border-radius: 6px;
+  background: rgba(2, 6, 23, 0.72);
+  color: #cbd5e1;
+  font-size: 0.72rem;
+  font-weight: 700;
 }
 </style>

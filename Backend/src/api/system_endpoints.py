@@ -27,6 +27,7 @@ from schemas.gestures import (
     GestureCameraListResponse,
     GestureConfig,
     GestureConfigEnvelope,
+    GestureDebugStateResponse,
     GestureFrameResponse,
     GestureStartRequest,
     GestureStatusResponse,
@@ -478,6 +479,13 @@ async def get_status(
     service: GestureService = Depends(get_gesture_service),
 ):
     return service.get_status()
+
+
+@gesture_router.get("/debug/state", response_model=GestureDebugStateResponse)
+async def get_debug_state(
+    service: GestureService = Depends(get_gesture_service),
+):
+    return service.get_debug_state()
 
 
 @gesture_router.get("/devices", response_model=GestureCameraListResponse)

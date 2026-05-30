@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, onMounted, computed } from 'vue'
+import { ref, onMounted, computed, markRaw } from 'vue'
 
 const emit = defineEmits(['addWidget'])
 const modules = import.meta.glob("../widgets/*.vue")
@@ -61,7 +61,7 @@ onMounted(async () => {
     const moduleLoader = modules[path]
     if (!moduleLoader) continue
     const module = (await moduleLoader()) as any
-    moduleList.value.push({ name: fileName, path, component: module.default })
+    moduleList.value.push({ name: fileName, path, component: markRaw(module.default) })
   }
 })
 
@@ -103,7 +103,7 @@ defineExpose({ addCurrentWidgetToCell, nextModule, prevModule, setCurrentModule 
       <div class="carousel-stage">
         <div
           v-for="item in displayedModules"
-          :key="item.index"
+          :key="item.position + '-' + item.index"
           class="module-card"
           :class="[`pos-${item.position}`, { 'is-active': item.index === currentIndex }]"
           @click="item.position === 'left' ? prevModule() : item.position === 'right' ? nextModule() : undefined"

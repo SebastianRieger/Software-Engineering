@@ -124,6 +124,17 @@ class GestureStatusResponse(BaseModel):
     last_error: str | None = None
 
 
+class GestureDebugStateResponse(BaseModel):
+    status: GestureStatusResponse
+    trajectory_points: int = Field(ge=0)
+    trajectory_age_ms: int | None = Field(default=None, ge=0)
+    average_hand_size: float | None = None
+    active_phase_samples: list[str | None] = Field(default_factory=list)
+    sequence_channels: dict[str, list[float | None]] = Field(default_factory=dict)
+    two_hand_distance_points: int = Field(ge=0)
+    latest_two_hand_distance: float | None = None
+
+
 class GestureFrameResponse(BaseModel):
     image: str
     captured_at: datetime | None = None

@@ -1338,11 +1338,13 @@ def test_service_retries_transient_adapter_failure_and_recovers():
     )
 
     service.start()
-    assert wait_until(lambda: len(hub.messages) >= 1)
+    assert wait_until(
+        lambda: len(filter_messages(hub.messages, "GestureDetected")) >= 1
+    )
     service.stop()
 
     assert adapter.failures_seen == 1
-    assert hub.messages[0]["payload"]["gesture"] == "swipe_left"
+    assert filter_messages(hub.messages, "GestureDetected")[0]["payload"]["gesture"] == "swipe_left"
 
 
 def test_stop_sets_error_when_thread_does_not_finish_in_time():
@@ -1446,7 +1448,9 @@ def test_reload_config_safe_during_detection():
     )
     service.reload_config()
 
-    assert wait_until(lambda: len(hub.messages) >= 1)
+    assert wait_until(
+        lambda: len(filter_messages(hub.messages, "GestureDetected")) >= 1
+    )
     status = service.get_status()
     service.stop()
 
@@ -1505,7 +1509,9 @@ def test_service_detects_and_exposes_confidence_metadata():
     )
 
     service.start()
-    assert wait_until(lambda: len(hub.messages) >= 1)
+    assert wait_until(
+        lambda: len(filter_messages(hub.messages, "GestureDetected")) >= 1
+    )
     status = service.get_status()
     service.stop()
 
@@ -1598,7 +1604,9 @@ def test_cooldown_prevents_spam_and_emits_event():
     )
 
     service.start()
-    assert wait_until(lambda: len(hub.messages) >= 1)
+    assert wait_until(
+        lambda: len(filter_messages(hub.messages, "GestureDetected")) >= 1
+    )
     service.stop()
 
     gesture_messages = filter_messages(hub.messages, "GestureDetected")
@@ -1861,7 +1869,7 @@ def test_service_detects_short_push_click():
     gesture_message = filter_messages(hub.messages, "GestureDetected")[0]
     action_message = filter_messages(hub.messages, "UIActionRequested")[0]
     assert gesture_message["payload"]["gesture"] == "push_click_short"
-    assert action_message["payload"]["action"] == "primary_click"
+    assert action_message["payload"]["action"] == "resize_expand"
 
 
 def test_service_detects_long_push_click():
@@ -1886,7 +1894,7 @@ def test_service_detects_long_push_click():
     gesture_message = filter_messages(hub.messages, "GestureDetected")[0]
     action_message = filter_messages(hub.messages, "UIActionRequested")[0]
     assert gesture_message["payload"]["gesture"] == "push_click_long"
-    assert action_message["payload"]["action"] == "secondary_select"
+    assert action_message["payload"]["action"] == "delete_widget"
 
 
 def test_service_detects_long_push_click_when_release_crosses_threshold():
@@ -2521,6 +2529,18 @@ async def test_get_gesture_status(client, override_gesture_dependency):
     assert data["running"] is False
     assert data["camera_name"] is None
     assert data["last_confidence"] is None
+
+
+@pytest.mark.asyncio
+async def test_get_gesture_debug_state(client, override_gesture_dependency):
+    _ = override_gesture_dependency
+    response = await client.get("/api/v1/gestures/debug/state")
+    assert response.status_code == 200
+    data = response.json()
+    assert data["status"]["available"] is True
+    assert data["trajectory_points"] == 0
+    assert data["two_hand_distance_points"] == 0
+    assert data["active_phase_samples"] == []
 
 
 @pytest.mark.asyncio

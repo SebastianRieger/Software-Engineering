@@ -19,6 +19,25 @@ export interface RawInputDetectedEvent {
   payload: RawInputDetectedPayload
 }
 
+export interface GestureDetectedEvent {
+  eventType: 'GestureDetected'
+  payload: {
+    gesture: string
+    timestamp: string
+    source: 'camera'
+    hand: string | null
+    confidence: number | null
+    tracking_source: string | null
+    tracking_quality: number | null
+    active_phase: 'idle' | 'preparing' | 'holding' | 'committing' | 'releasing' | 'cooldown' | null
+    candidate_scores: Record<string, number>
+    reject_reason: string | null
+    spec_id: string | null
+    dominant_hand_pose: string | null
+    primitive_hits: Record<string, number>
+  }
+}
+
 export interface PongEvent {
   eventType: 'Pong'
   payload: {
@@ -45,6 +64,7 @@ export type RealtimeEvent =
   | UIActionRequestedEvent
   | CommandMatchEvaluatedEvent
   | RawInputDetectedEvent
+  | GestureDetectedEvent
   | PongEvent
   | HandTrackingUpdatedEvent
   | UnknownRealtimeEvent

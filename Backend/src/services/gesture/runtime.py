@@ -556,6 +556,34 @@ class GestureService:
                 "last_error": self.last_error,
             }
 
+    def get_debug_state(self) -> dict[str, object]:
+        with self._lock:
+            status = self.get_status()
+            trajectory, trajectory_timestamps, average_hand_size = (
+                self._lifecycle.copy_motion_snapshot()
+            )
+            sequence_channels = self._lifecycle.copy_sequence_channel_snapshot()
+            active_phase_samples = self._lifecycle.copy_active_phase_snapshot()
+            two_hand_history = self._lifecycle.copy_two_hand_history()
+            trajectory_age_ms = None
+            if trajectory_timestamps:
+                trajectory_age_ms = int(
+                    max(0.0, time.monotonic() - trajectory_timestamps[-1]) * 1000
+                )
+
+            return {
+                "status": status,
+                "trajectory_points": len(trajectory),
+                "trajectory_age_ms": trajectory_age_ms,
+                "average_hand_size": average_hand_size,
+                "active_phase_samples": active_phase_samples,
+                "sequence_channels": sequence_channels,
+                "two_hand_distance_points": len(two_hand_history),
+                "latest_two_hand_distance": (
+                    two_hand_history[-1][1] if two_hand_history else None
+                ),
+            }
+
     def get_preferred_camera_index(self) -> int | None:
         with self._lock:
             preferred_camera_index = self._preferred_camera_index

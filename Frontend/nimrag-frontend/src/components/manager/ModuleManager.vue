@@ -1,10 +1,12 @@
 <script setup lang="ts">
 import { ref, computed, onMounted, onBeforeUnmount, watch } from 'vue';
 import type { ComponentPublicInstance } from 'vue';
+import type { UIActionRequestedPayload } from '../../types/interactions';
 import GridBoard from './GridBoard.vue';
 import ModuleShop from './ModuleShop.vue';
 import GestureCursor from './GestureCursor.vue';
 import GestureContextHUD from './GestureContextHUD.vue';
+import GestureDebugPanel from './GestureDebugPanel.vue';
 import HomeScreen from '../HomeScreen.vue';
 import { useWidgetManager } from '../../composables/useWidgetManager';
 import { useWidgetResize } from '../../composables/useWidgetResize';
@@ -12,8 +14,10 @@ import { useEditMode } from '../../composables/useEditMode';
 import { useModuleShop } from '../../composables/useModuleShop';
 import { useClockWidgetMode } from '../../composables/useClockWidgetMode';
 import { useActionDispatcher } from '../../composables/useActionDispatcher';
+import { useGestureDebug } from '../../composables/useGestureDebug';
 import { useHomeScreen } from '../../composables/useHomeScreen';
 import { useHandTracking } from '../../composables/useHandTracking';
+import { useInteractionState } from '../../composables/useInteractionState';
 import { realtimeClient } from '../../services/realtime';
 import { checkExternalApiHealth } from '../../services/systemHealth';
 
@@ -51,11 +55,26 @@ const availableCells = computed(() => {
 
 const { isEditMode, setEditMode, setupKeyboardListener } = useEditMode();
 const { isShopOpen, toggleShop, openShop, closeShop } = useModuleShop();
-const { clockAnalogMode, toggleClockMode } = useClockWidgetMode();
-const { trackedHands, indexFingerCursor } = useHandTracking();
+const { toggleClockMode } = useClockWidgetMode();
+const { indexFingerCursor } = useHandTracking();
+const {
+  entries: gestureDebugEntries,
+  trackingStatus: gestureDebugTrackingStatus,
+  lastGesture: gestureDebugLastGesture,
+  lastGestureDetail: gestureDebugLastGestureDetail,
+  lastCommand: gestureDebugLastCommand,
+  lastCommandDetail: gestureDebugLastCommandDetail,
+  lastAction: gestureDebugLastAction,
+  lastActionDetail: gestureDebugLastActionDetail,
+  lastDispatch: gestureDebugLastDispatch,
+  lastDispatchDetail: gestureDebugLastDispatchDetail,
+  recordRealtimeEvent,
+  recordDispatchResult,
+} = useGestureDebug();
 
 const moduleShopRef = ref<ComponentPublicInstance<{}, ModuleShopExposed> | null>(null);
 let unsubscribeRealtime: (() => void) | null = null;
+const debugPanelVisible = ref(true);
 
 const {
   focusedCellId,
@@ -64,7 +83,6 @@ const {
   deleteConfirmCell,
   handleRealtimeEvent,
   syncFocusedCell,
-  dispatchAction,
 } = useActionDispatcher({
   isShopOpen,
   openShop,
@@ -120,6 +138,26 @@ const focusedCellIsEmpty = computed(() =>
   availableCells.value.includes(focusedCellId.value)
 );
 
+const interactionState = useInteractionState({
+  currentView,
+  isEditMode,
+  isShopOpen,
+  isDragging,
+  deleteConfirmPending: computed(() => deleteConfirmCell.value !== null),
+  focusedCellIsEmpty,
+});
+
+const activeCameraName = computed(() => {
+  const camera = cameras.value[currentIndex.value];
+  return camera?.name ?? 'Backend camera';
+});
+
+const cameraDebugStatus = computed(() => {
+  if (cameraError.value) return cameraError.value;
+  if (cameraLoading.value) return 'loading';
+  return frameUrl.value ? 'frame active' : 'waiting for frame';
+});
+
 const handleAddWidget = ({ cellId, component }: { cellId: number; component: any }) => {
   insertWidgetIntoCell(cellId, component);
   syncFocusedCell();
@@ -168,7 +206,11 @@ onMounted(() => {
   void initializeCamera();
   syncFocusedCell();
   unsubscribeRealtime = realtimeClient.subscribe((event) => {
-    handleRealtimeEvent(event);
+    recordRealtimeEvent(event);
+    const handled = handleRealtimeEvent(event);
+    if (event.eventType === 'UIActionRequested') {
+      recordDispatchResult(event.payload as UIActionRequestedPayload, handled);
+    }
   });
 });
 
@@ -192,12 +234,34 @@ onBeforeUnmount(() => {
 
     <!-- Gesture context HUD -->
     <GestureContextHUD
-      :is-edit-mode="isEditMode"
-      :is-shop-open="isShopOpen"
-      :is-dragging="isDragging"
-      :delete-confirm-pending="deleteConfirmCell !== null"
-      :focused-cell-is-empty="focusedCellIsEmpty"
+      :interaction-state="interactionState"
     />
+
+    <GestureDebugPanel
+      v-if="debugPanelVisible"
+      :tracking-status="gestureDebugTrackingStatus"
+      :last-gesture="gestureDebugLastGesture"
+      :last-gesture-detail="gestureDebugLastGestureDetail"
+      :last-command="gestureDebugLastCommand"
+      :last-command-detail="gestureDebugLastCommandDetail"
+      :last-action="gestureDebugLastAction"
+      :last-action-detail="gestureDebugLastActionDetail"
+      :last-dispatch="gestureDebugLastDispatch"
+      :last-dispatch-detail="gestureDebugLastDispatchDetail"
+      :interaction-state="interactionState"
+      :camera-name="activeCameraName"
+      :camera-status="cameraDebugStatus"
+      :entries="gestureDebugEntries"
+    />
+
+    <button
+      class="debug-toggle"
+      type="button"
+      :aria-pressed="debugPanelVisible"
+      @click="debugPanelVisible = !debugPanelVisible"
+    >
+      Debug
+    </button>
 
     <!-- HomeScreen (Kamera-Startseite) -->
     <Transition name="view-to-grid">
@@ -253,6 +317,27 @@ onBeforeUnmount(() => {
 .grid-view {
   position: absolute;
   inset: 0;
+}
+
+.debug-toggle {
+  position: fixed;
+  top: 16px;
+  right: 16px;
+  z-index: 1500;
+  min-width: 72px;
+  height: 34px;
+  border: 1px solid rgba(148, 163, 184, 0.36);
+  border-radius: 8px;
+  background: rgba(15, 23, 42, 0.82);
+  color: #e5e7eb;
+  font-size: 12px;
+  font-weight: 700;
+  cursor: pointer;
+  backdrop-filter: blur(10px);
+}
+
+.debug-toggle:hover {
+  background: rgba(30, 41, 59, 0.92);
 }
 
 /* View-Transition: HomeScreen → Grid */

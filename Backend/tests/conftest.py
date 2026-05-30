@@ -360,6 +360,18 @@ def mock_gesture_service():
                 "debug_frame_available": self.frame is not None,
             }
 
+        def get_debug_state(self):
+            return {
+                "status": self.get_status(),
+                "trajectory_points": 0,
+                "trajectory_age_ms": None,
+                "average_hand_size": None,
+                "active_phase_samples": [],
+                "sequence_channels": {},
+                "two_hand_distance_points": 0,
+                "latest_two_hand_distance": None,
+            }
+
         def list_camera_devices(self):
             return [
                 {

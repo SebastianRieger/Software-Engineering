@@ -1,13 +1,6 @@
 <script setup lang="ts">
 import { computed } from 'vue'
-
-type HudContext =
-  | 'idle'
-  | 'edit-empty-focused'
-  | 'edit-widget-focused'
-  | 'dragging'
-  | 'delete-confirm'
-  | 'shop'
+import type { InteractionState } from '../../composables/useInteractionState'
 
 type GestureIcon = 'circle' | 'push-short' | 'push-long' | 'browse' | 'resize' | 'grab' | 'pinch-close' | 'pinch-open'
 
@@ -17,37 +10,27 @@ interface Hint {
 }
 
 const props = defineProps<{
-  isEditMode: boolean
-  isShopOpen: boolean
-  isDragging: boolean
-  deleteConfirmPending: boolean
-  focusedCellIsEmpty: boolean
+  interactionState: InteractionState
 }>()
 
-const context = computed<HudContext>(() => {
-  if (props.isShopOpen) return 'shop'
-  if (props.isDragging) return 'dragging'
-  if (props.deleteConfirmPending) return 'delete-confirm'
-  if (!props.isEditMode) return 'idle'
-  if (props.focusedCellIsEmpty) return 'edit-empty-focused'
-  return 'edit-widget-focused'
-})
-
 const hints = computed<Hint[]>(() => {
-  switch (context.value) {
-    case 'idle':
+  switch (props.interactionState) {
+    case 'home':
+      return [
+        { icon: 'browse',      label: 'Grid öffnen' },
+      ]
+    case 'grid-idle':
       return [
         { icon: 'circle',      label: 'Edit starten' },
       ]
-    case 'edit-empty-focused':
+    case 'edit-empty':
       return [
         { icon: 'pinch-close', label: 'Shop öffnen' },
-        { icon: 'push-short',  label: 'Skalieren' },
         { icon: 'circle',      label: 'Beenden' },
       ]
-    case 'edit-widget-focused':
+    case 'edit-widget':
       return [
-        { icon: 'pinch-close', label: 'Greifen' },
+        { icon: 'grab',        label: 'Greifen' },
         { icon: 'push-long',   label: 'Löschen' },
         { icon: 'push-short',  label: 'Skalieren' },
         { icon: 'circle',      label: 'Beenden' },
@@ -71,13 +54,13 @@ const hints = computed<Hint[]>(() => {
   }
 })
 
-const alwaysVisible = computed(() => context.value === 'idle')
+const alwaysVisible = computed(() => props.interactionState === 'home' || props.interactionState === 'grid-idle')
 </script>
 
 <template>
   <Transition name="hud-slide">
     <div
-      v-if="isEditMode || isShopOpen || alwaysVisible"
+      v-if="interactionState !== 'home' || alwaysVisible"
       class="gesture-hud"
       :class="{ 'gesture-hud--idle': alwaysVisible }"
       role="status"

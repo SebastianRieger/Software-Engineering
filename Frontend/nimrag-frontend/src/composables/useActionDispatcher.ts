@@ -222,39 +222,39 @@ export function useActionDispatcher(options: ActionDispatcherOptions) {
         return false
 
       // ── Navigation ─────────────────────────────────────────────
-      // When not in edit mode, ALL navigation gestures behave like the
-      // home screen regardless of which view is currently displayed.
+      // Home screen uses gestures for view/camera navigation; otherwise the
+      // same actions move focus across the grid or module shop.
       case 'move_focus_left':
         if (options.isShopOpen.value && options.moduleShopRef.value) {
           options.moduleShopRef.value.prevModule()
-          return true
-        }
-        return false
-
-      case 'move_focus_right':
-        if (options.isShopOpen.value && options.moduleShopRef.value) {
-          options.moduleShopRef.value.nextModule()
           return true
         }
         if (!options.isEditMode.value && options.currentView?.value === 'home') {
           options.goToGrid?.()
           return true
         }
-        return false
+        return moveFocus('left')
+
+      case 'move_focus_right':
+        if (options.isShopOpen.value && options.moduleShopRef.value) {
+          options.moduleShopRef.value.nextModule()
+          return true
+        }
+        return moveFocus('right')
 
       case 'move_focus_up':
         if (!options.isEditMode.value && options.currentView?.value === 'home') {
           options.navigateCamera?.('up')
           return true
         }
-        return false
+        return moveFocus('up')
 
       case 'move_focus_down':
         if (!options.isEditMode.value && options.currentView?.value === 'home') {
           options.navigateCamera?.('down')
           return true
         }
-        return false
+        return moveFocus('down')
 
       case 'focus_grid_cell':
         return focusGridCell(payload.action_args.cell_index)

@@ -37,12 +37,12 @@ afterEach(() => {
 describe('ModuleShop', () => {
   it('renders the "Widget Shop" title immediately', () => {
     const wrapper = mount(ModuleShop, { props: { availableCells: [] } })
-    expect(wrapper.text()).toContain('Widget Shop')
+    expect(wrapper.text()).toContain('WIDGET SHOP')
   })
 
   it('shows a loading indicator before modules are ready', () => {
     const wrapper = mount(ModuleShop, { props: { availableCells: [] } })
-    expect(wrapper.find('.loading').exists()).toBe(true)
+    expect(wrapper.find('.shop-loading').exists()).toBe(true)
   })
 
   it('renders the carousel after modules are loaded', async () => {
@@ -59,39 +59,38 @@ describe('ModuleShop', () => {
     }
   })
 
-  it('shows available cell buttons when modules are loaded', async () => {
+  it('keeps placement controlled through the exposed addCurrentWidgetToCell method', async () => {
     const wrapper = mount(ModuleShop, { props: { availableCells: [1, 2, 5] } })
     await drainModuleLoading()
 
     const vm = wrapper.vm as any
     if (vm.moduleList?.length > 0) {
-      const buttons = wrapper.findAll('.cell-btn')
-      expect(buttons.length).toBe(3)
+      expect(typeof vm.addCurrentWidgetToCell).toBe('function')
+      vm.addCurrentWidgetToCell(2)
+      const payload = (wrapper.emitted('addWidget') as any)[0][0]
+      expect(payload.cellId).toBe(2)
+      expect(payload.component).toBeDefined()
     } else {
       // Modules did not load via glob – verify component is stable
       expect(wrapper.exists()).toBe(true)
     }
   })
 
-  it('shows "no cells" message when modules loaded but availableCells is empty', async () => {
+  it('does not render legacy cell buttons in the gesture-driven shop', async () => {
     const wrapper = mount(ModuleShop, { props: { availableCells: [] } })
     await drainModuleLoading()
 
-    const vm = wrapper.vm as any
-    if (vm.moduleList?.length > 0) {
-      expect(wrapper.find('.no-cells-msg').exists()).toBe(true)
-    } else {
-      expect(wrapper.find('.loading').exists()).toBe(true)
-    }
+    expect(wrapper.find('.cell-btn').exists()).toBe(false)
+    expect(wrapper.find('.no-cells-msg').exists()).toBe(false)
   })
 
-  it('emits addWidget when a cell button is clicked (modules loaded)', async () => {
+  it('emits addWidget when addCurrentWidgetToCell is called', async () => {
     const wrapper = mount(ModuleShop, { props: { availableCells: [3] } })
     await drainModuleLoading()
 
     const vm = wrapper.vm as any
     if (vm.moduleList?.length > 0) {
-      await wrapper.find('.cell-btn').trigger('click')
+      vm.addCurrentWidgetToCell(3)
       expect(wrapper.emitted('addWidget')).toBeTruthy()
       // emitted('addWidget') → [[{ cellId, component }], ...]
       const payload = (wrapper.emitted('addWidget') as any)[0][0]
@@ -158,11 +157,10 @@ describe('ModuleShop', () => {
     const wrapper = mount(ModuleShop, { props: { availableCells: [] } })
     await drainModuleLoading()
 
-    const nextBtn = wrapper.find('.nav-btn-right')
-    const prevBtn = wrapper.find('.nav-btn-left')
-    if (nextBtn.exists()) {
-      await nextBtn.trigger('click')
-      await prevBtn.trigger('click')
+    const buttons = wrapper.findAll('.nav-btn')
+    if (buttons.length >= 2) {
+      await buttons[1]!.trigger('click')
+      await buttons[0]!.trigger('click')
     }
     expect(wrapper.exists()).toBe(true)
   })

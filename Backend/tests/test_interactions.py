@@ -53,6 +53,25 @@ def test_runtime_singletons_share_the_same_input_orchestrator_instance():
     assert musical_audio_service.input_orchestrator is input_orchestrator
 
 
+def test_default_gesture_workflow_mappings_match_edit_mode_contract():
+    config = InputActionConfig()
+    mappings = {
+        (mapping.input_source, mapping.raw_input): mapping.action
+        for mapping in config.mappings
+    }
+
+    assert mappings[("gesture", "swipe_left")] == "move_focus_left"
+    assert mappings[("gesture", "circle")] == "toggle_edit_mode"
+    assert mappings[("gesture", "pinch_close")] == "primary_click"
+    assert mappings[("gesture", "pinch_open")] == "drop_widget"
+    assert mappings[("gesture", "push_click_short")] == "resize_expand"
+    assert mappings[("gesture", "push_click_long")] == "delete_widget"
+    assert mappings[("gesture", "zoom_out_hands")] == "resize_shrink"
+    assert mappings[("gesture", "zoom_in_hands")] == "resize_expand"
+    assert config.global_cooldown_seconds == 0.3
+    assert config.repeat_same_action_window_seconds == 0.4
+
+
 @pytest.fixture
 def override_input_orchestrator_dependency():
     hub = CapturingRealtimeHub()
@@ -216,6 +235,49 @@ def test_input_orchestrator_allows_higher_priority_action_inside_global_cooldown
         "move_focus_left",
         "toggle_shop",
     ]
+
+
+def test_input_orchestrator_reports_repeat_window_suppression_reason():
+    hub = CapturingRealtimeHub()
+    repository = StaticInteractionConfigRepository(
+        InputActionConfig(
+            mappings=[
+                InputActionMapping(
+                    input_source="gesture",
+                    raw_input="circle",
+                    action="toggle_edit_mode",
+                )
+            ],
+            global_cooldown_seconds=0.0,
+            repeat_same_action_window_seconds=30.0,
+        )
+    )
+    orchestrator = InputOrchestrator(
+        realtime=hub,
+        config_repository_factory=lambda: repository,
+    )
+
+    orchestrator.reload_config()
+
+    assert orchestrator.publish_ui_action_requested(
+        input_source="gesture",
+        raw_input="circle",
+        timestamp=datetime.now(timezone.utc),
+    ) is True
+    assert orchestrator.publish_ui_action_requested(
+        input_source="gesture",
+        raw_input="circle",
+        timestamp=datetime.now(timezone.utc),
+    ) is False
+
+    assert [message["eventType"] for message in hub.messages] == [
+        "CommandMatchEvaluated",
+        "UIActionRequested",
+        "CommandMatchEvaluated",
+    ]
+    assert hub.messages[2]["payload"]["outcome"] == "suppressed"
+    assert hub.messages[2]["payload"]["reason"] == "repeat_window"
+    assert hub.messages[2]["payload"]["action"] == "toggle_edit_mode"
 
 
 def test_input_orchestrator_blocks_disabled_modality_from_active_command_profile():

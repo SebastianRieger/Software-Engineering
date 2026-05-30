@@ -3,66 +3,74 @@ import { flushPromises, mount } from '@vue/test-utils'
 
 import CameraWidget from '@/components/widgets/CameraWidget.vue'
 
-const stopTrack = vi.fn()
-const makeStream = () => ({
-  getTracks: () => [{ stop: stopTrack }],
-}) as unknown as MediaStream
-
-const makeCamera = (deviceId: string, label: string) => ({
-  deviceId,
-  label,
-  kind: 'videoinput',
-  groupId: '',
-  toJSON: () => ({}),
-}) as MediaDeviceInfo
-
-const getUserMedia = vi.fn()
-const enumerateDevices = vi.fn()
+const fetchMock = vi.fn()
 
 beforeEach(() => {
-  localStorage.clear()
-  stopTrack.mockReset()
-  getUserMedia.mockReset()
-  enumerateDevices.mockReset()
-  getUserMedia.mockResolvedValue(makeStream())
-  enumerateDevices.mockResolvedValue([
-    makeCamera('camera-1', 'Built-in Camera'),
-    makeCamera('camera-2', 'USB Camera'),
-  ])
-  Object.defineProperty(navigator, 'mediaDevices', {
-    configurable: true,
-    value: { getUserMedia, enumerateDevices },
+  vi.useFakeTimers()
+  fetchMock.mockReset()
+  fetchMock.mockImplementation((url: string) => {
+    if (url.endsWith('/gestures/status')) {
+      return Promise.resolve({
+        ok: true,
+        json: () => Promise.resolve({ running: true, camera_name: 'Backend Camera' }),
+      })
+    }
+    if (url.endsWith('/gestures/frame')) {
+      return Promise.resolve({
+        ok: true,
+        json: () => Promise.resolve({ image: 'data:image/jpeg;base64,abc', frame_age_ms: 42 }),
+      })
+    }
+    return Promise.resolve({ ok: false, json: () => Promise.resolve({}) })
   })
-  vi.spyOn(HTMLMediaElement.prototype, 'play').mockResolvedValue(undefined)
+  vi.stubGlobal('fetch', fetchMock)
 })
 
 afterEach(() => {
-  vi.restoreAllMocks()
+  vi.useRealTimers()
+  vi.unstubAllGlobals()
 })
 
 describe('CameraWidget', () => {
-  it('starts a camera preview on mount', async () => {
+  it('renders the backend camera frame on mount', async () => {
+    const wrapper = mount(CameraWidget)
+    await flushPromises()
+
+    expect(fetchMock).toHaveBeenCalledWith(expect.stringContaining('/gestures/status'))
+    expect(fetchMock).toHaveBeenCalledWith(expect.stringContaining('/gestures/frame'))
+    expect(wrapper.find('img').attributes('src')).toBe('data:image/jpeg;base64,abc')
+    expect(wrapper.text()).toContain('Backend Camera')
+    expect(wrapper.text()).toContain('42 ms')
+  })
+
+  it('polls backend frames and stops polling on unmount', async () => {
+    const wrapper = mount(CameraWidget)
+    await flushPromises()
+
+    expect(fetchMock.mock.calls.filter(([url]) => String(url).includes('/gestures/frame'))).toHaveLength(1)
+
+    vi.advanceTimersByTime(250)
+    await flushPromises()
+
+    expect(fetchMock.mock.calls.filter(([url]) => String(url).includes('/gestures/frame'))).toHaveLength(2)
+
+    wrapper.unmount()
+    vi.advanceTimersByTime(250)
+    await flushPromises()
+
+    expect(fetchMock.mock.calls.filter(([url]) => String(url).includes('/gestures/frame'))).toHaveLength(2)
+  })
+
+  it('does not use browser media devices', async () => {
+    const getUserMedia = vi.fn()
+    Object.defineProperty(navigator, 'mediaDevices', {
+      configurable: true,
+      value: { getUserMedia },
+    })
+
     mount(CameraWidget)
     await flushPromises()
 
-    expect(getUserMedia).toHaveBeenCalledWith({ video: true, audio: false })
-  })
-
-  it('renders a dropdown when multiple cameras are available', async () => {
-    const wrapper = mount(CameraWidget)
-    await flushPromises()
-
-    const options = wrapper.findAll('option')
-    expect(wrapper.find('select').exists()).toBe(true)
-    expect(options.map((option) => option.text())).toContain('USB Camera')
-  })
-
-  it('stops the stream on unmount', async () => {
-    const wrapper = mount(CameraWidget)
-    await flushPromises()
-
-    wrapper.unmount()
-
-    expect(stopTrack).toHaveBeenCalled()
+    expect(getUserMedia).not.toHaveBeenCalled()
   })
 })
