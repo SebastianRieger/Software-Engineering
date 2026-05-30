@@ -15,6 +15,8 @@ GestureType = Literal[
     "push_click_long",
     "zoom_out_hands",
     "zoom_in_hands",
+    "pinch_close",
+    "pinch_open",
 ]
 
 

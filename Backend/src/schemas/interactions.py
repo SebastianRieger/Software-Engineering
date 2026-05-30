@@ -22,6 +22,10 @@ UIActionType = Literal[
     "resize_shrink",
     "move_selected_widget",
     "cancel_selection",
+    "toggle_edit_mode",
+    "delete_widget",
+    "begin_drag",
+    "drop_widget",
 ]
 
 InputSourceType = Literal["gesture", "voice", "musical_audio", "dev", "keyboard"]
@@ -59,15 +63,21 @@ def build_default_input_action_mappings() -> list[InputActionMapping]:
             input_source="gesture", raw_input="swipe_down", action="move_focus_down"
         ),
         InputActionMapping(
-            input_source="gesture", raw_input="circle", action="toggle_shop"
+            input_source="gesture", raw_input="circle", action="toggle_edit_mode"
         ),
         InputActionMapping(
-            input_source="gesture", raw_input="push_click_short", action="primary_click"
+            input_source="gesture", raw_input="pinch_close", action="primary_click"
+        ),
+        InputActionMapping(
+            input_source="gesture", raw_input="pinch_open", action="drop_widget"
+        ),
+        InputActionMapping(
+            input_source="gesture", raw_input="push_click_short", action="resize_expand"
         ),
         InputActionMapping(
             input_source="gesture",
             raw_input="push_click_long",
-            action="secondary_select",
+            action="delete_widget",
         ),
         InputActionMapping(
             input_source="gesture", raw_input="zoom_out_hands", action="resize_shrink"
