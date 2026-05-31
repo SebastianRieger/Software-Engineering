@@ -12,6 +12,8 @@ const props = defineProps<{
   slideDirection: 'up' | 'down' | null
 }>()
 
+const emit = defineEmits<{ goToGrid: [] }>()
+
 // --- Camera display ---
 const currentCameraName = computed(() => {
   const camera = props.cameras[props.currentIndex]

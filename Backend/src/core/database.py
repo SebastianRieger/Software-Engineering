@@ -27,6 +27,14 @@ SCHEMA_STATEMENTS = (
         fetched_at TEXT NOT NULL
     )
     """,
+    """
+    CREATE TABLE IF NOT EXISTS spotify_tokens (
+        id            INTEGER PRIMARY KEY CHECK (id = 1),
+        access_token  TEXT NOT NULL,
+        refresh_token TEXT NOT NULL,
+        expires_at    TEXT NOT NULL
+    )
+    """,
 )
 
 
