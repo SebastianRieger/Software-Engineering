@@ -20,6 +20,13 @@ SCHEMA_STATEMENTS = (
         updated_at TEXT NOT NULL
     )
     """,
+    """
+    CREATE TABLE IF NOT EXISTS nina_cache (
+        cache_key  TEXT PRIMARY KEY,
+        payload    TEXT NOT NULL,
+        fetched_at TEXT NOT NULL
+    )
+    """,
 )
 
 

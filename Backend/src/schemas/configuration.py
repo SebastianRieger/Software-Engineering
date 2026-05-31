@@ -106,10 +106,16 @@ class CameraWidgetConfig(BaseModel):
     preferred_device_label: str | None = None
 
 
+class NinaWidgetConfig(BaseModel):
+    ars: str  # Pflichtfeld – kein Standardwert, muss in app_config.json stehen
+    refresh_seconds: int = Field(default=300, ge=60, le=86400)
+
+
 class WidgetDefaultsConfig(BaseModel):
     weather: WeatherWidgetConfig = Field(default_factory=WeatherWidgetConfig)
     news: NewsWidgetConfig = Field(default_factory=NewsWidgetConfig)
     camera: CameraWidgetConfig = Field(default_factory=CameraWidgetConfig)
+    nina: NinaWidgetConfig | None = None
 
 
 class AppConfig(BaseModel):
