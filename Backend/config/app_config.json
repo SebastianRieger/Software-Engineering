@@ -20,6 +20,10 @@
     "camera": {
       "preferred_device_id": null,
       "preferred_device_label": null
+    },
+    "market": {
+      "symbols": ["BTC/USD", "NVDA", "AAPL", "MSFT", "ETH/USD"],
+      "refresh_seconds": 900
     }
   }
 }

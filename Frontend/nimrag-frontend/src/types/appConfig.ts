@@ -25,10 +25,16 @@ export interface CameraWidgetConfig {
   preferred_device_label: string | null
 }
 
+export interface MarketWidgetConfig {
+  symbols: string[]
+  refresh_seconds: number
+}
+
 export interface WidgetDefaultsConfig {
   weather: WeatherWidgetConfig
   news: NewsWidgetConfig
   camera: CameraWidgetConfig
+  market: MarketWidgetConfig
 }
 
 export interface AppConfig {

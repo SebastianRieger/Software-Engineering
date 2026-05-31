@@ -106,10 +106,18 @@ class CameraWidgetConfig(BaseModel):
     preferred_device_label: str | None = None
 
 
+class MarketWidgetConfig(BaseModel):
+    symbols: list[str] = Field(
+        default_factory=lambda: ["AAPL", "MSFT", "NVDA", "BTC/USD", "ETH/USD"]
+    )
+    refresh_seconds: int = Field(default=900, ge=60, le=86400)
+
+
 class WidgetDefaultsConfig(BaseModel):
     weather: WeatherWidgetConfig = Field(default_factory=WeatherWidgetConfig)
     news: NewsWidgetConfig = Field(default_factory=NewsWidgetConfig)
     camera: CameraWidgetConfig = Field(default_factory=CameraWidgetConfig)
+    market: MarketWidgetConfig = Field(default_factory=MarketWidgetConfig)
 
 
 class AppConfig(BaseModel):
