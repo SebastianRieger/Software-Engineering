@@ -1421,14 +1421,20 @@ class GestureService:
                     _hands_data = []
                     for _h in observation.hands or [observation]:
                         if _h.landmarks:
-                            _hands_data.append({
-                                "hand": _h.hand,
-                                "landmarks": {k: list(v) for k, v in _h.landmarks.items()},
-                            })
-                    self.realtime.publish_from_thread({
-                        "eventType": "HandTrackingUpdated",
-                        "payload": {"hands": _hands_data},
-                    })
+                            _hands_data.append(
+                                {
+                                    "hand": _h.hand,
+                                    "landmarks": {
+                                        k: list(v) for k, v in _h.landmarks.items()
+                                    },
+                                }
+                            )
+                    self.realtime.publish_from_thread(
+                        {
+                            "eventType": "HandTrackingUpdated",
+                            "payload": {"hands": _hands_data},
+                        }
+                    )
                 with self._lock:
                     self.last_error = None
                     self.last_hand = observation.hand
