@@ -16,6 +16,7 @@ export const DEFAULT_APP_CONFIG: AppConfig = {
     weather: { refresh_seconds: 900 },
     news: { ressort: null, regions: [1], refresh_seconds: 3600 },
     camera: { preferred_device_id: null, preferred_device_label: null },
+    market: { symbols: ['AAPL', 'MSFT', 'NVDA', 'BTC/USD', 'ETH/USD'], refresh_seconds: 900 },
   },
 }
 

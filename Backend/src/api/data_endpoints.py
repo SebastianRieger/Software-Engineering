@@ -1,16 +1,37 @@
 from fastapi import APIRouter, Depends, HTTPException, Query
 
+from repositories.nina import NinaRepositoryError
 from repositories.weather import WeatherRepositoryError
+from schemas.nina import NinaWarningsResponse
 from schemas.weather import (
     WeatherCurrentResponse,
     WeatherForecastResponse,
     WeatherGeocodingResponse,
 )
+from services.nina import NinaService
 from services.weather import WeatherService
 
 weather_router = APIRouter()
 calendar_router = APIRouter()
 smart_home_router = APIRouter()
+nina_router = APIRouter()
+
+
+async def get_nina_service() -> NinaService:
+    return NinaService()
+
+
+@nina_router.get("/{ars}", response_model=NinaWarningsResponse)
+async def get_nina_warnings(
+    ars: str,
+    nina_service: NinaService = Depends(get_nina_service),
+):
+    """Liefert aktive Bevölkerungsschutzwarnungen für den gegebenen ARS-Regionalschlüssel.
+    Beispiel: 082150000000 = Stadtkreis Karlsruhe"""
+    try:
+        return await nina_service.get_warnings(ars=ars)
+    except NinaRepositoryError as exc:
+        raise HTTPException(status_code=exc.status_code, detail=str(exc)) from exc
 
 
 async def get_weather_service() -> WeatherService:

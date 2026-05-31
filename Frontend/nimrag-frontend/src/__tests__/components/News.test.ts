@@ -56,6 +56,7 @@ beforeEach(() => {
       weather: { refresh_seconds: 900 },
       news: { ressort: null, regions: [1], refresh_seconds: 3600 },
       camera: { preferred_device_id: null, preferred_device_label: null },
+      market: { symbols: ['AAPL', 'BTC/USD'], refresh_seconds: 900 },
     },
   })
   mockNews()

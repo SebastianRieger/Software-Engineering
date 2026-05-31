@@ -7,7 +7,7 @@ BASE_DIR = Path(__file__).resolve().parents[2]
 class Settings(BaseSettings):
     model_config = SettingsConfigDict(
         case_sensitive=True,
-        env_file=".env",
+        env_file=str(BASE_DIR / ".env"),
     )
 
     PROJECT_NAME: str = "Nimrag Smart Mirror"
@@ -39,6 +39,10 @@ class Settings(BaseSettings):
     NEWS_CACHE_TTL_SECONDS: int = 900
     DEFAULT_LAT: float = 49.0069
     DEFAULT_LON: float = 8.4037
+    TWELVE_DATA_API_KEY: str = ""
+    MARKET_CACHE_TTL_SECONDS: int = 900
+    DEFAULT_LAT: float = 48.7758
+    DEFAULT_LON: float = 9.1829
     GOOGLE_CLIENT_ID: str = ""
     GOOGLE_CLIENT_SECRET: str = ""
     GESTURES_DEV_ENDPOINT_ENABLED: bool = False

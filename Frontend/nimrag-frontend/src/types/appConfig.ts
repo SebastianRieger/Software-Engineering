@@ -25,10 +25,20 @@ export interface CameraWidgetConfig {
   preferred_device_label: string | null
 }
 
+export interface MarketWidgetConfig {
+  symbols: string[]
+}
+export interface NinaWidgetConfig {
+  ars: string
+  refresh_seconds: number
+}
+
 export interface WidgetDefaultsConfig {
   weather: WeatherWidgetConfig
   news: NewsWidgetConfig
   camera: CameraWidgetConfig
+  market: MarketWidgetConfig
+  nina?: NinaWidgetConfig
 }
 
 export interface AppConfig {
