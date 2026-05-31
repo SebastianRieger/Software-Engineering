@@ -78,7 +78,10 @@ onUnmounted(() => {
       <span class="ts-logo">tagesschau</span>
       <span v-if="isLoading" class="ts-status ts-status--loading"><span class="ts-dot" /></span>
       <span v-else-if="error" class="ts-status ts-status--error" :title="error">!</span>
-      <span v-else class="ts-status">{{ formatDate(new Date().toISOString()) }}</span>
+      <span v-else class="ts-status ts-status--updated">
+        <svg width="9" height="9" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/></svg>
+        {{ formatDate(new Date().toISOString()) }}
+      </span>
     </header>
 
     <!-- Systemzustände -->
@@ -198,6 +201,12 @@ onUnmounted(() => {
 }
 
 .ts-status--error { color: var(--c-breaking); font-weight: 700; }
+
+.ts-status--updated {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+}
 
 .ts-dot {
   display: inline-block;

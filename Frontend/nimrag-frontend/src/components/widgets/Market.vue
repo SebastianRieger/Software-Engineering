@@ -89,7 +89,10 @@ onUnmounted(() => {
       <span class="mkt-logo">Market</span>
       <span v-if="isLoading" class="mkt-status mkt-status--loading"><span class="mkt-dot" /></span>
       <span v-else-if="error" class="mkt-status mkt-status--error" :title="error">!</span>
-      <span v-else class="mkt-status">{{ new Date().toLocaleTimeString('de-DE', { hour: '2-digit', minute: '2-digit' }) }}</span>
+      <span v-else class="mkt-status mkt-status--updated">
+        <svg width="9" height="9" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/></svg>
+        {{ new Date().toLocaleTimeString('de-DE', { hour: '2-digit', minute: '2-digit' }) }}
+      </span>
     </header>
 
     <!-- Systemzustände -->
@@ -210,6 +213,12 @@ onUnmounted(() => {
 }
 
 .mkt-status--error { color: var(--c-down); font-weight: 700; }
+
+.mkt-status--updated {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+}
 
 .mkt-dot {
   display: inline-block;

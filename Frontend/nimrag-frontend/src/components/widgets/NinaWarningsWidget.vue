@@ -176,7 +176,10 @@ const countLabel   = computed(() =>
         </span>
         <span v-if="loading" class="nina-status nina-status--loading"><span class="nina-dot" /></span>
         <span v-else-if="error" class="nina-status nina-status--error" :title="error ?? ''">!</span>
-        <span v-else class="nina-status">{{ formatTime() }}</span>
+        <span v-else class="nina-status nina-status--updated">
+          <svg width="9" height="9" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/></svg>
+          {{ formatTime() }}
+        </span>
       </div>
     </header>
 
@@ -285,6 +288,7 @@ const countLabel   = computed(() =>
   font-family: var(--font-ui);
   user-select: none;
   border: 1px solid transparent;
+  border-radius: 0.75rem;
 }
 
 /* ── Danger-Animationen ────────────────────────────── */
@@ -339,7 +343,13 @@ const countLabel   = computed(() =>
   color: var(--c-muted);
 }
 
-.nina-status--error { color: var(--c-extreme); font-weight: 700; }
+.nina-status--error   { color: var(--c-extreme); font-weight: 700; }
+
+.nina-status--updated {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+}
 
 .nina-dot {
   display: inline-block;
