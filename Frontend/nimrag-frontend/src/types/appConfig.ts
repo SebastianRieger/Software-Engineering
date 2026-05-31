@@ -27,6 +27,9 @@ export interface CameraWidgetConfig {
 
 export interface MarketWidgetConfig {
   symbols: string[]
+}
+export interface NinaWidgetConfig {
+  ars: string
   refresh_seconds: number
 }
 
@@ -35,6 +38,7 @@ export interface WidgetDefaultsConfig {
   news: NewsWidgetConfig
   camera: CameraWidgetConfig
   market: MarketWidgetConfig
+  nina?: NinaWidgetConfig
 }
 
 export interface AppConfig {
