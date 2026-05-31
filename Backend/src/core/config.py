@@ -30,12 +30,15 @@ class Settings(BaseSettings):
     APP_CONFIG_FILE: str = "config/app_config.json"
 
     # External API settings
+    TWELVE_DATA_API_KEY: str = ""
     WEATHER_API_KEY: str = ""
     WEATHER_TIMEOUT_SECONDS: float = 5.0
     WEATHER_CACHE_TTL_SECONDS: int = 600
     FORECAST_CACHE_TTL_SECONDS: int = 1800
     NEWS_TIMEOUT_SECONDS: float = 5.0
     NEWS_CACHE_TTL_SECONDS: int = 900
+    DEFAULT_LAT: float = 49.0069
+    DEFAULT_LON: float = 8.4037
     TWELVE_DATA_API_KEY: str = ""
     MARKET_CACHE_TTL_SECONDS: int = 900
     DEFAULT_LAT: float = 48.7758

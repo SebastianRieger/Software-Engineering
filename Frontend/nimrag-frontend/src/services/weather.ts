@@ -1,5 +1,5 @@
 import { getJson } from './api'
-import type { WeatherCurrentResponse } from '../types/weather'
+import type { WeatherCurrentResponse, WeatherForecastResponse } from '../types/weather'
 
 export interface WeatherQuery {
   lat?: number
@@ -7,23 +7,21 @@ export interface WeatherQuery {
   city?: string
 }
 
-function buildCurrentWeatherPath(query: WeatherQuery = {}): string {
-  const searchParams = new URLSearchParams()
-
-  if (query.lat !== undefined) {
-    searchParams.set('lat', String(query.lat))
-  }
-  if (query.lon !== undefined) {
-    searchParams.set('lon', String(query.lon))
-  }
-  if (query.city) {
-    searchParams.set('city', query.city)
-  }
-
-  const queryString = searchParams.toString()
-  return queryString.length > 0 ? `/weather/current?${queryString}` : '/weather/current'
+function buildWeatherParams(query: WeatherQuery): URLSearchParams {
+  const p = new URLSearchParams()
+  if (query.lat !== undefined) p.set('lat', String(query.lat))
+  if (query.lon !== undefined) p.set('lon', String(query.lon))
+  if (query.city) p.set('city', query.city)
+  return p
 }
 
 export function getCurrentWeather(query: WeatherQuery = {}): Promise<WeatherCurrentResponse> {
-  return getJson<WeatherCurrentResponse>(buildCurrentWeatherPath(query))
+  const qs = buildWeatherParams(query).toString()
+  return getJson<WeatherCurrentResponse>(qs ? `/weather/current?${qs}` : '/weather/current')
+}
+
+export function getForecast(days = 5, query: WeatherQuery = {}): Promise<WeatherForecastResponse> {
+  const p = buildWeatherParams(query)
+  p.set('days', String(days))
+  return getJson<WeatherForecastResponse>(`/weather/forecast?${p.toString()}`)
 }

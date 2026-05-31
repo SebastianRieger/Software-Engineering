@@ -1,9 +1,9 @@
 {
   "version": 1,
   "system": {
-    "location_name": "Stuttgart",
-    "latitude": 48.7758,
-    "longitude": 9.1829,
+    "location_name": "Karlsruhe",
+    "latitude": 49.0069,
+    "longitude": 8.4037,
     "units": "metric",
     "theme": "dark",
     "weather_refresh_seconds": 900

@@ -658,7 +658,9 @@ class MediaPipeHandsAdapter:
 
     @staticmethod
     def _camera_open_attempts(index: int) -> list[tuple[int | str, int | None]]:
-        attempts: list[tuple[int | str, int | None]] = [(index, None)]  # default (MSMF on Windows)
+        attempts: list[tuple[int | str, int | None]] = [
+            (index, None)
+        ]  # default (MSMF on Windows)
 
         v4l2_backend = getattr(cv2, "CAP_V4L2", None) if cv2 is not None else None
         if v4l2_backend is not None:
