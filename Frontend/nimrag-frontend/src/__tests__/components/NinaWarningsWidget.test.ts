@@ -5,14 +5,14 @@ import { ref } from 'vue'
 import NinaWarningsWidget from '@/components/widgets/NinaWarningsWidget.vue'
 import { loadAppConfig } from '@/composables/useAppConfig'
 
-// Mountet das Widget mit 2×2-Kontext (full layout) als Standard
-function mountWidget(options: Parameters<typeof mount>[1] = {}) {
+// Mountet das Widget mit 2×2-Kontext (large layout) als Standard
+function mountWidget(options: Parameters<typeof mount>[1] = {}, cellSize = 4) {
   return mount(NinaWarningsWidget, {
     ...options,
     global: {
       provide: {
         cellId: 1,
-        cellSizes: ref({ 1: 4 }),  // size 4 = 2×2 = full layout
+        cellSizes: ref({ 1: cellSize }),
       },
       ...(options as any).global,
     },
@@ -107,14 +107,14 @@ describe('NinaWarningsWidget', () => {
     expect(wrapper.exists()).toBe(true)
   })
 
-  it('shows loading spinner before data arrives (no prior data)', () => {
+  it('shows loading state before data arrives (no prior data)', () => {
     let resolveFetch!: (v: unknown) => void
     vi.stubGlobal(
       'fetch',
       vi.fn().mockReturnValue(new Promise(r => { resolveFetch = r })),
     )
     const wrapper = mountWidget()
-    expect(wrapper.find('.nina-spinner').exists()).toBe(true)
+    expect(wrapper.find('.nina-empty').text()).toBe('Lädt…')
     resolveFetch({ ok: true, status: 200, json: () => Promise.resolve(makeResponse([])) })
   })
 
@@ -168,44 +168,60 @@ describe('NinaWarningsWidget', () => {
       expect(wrapper.find('.nina-widget').classes()).toContain('nina-widget--danger')
     })
 
-    it('shows count label "1 Warnung"', async () => {
+    it('shows count label "1 Warnung" in large layout', async () => {
       mockFetch([WARNING_EXTREME])
       const wrapper = mountWidget()
       await flushPromises()
       expect(wrapper.text()).toContain('1 Warnung')
     })
 
-    it('does not show pagination dots for a single warning', async () => {
+    it('does not show pagination dots for a single warning in small layout', async () => {
       mockFetch([WARNING_EXTREME])
-      const wrapper = mountWidget()
+      const wrapper = mountWidget({}, 1)
       await flushPromises()
       expect(wrapper.find('.nina-dots').exists()).toBe(false)
     })
   })
 
   describe('multiple warnings', () => {
-    it('shows plural count label', async () => {
+    it('shows plural count label in large layout', async () => {
       mockFetch([WARNING_EXTREME, WARNING_MODERATE])
       const wrapper = mountWidget()
       await flushPromises()
       expect(wrapper.text()).toContain('2 Warnungen')
     })
 
-    it('shows pagination dots', async () => {
+    it('shows all warnings as list rows in large layout', async () => {
       mockFetch([WARNING_EXTREME, WARNING_MODERATE])
       const wrapper = mountWidget()
       await flushPromises()
-      expect(wrapper.find('.nina-dots').exists()).toBe(true)
-      expect(wrapper.findAll('.nina-dot').length).toBe(2)
+      expect(wrapper.findAll('.nina-list-row').length).toBe(2)
     })
 
-    it('marks first dot as active initially', async () => {
+    it('marks first row as active initially in large layout', async () => {
       mockFetch([WARNING_EXTREME, WARNING_MODERATE])
       const wrapper = mountWidget()
       await flushPromises()
-      const dots = wrapper.findAll('.nina-dot')
-      expect(dots[0].classes()).toContain('nina-dot--active')
-      expect(dots[1].classes()).not.toContain('nina-dot--active')
+      const rows = wrapper.findAll('.nina-list-row')
+      expect(rows[0].classes()).toContain('nina-list-row--active')
+      expect(rows[1].classes()).not.toContain('nina-list-row--active')
+    })
+
+    it('shows pagination dots in small layout for multiple warnings', async () => {
+      mockFetch([WARNING_EXTREME, WARNING_MODERATE])
+      const wrapper = mountWidget({}, 1)
+      await flushPromises()
+      expect(wrapper.find('.nina-dots').exists()).toBe(true)
+      expect(wrapper.findAll('.nina-pip').length).toBe(2)
+    })
+
+    it('marks first pip as active initially in small layout', async () => {
+      mockFetch([WARNING_EXTREME, WARNING_MODERATE])
+      const wrapper = mountWidget({}, 1)
+      await flushPromises()
+      const pips = wrapper.findAll('.nina-pip')
+      expect(pips[0].classes()).toContain('nina-pip--active')
+      expect(pips[1].classes()).not.toContain('nina-pip--active')
     })
 
     it('shows first warning headline initially', async () => {
