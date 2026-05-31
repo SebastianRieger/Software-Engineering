@@ -36,8 +36,8 @@ class Settings(BaseSettings):
     FORECAST_CACHE_TTL_SECONDS: int = 1800
     NEWS_TIMEOUT_SECONDS: float = 5.0
     NEWS_CACHE_TTL_SECONDS: int = 900
-    DEFAULT_LAT: float = 48.7758
-    DEFAULT_LON: float = 9.1829
+    DEFAULT_LAT: float = 49.0069
+    DEFAULT_LON: float = 8.4037
     GOOGLE_CLIENT_ID: str = ""
     GOOGLE_CLIENT_SECRET: str = ""
     GESTURES_DEV_ENDPOINT_ENABLED: bool = False
