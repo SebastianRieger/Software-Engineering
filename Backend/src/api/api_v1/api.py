@@ -2,12 +2,13 @@ from fastapi import APIRouter
 
 from ..device_endpoints import musical_audio_router, voice_router
 from ..system_endpoints import calibration_router, config_router, gesture_router
-from .endpoints import calendar, led, news, smart_home, system, weather
+from .endpoints import calendar, led, news, nina, smart_home, system, weather
 
 api_router = APIRouter()
 
 api_router.include_router(weather.router, prefix="/weather", tags=["weather"])
 api_router.include_router(news.router, prefix="/news", tags=["news"])
+api_router.include_router(nina.router, prefix="/nina", tags=["nina"])
 api_router.include_router(config_router, prefix="/config", tags=["config"])
 api_router.include_router(
     calibration_router, prefix="/calibration", tags=["calibration"]
