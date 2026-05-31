@@ -2,7 +2,7 @@
 import { computed, inject, onBeforeUnmount, onMounted, ref } from 'vue'
 import type { Ref } from 'vue'
 import type { CellSize } from '../../composables/useWidgetResize'
-import { getNowPlaying } from '../../services/spotify'
+import { getAuthStatus, getNowPlaying } from '../../services/spotify'
 import type { NowPlayingResponse } from '../../types/spotify'
 
 const cellId    = inject<number>('cellId', 0)
@@ -23,6 +23,7 @@ const localProgressMs = ref(0)
 let lastFetchAt       = 0
 let fetchTimer: number | null = null
 let tickTimer:  number | null = null
+let hasAutoOpened     = false
 
 const FETCH_TIMEOUT_MS = 6000
 
@@ -44,6 +45,13 @@ async function fetchNowPlaying(): Promise<void> {
     error.value           = null
   } catch (e: unknown) {
     const status = (e as { status?: number }).status
+    if (status === 401 && !hasAutoOpened) {
+      hasAutoOpened = true
+      try {
+        const auth = await getAuthStatus()
+        if (auth.auth_url) window.open(auth.auth_url, '_blank')
+      } catch { /* ignorieren */ }
+    }
     error.value = status === 401 ? 'auth' : 'error'
     data.value  = null
   } finally {
