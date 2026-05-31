@@ -1,9 +1,13 @@
 import json
+import logging
 from typing import Any, Callable, Dict
 
 import paho.mqtt.client as mqtt
 
 from core.config import settings
+
+
+logger = logging.getLogger(__name__)
 
 
 class MQTTService:
@@ -19,11 +23,11 @@ class MQTTService:
     def _on_connect(self, client, userdata, flags, rc):
         """Callback for when the client connects to the broker"""
         if rc == 0:
-            print("Connected to MQTT Broker")
+            logger.info("Connected to MQTT broker")
             # Subscribe to all relevant topics
             self.client.subscribe("nimrag/#")
         else:
-            print(f"Failed to connect to MQTT Broker with code: {rc}")
+            logger.warning("Failed to connect to MQTT broker with code %s", rc)
 
     def _on_message(self, client, userdata, msg):
         """Callback for when a message is received"""
@@ -40,7 +44,7 @@ class MQTTService:
             self.client.connect(settings.MQTT_BROKER, settings.MQTT_PORT)
             self.client.loop_start()
         except Exception as e:
-            print(f"Failed to connect to MQTT broker: {e}")
+            logger.warning("Failed to connect to MQTT broker: %s", e)
 
     def disconnect(self):
         """Disconnect from MQTT broker"""

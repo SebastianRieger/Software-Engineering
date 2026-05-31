@@ -36,8 +36,10 @@ from services.gesture.push_runtime import (
     compute_push_pose_snapshot,
     detect_push_gesture,
 )
+from services.gesture.pinch_runtime import detect_pinch_gesture
 from services.gesture.runtime import GestureService, GestureServiceError
 from services.gesture.tracking import (
+    FingerState,
     HandPoseFeatures,
     GestureAdapterError,
     GestureObservation,
@@ -146,6 +148,32 @@ class SequenceAdapter:
                 detection.tracking_source if detection else tracking_source
             ),
         }
+
+
+def make_pinch_pose(*, spread_score: float) -> HandPoseFeatures:
+    return HandPoseFeatures(
+        hand="right",
+        point=(0.5, 0.5),
+        palm_center=(0.5, 0.5),
+        hand_size=0.16,
+        palm_span=0.1,
+        center_distance=0.0,
+        hand_openness=0.35,
+        index_extension_ratio=1.05,
+        push_depth=0.0,
+        finger_states={
+            "thumb": FingerState(
+                name="thumb",
+                extended_score=0.8,
+                curled_score=0.1,
+                spread_score=spread_score,
+                tip_depth_relative=0.0,
+                tip_to_palm_distance=0.04,
+                label="extended",
+            )
+        },
+        tracking_source="landmarks",
+    )
 
 
 class PausingSequenceAdapter(SequenceAdapter):
@@ -366,6 +394,82 @@ def test_extract_hand_pose_features_normalizes_missing_point_to_palm_center():
     assert pose is not None
     assert pose.point == pytest.approx((0.566, 0.616), abs=0.01)
     assert pose.center_distance > 0.0
+
+
+def test_detect_pinch_gesture_fires_on_short_decisive_close_transition():
+    config = GestureConfig()
+    state, detection = detect_pinch_gesture(
+        state=None,
+        pose_features=make_pinch_pose(spread_score=0.68),
+        observed_at=0.0,
+        config=config,
+    )
+
+    assert detection is None
+
+    state, detection = detect_pinch_gesture(
+        state=state,
+        pose_features=make_pinch_pose(spread_score=0.20),
+        observed_at=0.8,
+        config=config,
+    )
+
+    assert detection is not None
+    assert detection.gesture == "pinch_close"
+    assert state.pinch_closed is True
+
+
+def test_detect_pinch_gesture_fires_on_short_decisive_open_transition():
+    config = GestureConfig()
+    state, detection = detect_pinch_gesture(
+        state=None,
+        pose_features=make_pinch_pose(spread_score=0.18),
+        observed_at=0.0,
+        config=config,
+    )
+
+    assert detection is None
+    assert state.pinch_closed is True
+
+    state, detection = detect_pinch_gesture(
+        state=state,
+        pose_features=make_pinch_pose(spread_score=0.64),
+        observed_at=0.8,
+        config=config,
+    )
+
+    assert detection is not None
+    assert detection.gesture == "pinch_open"
+    assert state.pinch_closed is False
+
+
+def test_detect_pinch_gesture_uses_configurable_thresholds():
+    config = GestureConfig(
+        pinch_close_threshold=0.18,
+        pinch_open_threshold=0.34,
+        pinch_fast_close_threshold=0.10,
+        pinch_fast_open_threshold=0.40,
+    )
+
+    state, detection = detect_pinch_gesture(
+        state=None,
+        pose_features=make_pinch_pose(spread_score=0.25),
+        observed_at=0.0,
+        config=config,
+    )
+
+    assert detection is None
+    assert state.pinch_closed is False
+
+    state, detection = detect_pinch_gesture(
+        state=state,
+        pose_features=make_pinch_pose(spread_score=0.08),
+        observed_at=0.8,
+        config=config,
+    )
+
+    assert detection is not None
+    assert detection.gesture == "pinch_close"
 
 
 def test_compute_push_pose_snapshot_accepts_depth_assisted_pose_for_off_center_camera_angle(

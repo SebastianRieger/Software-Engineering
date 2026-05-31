@@ -78,6 +78,18 @@ def _metric_summary(name: str, values: list[float]) -> CalibrationMetricSummary:
     )
 
 
+def _feature_window_float(
+    sample: CalibrationCollectedSample,
+    key: str,
+) -> float | None:
+    if sample.gesture_payload is None:
+        return None
+    value = sample.gesture_payload.feature_windows.get(key)
+    if isinstance(value, (int, float)):
+        return float(value)
+    return None
+
+
 def _build_gesture_config_patch(
     *,
     base_config: GestureConfig,
@@ -179,6 +191,18 @@ class CalibrationService:
             modality="gesture",
             display_name="Circle",
             description="Kalibriert Kreisgesten ueber Sweep und Radius-Stabilitaet.",
+        ),
+        CalibrationTargetDefinition(
+            id="pinch_close",
+            modality="gesture",
+            display_name="Pinch Close",
+            description="Kalibriert das Schliessen der Pinch-Geste ueber Daumen-Zeigefinger-Abstand.",
+        ),
+        CalibrationTargetDefinition(
+            id="pinch_open",
+            modality="gesture",
+            display_name="Pinch Open",
+            description="Kalibriert das Oeffnen der Pinch-Geste ueber Daumen-Zeigefinger-Abstand.",
         ),
         CalibrationTargetDefinition(
             id="push_click_short",
@@ -921,6 +945,10 @@ class CalibrationService:
         if circle_analysis is not None:
             target_analyses.append(circle_analysis)
 
+        pinch_analyses = self._analyze_pinch(session.samples, candidate_config)
+        if pinch_analyses:
+            target_analyses.extend(pinch_analyses)
+
         push_analyses = self._analyze_push(session.samples, candidate_config)
         if push_analyses:
             target_analyses.extend(push_analyses)
@@ -1301,6 +1329,182 @@ class CalibrationService:
             ],
             artifacts={"family": "circle"},
         )
+
+    def _analyze_pinch(
+        self,
+        samples: list[CalibrationCollectedSample],
+        candidate_config: GestureConfig,
+    ) -> list[CalibrationTargetAnalysis]:
+        analyses: list[CalibrationTargetAnalysis] = []
+
+        close_samples = [
+            sample
+            for sample in samples
+            if sample.target_id == "pinch_close" and sample.gesture_payload is not None
+        ]
+        if close_samples:
+            close_mins = [
+                value
+                for sample in close_samples
+                for value in [_feature_window_float(sample, "thumb_spread_min")]
+                if value is not None
+            ]
+            close_ends = [
+                value
+                for sample in close_samples
+                for value in [_feature_window_float(sample, "thumb_spread_end")]
+                if value is not None
+            ]
+            close_confidences = [
+                sample.gesture_payload.confidence
+                for sample in close_samples
+                if sample.gesture_payload is not None
+            ]
+
+            original_close = candidate_config.pinch_close_threshold
+            original_fast_close = candidate_config.pinch_fast_close_threshold
+            if close_mins:
+                close_threshold = _clamp(
+                    (_percentile(close_mins, 0.90) or candidate_config.pinch_close_threshold)
+                    * 1.05,
+                    0.05,
+                    0.75,
+                )
+                fast_close_threshold = _clamp(
+                    min(
+                        close_threshold * 0.85,
+                        (_percentile(close_mins, 0.25) or close_threshold) * 1.05,
+                    ),
+                    0.03,
+                    close_threshold - 0.02,
+                )
+                candidate_config.pinch_close_threshold = close_threshold
+                candidate_config.pinch_fast_close_threshold = fast_close_threshold
+
+            analyses.append(
+                CalibrationTargetAnalysis(
+                    target_id="pinch_close",
+                    sample_count=len(close_samples),
+                    metrics=[
+                        _metric_summary(
+                            "thumb_spread_min", [float(value) for value in close_mins]
+                        ),
+                        _metric_summary(
+                            "thumb_spread_end", [float(value) for value in close_ends]
+                        ),
+                        _metric_summary(
+                            "confidence",
+                            [float(value) for value in close_confidences],
+                        ),
+                    ],
+                    recommendations=[
+                        CalibrationRecommendation(
+                            parameter="pinch_close_threshold",
+                            current_value=original_close,
+                            recommended_value=candidate_config.pinch_close_threshold,
+                            min_bound=0.05,
+                            max_bound=0.75,
+                            rationale="Close-Schwellwert folgt den oberen Perzentilen erfolgreicher Pinch-Close-Samples.",
+                        ),
+                        CalibrationRecommendation(
+                            parameter="pinch_fast_close_threshold",
+                            current_value=original_fast_close,
+                            recommended_value=candidate_config.pinch_fast_close_threshold,
+                            min_bound=0.03,
+                            max_bound=max(
+                                candidate_config.pinch_close_threshold - 0.02,
+                                0.03,
+                            ),
+                            rationale="Fast-Close bleibt strenger als der normale Close-Schwellwert, orientiert sich aber an den gemessenen Minimalabstaenden.",
+                        ),
+                    ],
+                    artifacts={"family": "pinch", "transition": "close"},
+                )
+            )
+
+        open_samples = [
+            sample
+            for sample in samples
+            if sample.target_id == "pinch_open" and sample.gesture_payload is not None
+        ]
+        if open_samples:
+            open_maxes = [
+                value
+                for sample in open_samples
+                for value in [_feature_window_float(sample, "thumb_spread_max")]
+                if value is not None
+            ]
+            open_ends = [
+                value
+                for sample in open_samples
+                for value in [_feature_window_float(sample, "thumb_spread_end")]
+                if value is not None
+            ]
+            open_confidences = [
+                sample.gesture_payload.confidence
+                for sample in open_samples
+                if sample.gesture_payload is not None
+            ]
+
+            original_open = candidate_config.pinch_open_threshold
+            original_fast_open = candidate_config.pinch_fast_open_threshold
+            if open_maxes:
+                open_threshold = _clamp(
+                    (_percentile(open_maxes, 0.10) or candidate_config.pinch_open_threshold)
+                    * 0.95,
+                    max(candidate_config.pinch_close_threshold + 0.05, 0.15),
+                    0.95,
+                )
+                fast_open_threshold = _clamp(
+                    max(
+                        open_threshold * 1.1,
+                        (_percentile(open_maxes, 0.75) or open_threshold) * 0.95,
+                    ),
+                    open_threshold + 0.03,
+                    0.98,
+                )
+                candidate_config.pinch_open_threshold = open_threshold
+                candidate_config.pinch_fast_open_threshold = fast_open_threshold
+
+            analyses.append(
+                CalibrationTargetAnalysis(
+                    target_id="pinch_open",
+                    sample_count=len(open_samples),
+                    metrics=[
+                        _metric_summary(
+                            "thumb_spread_max", [float(value) for value in open_maxes]
+                        ),
+                        _metric_summary(
+                            "thumb_spread_end", [float(value) for value in open_ends]
+                        ),
+                        _metric_summary(
+                            "confidence",
+                            [float(value) for value in open_confidences],
+                        ),
+                    ],
+                    recommendations=[
+                        CalibrationRecommendation(
+                            parameter="pinch_open_threshold",
+                            current_value=original_open,
+                            recommended_value=candidate_config.pinch_open_threshold,
+                            min_bound=max(candidate_config.pinch_close_threshold + 0.05, 0.15),
+                            max_bound=0.95,
+                            rationale="Open-Schwellwert wird knapp unterhalb erfolgreicher Pinch-Open-Samples positioniert.",
+                        ),
+                        CalibrationRecommendation(
+                            parameter="pinch_fast_open_threshold",
+                            current_value=original_fast_open,
+                            recommended_value=candidate_config.pinch_fast_open_threshold,
+                            min_bound=candidate_config.pinch_open_threshold + 0.03,
+                            max_bound=0.98,
+                            rationale="Fast-Open bleibt oberhalb des normalen Open-Schwellwerts fuer eindeutige Re-Open-Transitionen.",
+                        ),
+                    ],
+                    artifacts={"family": "pinch", "transition": "open"},
+                )
+            )
+
+        return analyses
 
     def _analyze_push(
         self,

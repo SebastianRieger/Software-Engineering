@@ -271,6 +271,18 @@ class GestureConfig(BaseModel):
     two_hand_min_frames: int = Field(
         default=settings.GESTURE_TWO_HAND_MIN_FRAMES, ge=2, le=64
     )
+    pinch_close_threshold: float = Field(
+        default=settings.GESTURE_PINCH_CLOSE_THRESHOLD, gt=0, le=1
+    )
+    pinch_open_threshold: float = Field(
+        default=settings.GESTURE_PINCH_OPEN_THRESHOLD, gt=0, le=1
+    )
+    pinch_fast_close_threshold: float = Field(
+        default=settings.GESTURE_PINCH_FAST_CLOSE_THRESHOLD, gt=0, le=1
+    )
+    pinch_fast_open_threshold: float = Field(
+        default=settings.GESTURE_PINCH_FAST_OPEN_THRESHOLD, gt=0, le=1
+    )
     runtime_circle_pose_max_openness: float = Field(
         default=settings.GESTURE_RUNTIME_CIRCLE_POSE_MAX_OPENNESS, ge=0, le=1
     )

@@ -102,6 +102,40 @@ def make_swipe_sample(
     )
 
 
+def make_pinch_sample(
+    target_id: str,
+    *,
+    confidence: float,
+    thumb_spread_start: float,
+    thumb_spread_end: float,
+    thumb_spread_min: float,
+    thumb_spread_max: float,
+) -> CalibrationCollectedSample:
+    captured_at = datetime(2026, 4, 28, 12, 0, tzinfo=timezone.utc)
+    return CalibrationCollectedSample(
+        sample_id=f"sample-{target_id}-{confidence}",
+        modality="gesture",
+        target_id=target_id,
+        collected_at=captured_at,
+        gesture_payload=GestureCalibrationSamplePayload(
+            gesture=target_id,
+            confidence=confidence,
+            tracking_source="landmarks",
+            hand="right",
+            duration_seconds=0.31,
+            hand_size=0.16,
+            hand_size_scale=1.0,
+            feature_windows={
+                "thumb_spread_start": thumb_spread_start,
+                "thumb_spread_end": thumb_spread_end,
+                "thumb_spread_min": thumb_spread_min,
+                "thumb_spread_max": thumb_spread_max,
+                "thumb_spread_mean": (thumb_spread_start + thumb_spread_end) / 2,
+            },
+        ),
+    )
+
+
 def make_sequence_profile_set(
     *, gesture: str = "swipe_right"
 ) -> GestureSequenceProfileSet:
@@ -567,6 +601,77 @@ def test_calibration_service_analysis_produces_reviewable_gesture_patch(tmp_path
     )
 
 
+def test_calibration_service_analysis_produces_pinch_threshold_patch(tmp_path):
+    service = build_calibration_service(tmp_path)
+
+    session = service.start_session(
+        CalibrationSessionCreateRequest(
+            modality="gesture",
+            selected_targets=["pinch_close", "pinch_open"],
+            target_repetitions=2,
+            profile="demo-user",
+        )
+    )
+    service.capture_gesture_sample(
+        make_pinch_sample(
+            "pinch_close",
+            confidence=0.91,
+            thumb_spread_start=0.62,
+            thumb_spread_end=0.19,
+            thumb_spread_min=0.18,
+            thumb_spread_max=0.62,
+        )
+    )
+    service.capture_gesture_sample(
+        make_pinch_sample(
+            "pinch_close",
+            confidence=0.95,
+            thumb_spread_start=0.58,
+            thumb_spread_end=0.22,
+            thumb_spread_min=0.20,
+            thumb_spread_max=0.58,
+        )
+    )
+    service.capture_gesture_sample(
+        make_pinch_sample(
+            "pinch_open",
+            confidence=0.93,
+            thumb_spread_start=0.22,
+            thumb_spread_end=0.64,
+            thumb_spread_min=0.22,
+            thumb_spread_max=0.64,
+        )
+    )
+    service.capture_gesture_sample(
+        make_pinch_sample(
+            "pinch_open",
+            confidence=0.96,
+            thumb_spread_start=0.24,
+            thumb_spread_end=0.68,
+            thumb_spread_min=0.24,
+            thumb_spread_max=0.68,
+        )
+    )
+
+    completed = service.complete_session(session.session_id)
+
+    assert completed.analysis is not None
+    assert completed.analysis.gesture_config_patch is not None
+    operations = {
+        operation.parameter: operation.new_value
+        for operation in completed.analysis.gesture_config_patch.operations
+    }
+    assert "pinch_close_threshold" in operations
+    assert "pinch_open_threshold" in operations
+    assert operations["pinch_fast_close_threshold"] < operations["pinch_close_threshold"]
+    assert operations["pinch_fast_open_threshold"] > operations["pinch_open_threshold"]
+    assert completed.analysis.targets
+    assert {target.target_id for target in completed.analysis.targets} >= {
+        "pinch_close",
+        "pinch_open",
+    }
+
+
 def test_calibration_service_apply_session_uses_analysis_patch(tmp_path):
     repo = build_calibration_repo(tmp_path)
     baseline = repo.save_gesture_config(
@@ -735,6 +840,10 @@ async def test_calibration_api_session_lifecycle(
     assert definitions_response.status_code == 200
     assert any(
         target["id"] == "swipe_right"
+        for target in definitions_response.json()["targets"]
+    )
+    assert any(
+        target["id"] == "pinch_close"
         for target in definitions_response.json()["targets"]
     )
 

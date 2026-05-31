@@ -884,6 +884,11 @@ class GestureService:
         tracking_source = self._most_common_non_null(
             frame.tracking_source for frame in frames
         )
+        thumb_spreads = [
+            float(frame.finger_states["thumb"].spread_score)
+            for frame in frames
+            if "thumb" in frame.finger_states
+        ]
         last_frame_with_pose = next(
             (
                 frame
@@ -942,6 +947,11 @@ class GestureService:
                 "index_extension_ratio": (
                     mean(index_extension_ratios) if index_extension_ratios else 0.0
                 ),
+                "thumb_spread_start": thumb_spreads[0] if thumb_spreads else None,
+                "thumb_spread_end": thumb_spreads[-1] if thumb_spreads else None,
+                "thumb_spread_min": min(thumb_spreads) if thumb_spreads else None,
+                "thumb_spread_max": max(thumb_spreads) if thumb_spreads else None,
+                "thumb_spread_mean": mean(thumb_spreads) if thumb_spreads else None,
             },
         )
 
@@ -2277,11 +2287,14 @@ class GestureService:
         observation: GestureObservation,
         observed_at: float,
     ) -> GestureDetectionResult | None:
+        with self._lock:
+            active_config = self._active_config
         pose_features = extract_hand_pose_features(observation)
         self._pinch_state, detection = detect_pinch_gesture(
             state=self._pinch_state,
             pose_features=pose_features,
             observed_at=observed_at,
+            config=active_config,
         )
         return detection
 
@@ -2527,6 +2540,12 @@ class GestureService:
                     ),
                     "center_distance": self._metric_float(
                         detection.metrics, "center_distance"
+                    ),
+                    "thumb_spread": (
+                        pose_features.finger_states["thumb"].spread_score
+                        if pose_features is not None
+                        and "thumb" in pose_features.finger_states
+                        else 0.0
                     ),
                     "candidate_scores": runtime_analysis.candidate_scores,
                     "primitive_hits": runtime_analysis.primitive_hits,

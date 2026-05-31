@@ -1,5 +1,6 @@
 import { ref, onBeforeUnmount } from 'vue'
 import { buildApiUrl } from '../services/apiConfig'
+import { backendReachability } from '../services/backendReachability'
 
 export interface BackendCamera {
   index: number
@@ -8,6 +9,7 @@ export interface BackendCamera {
 }
 
 const POLL_MS = 66 // ~15fps
+const RETRY_MS = 1500
 
 export function useHomeScreen() {
   const cameras = ref<BackendCamera[]>([])
@@ -18,17 +20,69 @@ export function useHomeScreen() {
   const slideDirection = ref<'up' | 'down' | null>(null)
 
   let pollTimer: ReturnType<typeof setInterval> | null = null
+  let retryTimer: ReturnType<typeof setTimeout> | null = null
+  let bootstrapInFlight = false
 
-  async function fetchFrame(): Promise<void> {
+  function clearPollTimer(): void {
+    if (pollTimer !== null) {
+      clearInterval(pollTimer)
+      pollTimer = null
+    }
+  }
+
+  function clearRetryTimer(): void {
+    if (retryTimer !== null) {
+      clearTimeout(retryTimer)
+      retryTimer = null
+    }
+  }
+
+  function scheduleRetry(): void {
+    if (retryTimer !== null) return
+    const delayMs = Math.max(RETRY_MS, backendReachability.getRetryDelayMs())
+    retryTimer = setTimeout(() => {
+      retryTimer = null
+      void initializeCamera()
+    }, delayMs)
+  }
+
+  function ensurePolling(): void {
+    if (pollTimer !== null) return
+    pollTimer = setInterval(() => {
+      void pollFrame()
+    }, POLL_MS)
+  }
+
+  async function fetchFrame(): Promise<boolean> {
     try {
       const res = await fetch(buildApiUrl('gestures/frame'))
-      if (!res.ok) return
+      if (!res.ok) {
+        frameUrl.value = null
+        return false
+      }
       const data = (await res.json()) as { image: string }
+      backendReachability.markReachable()
       frameUrl.value = data.image
       if (loading.value) loading.value = false
-    } catch {
-      // polling — errors werden ignoriert
+      error.value = null
+      return true
+    } catch (cameraError) {
+      backendReachability.noteRequestFailure(cameraError)
+      frameUrl.value = null
+      return false
     }
+  }
+
+  async function pollFrame(): Promise<void> {
+    const hasFrame = await fetchFrame()
+    if (hasFrame) {
+      clearRetryTimer()
+      return
+    }
+
+    clearPollTimer()
+    error.value = 'Backend-Kamera nicht erreichbar.'
+    scheduleRetry()
   }
 
   async function fetchCameraList(): Promise<void> {
@@ -36,8 +90,10 @@ export function useHomeScreen() {
       const res = await fetch(buildApiUrl('gestures/devices'))
       if (!res.ok) return
       const data = (await res.json()) as { devices: BackendCamera[] }
+      backendReachability.markReachable()
       cameras.value = (data.devices ?? []).filter((d) => d.available)
-    } catch {
+    } catch (cameraError) {
+      backendReachability.noteRequestFailure(cameraError)
       cameras.value = []
     }
   }
@@ -46,13 +102,23 @@ export function useHomeScreen() {
     loading.value = true
     try {
       await fetch(buildApiUrl('gestures/stop'), { method: 'POST' })
-      await fetch(buildApiUrl('gestures/start'), {
+      const response = await fetch(buildApiUrl('gestures/start'), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ camera_index: cameraIndex }),
       })
-    } catch {
+      if (!response.ok) {
+        throw new Error('restart failed')
+      }
+      backendReachability.markReachable()
+      clearRetryTimer()
+      ensurePolling()
+      void pollFrame()
+    } catch (cameraError) {
+      backendReachability.noteRequestFailure(cameraError)
       error.value = 'Kamera konnte nicht gewechselt werden.'
+      clearPollTimer()
+      scheduleRetry()
     }
   }
 
@@ -73,71 +139,99 @@ export function useHomeScreen() {
   }
 
   async function initializeCamera(): Promise<void> {
-    if (pollTimer !== null) {
-      clearInterval(pollTimer)
-      pollTimer = null
-    }
+    if (bootstrapInFlight) return
+    bootstrapInFlight = true
+    clearPollTimer()
     loading.value = true
     error.value = null
 
-    await fetchCameraList()
+    const reachable = await backendReachability.requestAvailabilityCheck()
+    if (!reachable) {
+      error.value = 'Backend-Kamera nicht erreichbar.'
+      loading.value = false
+      bootstrapInFlight = false
+      scheduleRetry()
+      return
+    }
 
-    let cameraIndex = cameras.value[0]?.index ?? 0
-    let needsRestart = false
+    let cameraIndex = currentIndex.value
+    let status: { running: boolean; camera_index: number | null } | null = null
 
     try {
       const statusRes = await fetch(buildApiUrl('gestures/status'))
       if (!statusRes.ok) {
+        throw new Error('status unavailable')
+      } else {
+        status = (await statusRes.json()) as { running: boolean; camera_index: number | null }
+        backendReachability.markReachable()
+      }
+    } catch (statusError) {
+      backendReachability.noteRequestFailure(statusError)
+      error.value = 'Backend-Kamera nicht erreichbar.'
+      loading.value = false
+      bootstrapInFlight = false
+      scheduleRetry()
+      return
+    }
+
+    await fetchCameraList()
+
+    if (status.camera_index !== null) {
+      const idx = cameras.value.findIndex((c) => c.index === status.camera_index)
+      if (idx !== -1) {
+        currentIndex.value = idx
+        cameraIndex = cameras.value[idx]!.index
+      } else {
+        cameraIndex = status.camera_index
+      }
+    } else {
+      cameraIndex = cameras.value[currentIndex.value]?.index ?? cameras.value[0]?.index ?? 0
+    }
+
+    let needsRestart = !status.running
+
+    if (status.running) {
+      // Restart if the last frame is stale (camera frozen) or unavailable.
+      const frameRes = await fetch(buildApiUrl('gestures/frame'))
+      if (!frameRes.ok) {
         needsRestart = true
       } else {
-        const status = (await statusRes.json()) as { running: boolean; camera_index: number | null }
-        if (!status.running) {
+        const frame = (await frameRes.json()) as { image: string; frame_age_ms: number | null }
+        if (frame.frame_age_ms !== null && frame.frame_age_ms > 2000) {
           needsRestart = true
-        } else {
-          // Sync frontend index to the camera the backend is actually using
-          if (status.camera_index !== null) {
-            const idx = cameras.value.findIndex((c) => c.index === status.camera_index)
-            if (idx !== -1) {
-              currentIndex.value = idx
-              cameraIndex = cameras.value[idx]!.index
-            }
-          }
-          // Restart if the last frame is stale (camera frozen)
-          const frameRes = await fetch(buildApiUrl('gestures/frame'))
-          if (!frameRes.ok) {
-            needsRestart = true
-          } else {
-            const frame = (await frameRes.json()) as { image: string; frame_age_ms: number | null }
-            if (frame.frame_age_ms !== null && frame.frame_age_ms > 2000) {
-              needsRestart = true
-            }
-          }
         }
       }
-    } catch {
-      needsRestart = true
     }
 
     if (needsRestart) {
       try { await fetch(buildApiUrl('gestures/stop'), { method: 'POST' }) } catch { /* ignore */ }
       try {
-        await fetch(buildApiUrl('gestures/start'), {
+        const response = await fetch(buildApiUrl('gestures/start'), {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ camera_index: cameraIndex }),
         })
+        if (!response.ok) {
+          throw new Error('start failed')
+        }
       } catch { /* ignore */ }
     }
 
-    pollTimer = setInterval(() => { void fetchFrame() }, POLL_MS)
-    void fetchFrame()
+    const hasFrame = await fetchFrame()
+    if (hasFrame) {
+      clearRetryTimer()
+      ensurePolling()
+    } else {
+      error.value = 'Backend-Kamera nicht erreichbar.'
+      scheduleRetry()
+    }
+    loading.value = false
+    bootstrapInFlight = false
   }
 
   function stopStream(): void {
-    if (pollTimer !== null) {
-      clearInterval(pollTimer)
-      pollTimer = null
-    }
+    clearPollTimer()
+    clearRetryTimer()
     frameUrl.value = null
   }
 

@@ -3,13 +3,10 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from statistics import mean
 
+from schemas.gestures import GestureConfig
 from services.gesture.detection import GestureDetectionResult
 from services.gesture.tracking import HandPoseFeatures
 
-# Distance between thumb_tip and index_tip (as a fraction of palm_span).
-# FingerState.spread_score for "thumb" is exactly this distance.
-_CLOSE_THRESHOLD = 0.30  # below → pinched
-_OPEN_THRESHOLD  = 0.52  # above → open (hysteresis gap prevents flicker)
 _WINDOW          = 4     # frames to smooth spread over
 _COOLDOWN        = 0.55  # minimum seconds between consecutive fires
 
@@ -25,6 +22,7 @@ def detect_pinch_gesture(
     state: PinchGestureState | None,
     pose_features: HandPoseFeatures | None,
     observed_at: float,
+    config: GestureConfig,
 ) -> tuple[PinchGestureState, GestureDetectionResult | None]:
     if pose_features is None:
         return state or PinchGestureState(pinch_closed=False), None
@@ -38,7 +36,7 @@ def detect_pinch_gesture(
     smoothed = mean(window)
 
     if state is None:
-        initial_closed = smoothed < _CLOSE_THRESHOLD
+        initial_closed = smoothed < config.pinch_close_threshold
         return PinchGestureState(
             pinch_closed=initial_closed,
             spread_window=window,
@@ -50,14 +48,23 @@ def detect_pinch_gesture(
     new_closed = state.pinch_closed
 
     if cooldown_ok:
-        if not state.pinch_closed and smoothed < _CLOSE_THRESHOLD:
+        close_detected = not state.pinch_closed and (
+            smoothed < config.pinch_close_threshold
+            or raw_spread < config.pinch_fast_close_threshold
+        )
+        open_detected = state.pinch_closed and (
+            smoothed > config.pinch_open_threshold
+            or raw_spread > config.pinch_fast_open_threshold
+        )
+
+        if close_detected:
             detection = GestureDetectionResult(
                 gesture="pinch_close",
                 confidence=0.92,
                 tracking_source="pinch_state",
             )
             new_closed = True
-        elif state.pinch_closed and smoothed > _OPEN_THRESHOLD:
+        elif open_detected:
             detection = GestureDetectionResult(
                 gesture="pinch_open",
                 confidence=0.92,

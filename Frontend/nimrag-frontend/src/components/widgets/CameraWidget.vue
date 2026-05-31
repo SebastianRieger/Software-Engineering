@@ -1,8 +1,10 @@
 <script setup lang="ts">
 import { onBeforeUnmount, onMounted, ref } from 'vue'
 import { buildApiUrl } from '../../services/apiConfig'
+import { backendReachability } from '../../services/backendReachability'
 
 const POLL_MS = 250
+const RETRY_MS = 1500
 
 const frameUrl = ref<string | null>(null)
 const cameraName = ref<string | null>(null)
@@ -11,64 +13,161 @@ const error = ref<string | null>(null)
 const loading = ref(true)
 
 let pollTimer: ReturnType<typeof setInterval> | null = null
+let retryTimer: ReturnType<typeof setTimeout> | null = null
+let bootstrapInFlight = false
 
-async function fetchStatus(): Promise<void> {
+function clearPollTimer(): void {
+  if (pollTimer !== null) {
+    clearInterval(pollTimer)
+    pollTimer = null
+  }
+}
+
+function clearRetryTimer(): void {
+  if (retryTimer !== null) {
+    clearTimeout(retryTimer)
+    retryTimer = null
+  }
+}
+
+function scheduleRetry(): void {
+  if (retryTimer !== null) return
+  const delayMs = Math.max(RETRY_MS, backendReachability.getRetryDelayMs())
+  retryTimer = setTimeout(() => {
+    retryTimer = null
+    void initializeCamera()
+  }, delayMs)
+}
+
+function ensurePolling(): void {
+  if (pollTimer !== null) return
+  pollTimer = setInterval(() => {
+    void pollFrame()
+  }, POLL_MS)
+}
+
+async function fetchStatus(): Promise<{ running: boolean; camera_name: string | null } | null> {
   const response = await fetch(buildApiUrl('gestures/status'))
-  if (!response.ok) return
+  if (!response.ok) return null
   const status = (await response.json()) as {
     running: boolean
     camera_name: string | null
   }
+  backendReachability.markReachable()
   cameraName.value = status.camera_name
   if (!status.running) {
     error.value = 'Backend-Kamera ist nicht aktiv.'
   }
+  return status
 }
 
-async function fetchFrame(): Promise<void> {
+async function startCamera(): Promise<boolean> {
+  const response = await fetch(buildApiUrl('gestures/start'), {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ camera_index: 0 }),
+  })
+  if (!response.ok) {
+    return false
+  }
+
+  const status = (await response.json()) as {
+    running: boolean
+    camera_name: string | null
+  }
+  backendReachability.markReachable()
+  cameraName.value = status.camera_name
+  error.value = status.running ? null : 'Backend-Kamera ist nicht aktiv.'
+  return status.running
+}
+
+async function fetchFrame(): Promise<boolean> {
   const response = await fetch(buildApiUrl('gestures/frame'))
   if (!response.ok) {
+    frameUrl.value = null
+    frameAgeMs.value = null
     error.value = 'Kein Backend-Kamerabild verfuegbar.'
-    return
+    return false
   }
   const data = (await response.json()) as {
     image: string
     frame_age_ms: number | null
   }
+  backendReachability.markReachable()
   frameUrl.value = data.image
   frameAgeMs.value = data.frame_age_ms
   error.value = null
   loading.value = false
+  return true
+}
+
+async function pollFrame(): Promise<void> {
+  const hasFrame = await fetchFrame()
+  if (hasFrame) {
+    clearRetryTimer()
+    return
+  }
+
+  clearPollTimer()
+  scheduleRetry()
 }
 
 async function initializeCamera(): Promise<void> {
+  if (bootstrapInFlight) return
+  bootstrapInFlight = true
   loading.value = true
   error.value = null
 
   try {
-    await fetchStatus()
-    await fetchFrame()
+    const reachable = await backendReachability.requestAvailabilityCheck()
+    if (!reachable) {
+      clearPollTimer()
+      scheduleRetry()
+      error.value = 'Backend-Kamera nicht verfuegbar.'
+      return
+    }
+
+    const status = await fetchStatus()
+    let running = status?.running ?? false
+
+    if (!running) {
+      running = await startCamera()
+    }
+
+    if (!running) {
+      clearPollTimer()
+      scheduleRetry()
+      return
+    }
+
+    const hasFrame = await fetchFrame()
+    if (hasFrame) {
+      clearRetryTimer()
+      ensurePolling()
+    } else {
+      clearPollTimer()
+      scheduleRetry()
+    }
   } catch (cameraError) {
+    backendReachability.noteRequestFailure(cameraError)
+    clearPollTimer()
+    scheduleRetry()
     error.value = cameraError instanceof Error
       ? cameraError.message
       : 'Backend-Kamera nicht verfuegbar.'
   } finally {
     loading.value = false
+    bootstrapInFlight = false
   }
 }
 
 onMounted(() => {
   void initializeCamera()
-  pollTimer = setInterval(() => {
-    void fetchFrame()
-  }, POLL_MS)
 })
 
 onBeforeUnmount(() => {
-  if (pollTimer !== null) {
-    clearInterval(pollTimer)
-    pollTimer = null
-  }
+  clearPollTimer()
+  clearRetryTimer()
 })
 </script>
 

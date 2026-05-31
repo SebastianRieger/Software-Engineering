@@ -18,6 +18,7 @@ import { useGestureDebug } from '../../composables/useGestureDebug';
 import { useHomeScreen } from '../../composables/useHomeScreen';
 import { useHandTracking } from '../../composables/useHandTracking';
 import { useInteractionState } from '../../composables/useInteractionState';
+import { backendReachability } from '../../services/backendReachability';
 import { realtimeClient } from '../../services/realtime';
 import { checkExternalApiHealth } from '../../services/systemHealth';
 
@@ -200,10 +201,15 @@ setupKeyboardListener({
 watch(availableCells, () => { syncFocusedCell(); });
 
 onMounted(() => {
-  void checkExternalApiHealth().catch((error) => {
-    console.warn('External API health check failed', error);
-  });
   void initializeCamera();
+  void (async () => {
+    const reachable = await backendReachability.requestAvailabilityCheck();
+    if (!reachable) return;
+
+    void checkExternalApiHealth().catch((error) => {
+      console.warn('External API health check failed', error);
+    });
+  })();
   syncFocusedCell();
   unsubscribeRealtime = realtimeClient.subscribe((event) => {
     recordRealtimeEvent(event);
