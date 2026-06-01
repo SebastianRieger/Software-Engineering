@@ -16,6 +16,7 @@ import { useHomeScreen } from '../../composables/useHomeScreen';
 import { useHandTracking } from '../../composables/useHandTracking';
 import { realtimeClient } from '../../services/realtime';
 import { checkExternalApiHealth } from '../../services/systemHealth';
+import type { UIActionType } from '../../types/interactions';
 
 interface ModuleShopExposed {
   addCurrentWidgetToCell: (cellId: number) => void;
@@ -145,6 +146,17 @@ const handleCancelDelete = () => {
   deleteConfirmCell.value = null;
 };
 
+const handleHudAction = (action: UIActionType): void => {
+  dispatchAction({
+    action,
+    timestamp: new Date().toISOString(),
+    input_source: 'dev',
+    raw_input: action,
+    action_args: {},
+    metadata: {},
+  });
+};
+
 // Keyboard shop navigation (mouse/keyboard fallback)
 const handleShopNavigation = (key: string) => {
   if (isShopOpen.value && moduleShopRef.value) {
@@ -197,6 +209,7 @@ onBeforeUnmount(() => {
       :is-dragging="isDragging"
       :delete-confirm-pending="deleteConfirmCell !== null"
       :focused-cell-is-empty="focusedCellIsEmpty"
+      @action-clicked="handleHudAction"
     />
 
     <!-- HomeScreen (Kamera-Startseite) -->

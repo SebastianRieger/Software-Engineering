@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { computed } from 'vue'
+import type { UIActionType } from '../../types/interactions'
 
 type HudContext =
   | 'idle'
@@ -14,6 +15,7 @@ type GestureIcon = 'circle' | 'push-short' | 'push-long' | 'browse' | 'resize' |
 interface Hint {
   icon: GestureIcon
   label: string
+  action: UIActionType
 }
 
 const props = defineProps<{
@@ -22,6 +24,10 @@ const props = defineProps<{
   isDragging: boolean
   deleteConfirmPending: boolean
   focusedCellIsEmpty: boolean
+}>()
+
+const emit = defineEmits<{
+  (e: 'action-clicked', action: UIActionType): void
 }>()
 
 const context = computed<HudContext>(() => {
@@ -37,41 +43,45 @@ const hints = computed<Hint[]>(() => {
   switch (context.value) {
     case 'idle':
       return [
-        { icon: 'circle',      label: 'Edit starten' },
+        { icon: 'circle',      label: 'Edit starten',  action: 'toggle_edit_mode' },
       ]
     case 'edit-empty-focused':
       return [
-        { icon: 'pinch-close', label: 'Shop öffnen' },
-        { icon: 'push-short',  label: 'Skalieren' },
-        { icon: 'circle',      label: 'Beenden' },
+        { icon: 'pinch-close', label: 'Shop öffnen',   action: 'primary_click' },
+        { icon: 'push-short',  label: 'Skalieren',      action: 'resize_expand' },
+        { icon: 'circle',      label: 'Beenden',        action: 'toggle_edit_mode' },
       ]
     case 'edit-widget-focused':
       return [
-        { icon: 'pinch-close', label: 'Greifen' },
-        { icon: 'push-long',   label: 'Löschen' },
-        { icon: 'push-short',  label: 'Skalieren' },
-        { icon: 'circle',      label: 'Beenden' },
+        { icon: 'pinch-close', label: 'Greifen',        action: 'primary_click' },
+        { icon: 'push-long',   label: 'Löschen',        action: 'delete_widget' },
+        { icon: 'push-short',  label: 'Skalieren',      action: 'resize_expand' },
+        { icon: 'circle',      label: 'Beenden',        action: 'toggle_edit_mode' },
       ]
     case 'dragging':
       return [
-        { icon: 'pinch-open',  label: 'Ablegen' },
-        { icon: 'circle',      label: 'Abbrechen' },
+        { icon: 'pinch-open',  label: 'Ablegen',        action: 'drop_widget' },
+        { icon: 'circle',      label: 'Abbrechen',      action: 'toggle_edit_mode' },
       ]
     case 'delete-confirm':
       return [
-        { icon: 'push-long',   label: 'Auto-Löschen' },
-        { icon: 'circle',      label: 'Abbrechen' },
+        { icon: 'push-long',   label: 'Jetzt löschen',  action: 'delete_widget' },
+        { icon: 'circle',      label: 'Abbrechen',      action: 'toggle_edit_mode' },
       ]
     case 'shop':
       return [
-        { icon: 'browse',      label: 'Browsen' },
-        { icon: 'pinch-close', label: 'Hinzufügen' },
-        { icon: 'circle',      label: 'Schließen' },
+        { icon: 'browse',      label: 'Nächstes',       action: 'move_focus_right' },
+        { icon: 'pinch-close', label: 'Hinzufügen',     action: 'confirm_selection' },
+        { icon: 'circle',      label: 'Schließen',      action: 'toggle_edit_mode' },
       ]
   }
 })
 
 const alwaysVisible = computed(() => context.value === 'idle')
+
+function handleHintClick(action: UIActionType): void {
+  emit('action-clicked', action)
+}
 </script>
 
 <template>
@@ -84,7 +94,13 @@ const alwaysVisible = computed(() => context.value === 'idle')
       aria-live="polite"
     >
       <TransitionGroup name="chip-swap" tag="div" class="hud-chips">
-        <div v-for="hint in hints" :key="hint.icon + hint.label" class="hint-chip">
+        <button
+          v-for="hint in hints"
+          :key="hint.icon + hint.label"
+          type="button"
+          class="hint-chip"
+          @click="handleHintClick(hint.action)"
+        >
 
           <!-- ── Animated gesture icon ── -->
           <div class="gesture-icon" aria-hidden="true">
@@ -200,7 +216,7 @@ const alwaysVisible = computed(() => context.value === 'idle')
           </div>
 
           <span class="hint-label">{{ hint.label }}</span>
-        </div>
+        </button>
       </TransitionGroup>
     </div>
   </Transition>
@@ -213,7 +229,6 @@ const alwaysVisible = computed(() => context.value === 'idle')
   left: 50%;
   transform: translateX(-50%);
   z-index: 1100;
-  pointer-events: none;
 }
 
 .gesture-hud--idle {
@@ -236,6 +251,25 @@ const alwaysVisible = computed(() => context.value === 'idle')
   border: 1px solid rgba(255, 255, 255, 0.12);
   border-radius: 9999px;
   padding: 6px 14px 6px 8px;
+  cursor: pointer;
+  transition: background 160ms ease, border-color 160ms ease;
+  font-family: inherit;
+  color: inherit;
+  outline: none;
+}
+
+.hint-chip:hover {
+  background: rgba(255, 255, 255, 0.14);
+  border-color: rgba(255, 255, 255, 0.24);
+}
+
+.hint-chip:active {
+  background: rgba(255, 255, 255, 0.22);
+}
+
+.hint-chip:focus-visible {
+  outline: 2px solid rgba(255, 255, 255, 0.5);
+  outline-offset: 2px;
 }
 
 .gesture-icon {

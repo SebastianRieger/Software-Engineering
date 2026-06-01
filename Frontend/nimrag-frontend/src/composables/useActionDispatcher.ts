@@ -210,12 +210,15 @@ export function useActionDispatcher(options: ActionDispatcherOptions) {
 
       // ── Push long: delete widget (with auto-confirm countdown) ─
       case 'delete_widget':
-        if (
-          options.isEditMode.value &&
-          !isDragging.value &&
-          deleteConfirmCell.value === null &&
-          options.isCellOccupied(focusedCellId.value)
-        ) {
+        if (!options.isEditMode.value || isDragging.value) return false
+        if (deleteConfirmCell.value !== null) {
+          const toDelete = deleteConfirmCell.value
+          deleteConfirmCell.value = null
+          options.onWidgetDeleted?.(toDelete)
+          syncFocusedCell()
+          return true
+        }
+        if (options.isCellOccupied(focusedCellId.value)) {
           deleteConfirmCell.value = focusedCellId.value
           return true
         }

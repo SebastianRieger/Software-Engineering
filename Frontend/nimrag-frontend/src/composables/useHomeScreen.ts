@@ -1,5 +1,6 @@
 import { ref, onBeforeUnmount } from 'vue'
 import { buildApiUrl } from '../services/apiConfig'
+import { useGestureFrameStream } from '../services/gestureFrameStream'
 
 export interface BackendCamera {
   index: number
@@ -7,27 +8,25 @@ export interface BackendCamera {
   available: boolean
 }
 
-const POLL_MS = 66 // ~15fps
-
 export function useHomeScreen() {
   const cameras = ref<BackendCamera[]>([])
   const currentIndex = ref(0)
-  const frameUrl = ref<string | null>(null)
   const error = ref<string | null>(null)
   const loading = ref(true)
   const slideDirection = ref<'up' | 'down' | null>(null)
 
-  let pollTimer: ReturnType<typeof setInterval> | null = null
+  const { frameUrl, start: startStream, stop: stopStream } = useGestureFrameStream()
 
   async function fetchFrame(): Promise<void> {
+    // kept for one-off probes (e.g. stale-frame check during init)
     try {
       const res = await fetch(buildApiUrl('gestures/frame'))
       if (!res.ok) return
-      const data = (await res.json()) as { image: string }
+      const data = (await res.json()) as { image: string; frame_age_ms: number | null }
       frameUrl.value = data.image
       if (loading.value) loading.value = false
     } catch {
-      // polling — errors werden ignoriert
+      // ignore
     }
   }
 
@@ -73,10 +72,6 @@ export function useHomeScreen() {
   }
 
   async function initializeCamera(): Promise<void> {
-    if (pollTimer !== null) {
-      clearInterval(pollTimer)
-      pollTimer = null
-    }
     loading.value = true
     error.value = null
 
@@ -129,19 +124,15 @@ export function useHomeScreen() {
       } catch { /* ignore */ }
     }
 
-    pollTimer = setInterval(() => { void fetchFrame() }, POLL_MS)
-    void fetchFrame()
+    startStream()
+    loading.value = false
   }
 
-  function stopStream(): void {
-    if (pollTimer !== null) {
-      clearInterval(pollTimer)
-      pollTimer = null
-    }
-    frameUrl.value = null
+  function stop(): void {
+    stopStream()
   }
 
-  onBeforeUnmount(stopStream)
+  onBeforeUnmount(stop)
 
   return {
     cameras,
@@ -152,6 +143,6 @@ export function useHomeScreen() {
     slideDirection,
     initializeCamera,
     navigateCamera,
-    stopStream,
+    stopStream: stop,
   }
 }
