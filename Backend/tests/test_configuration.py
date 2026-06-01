@@ -316,7 +316,7 @@ async def test_get_default_input_action_config(client):
     assert response.status_code == 200
     data = response.json()
     assert any(
-        mapping["raw_input"] == "circle" and mapping["action"] == "toggle_shop"
+        mapping["raw_input"] == "circle" and mapping["action"] == "toggle_edit_mode"
         for mapping in data["config"]["mappings"]
     )
 

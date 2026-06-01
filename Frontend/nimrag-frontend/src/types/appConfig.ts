@@ -27,6 +27,7 @@ export interface CameraWidgetConfig {
 
 export interface MarketWidgetConfig {
   symbols: string[]
+  refresh_seconds: number
 }
 export interface NinaWidgetConfig {
   ars: string

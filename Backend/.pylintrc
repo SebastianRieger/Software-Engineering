@@ -1,0 +1,8 @@
+[MASTER]
+init-hook=import os, sys; cwd=os.getcwd(); candidates=[os.path.join(cwd, "src"), os.path.join(os.path.dirname(cwd), "Backend", "src")]; [sys.path.insert(0, path) for path in candidates if os.path.isdir(path) and path not in sys.path]
+
+[FORMAT]
+max-line-length=100
+
+[MESSAGES CONTROL]
+disable=too-few-public-methods

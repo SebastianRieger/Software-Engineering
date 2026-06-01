@@ -398,6 +398,15 @@ def mock_gesture_service():
         def get_frame(self):
             return self.frame
 
+        def begin_dev_capture(self):
+            return {
+                "status": "started",
+                "output_dir": "/tmp/mock-gesture-capture",
+                "duration_seconds": 3.0,
+                "target_fps": 24.0,
+                "frames_target": 72,
+            }
+
         def begin_calibration_take_capture(
             self,
             *,
@@ -493,6 +502,11 @@ def unavailable_gesture_service():
 
         def get_frame(self):
             return None
+
+        def begin_dev_capture(self):
+            raise GestureServiceError(
+                "Gestenerkennung muss fuer den Dev-Capture laufen.", status_code=409
+            )
 
         def process_video(self, video_path: str):
             raise GestureServiceError(

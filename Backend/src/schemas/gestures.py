@@ -1,3 +1,5 @@
+"""Pydantic schemas and typed configuration payloads for gesture APIs."""
+
 from datetime import datetime
 from typing import Literal, TypedDict
 
@@ -21,6 +23,8 @@ GestureType = Literal[
 
 
 class TrajectoryDetectionKwargs(TypedDict):
+    """Keyword arguments for offline trajectory gesture detection."""
+
     swipe_threshold: float
     down_threshold: float
     circle_sweep_min: float
@@ -43,6 +47,8 @@ class TrajectoryDetectionKwargs(TypedDict):
 
 
 class RuntimeAnalysisKwargs(TypedDict):
+    """Keyword arguments for runtime gesture analysis and resolver scoring."""
+
     swipe_threshold: float
     circle_sweep_min: float
     circle_cv_max: float
@@ -81,10 +87,14 @@ class RuntimeAnalysisKwargs(TypedDict):
 
 
 class GestureStartRequest(BaseModel):
+    """Request body for starting gesture recognition."""
+
     camera_index: int = Field(default=0, ge=0)
 
 
 class GestureCameraDeviceResponse(BaseModel):
+    """Available camera device reported by the gesture backend."""
+
     index: int = Field(ge=0)
     name: str
     available: bool = True
@@ -92,10 +102,14 @@ class GestureCameraDeviceResponse(BaseModel):
 
 
 class GestureCameraListResponse(BaseModel):
+    """Response containing all discoverable gesture camera devices."""
+
     devices: list[GestureCameraDeviceResponse] = Field(default_factory=list)
 
 
 class GestureStatusResponse(BaseModel):
+    """Current gesture recognition runtime status."""
+
     available: bool
     running: bool
     camera_index: int | None = None
@@ -125,12 +139,16 @@ class GestureStatusResponse(BaseModel):
 
 
 class GestureFrameResponse(BaseModel):
+    """Latest camera preview frame encoded as a data URL."""
+
     image: str
     captured_at: datetime | None = None
     frame_age_ms: int | None = None
 
 
 class GestureEventPayload(BaseModel):
+    """Payload published when a camera gesture is detected."""
+
     gesture: GestureType
     timestamp: datetime
     source: Literal["camera"] = "camera"
@@ -150,11 +168,15 @@ class GestureEventPayload(BaseModel):
 
 
 class GestureEventEnvelope(BaseModel):
+    """Realtime envelope for gesture detection events."""
+
     eventType: Literal["GestureDetected"] = "GestureDetected"
     payload: GestureEventPayload
 
 
 class GestureVideoProcessingResponse(BaseModel):
+    """Summary returned after processing a gesture video file."""
+
     gestures: list[GestureType] = Field(default_factory=list)
     frames_processed: int = Field(ge=0)
     trajectory_points: int = Field(ge=0)
@@ -162,7 +184,19 @@ class GestureVideoProcessingResponse(BaseModel):
     tracking_source: str | None = None
 
 
+class GestureDevCaptureResponse(BaseModel):
+    """Response returned when a developer frame capture starts."""
+
+    status: Literal["started"]
+    output_dir: str
+    duration_seconds: float = Field(gt=0, le=10)
+    target_fps: float = Field(gt=0, le=60)
+    frames_target: int = Field(gt=0, le=600)
+
+
 class GestureConfig(BaseModel):
+    """Runtime gesture detector thresholds and resolver configuration."""
+
     smoothing_alpha: float = Field(default=settings.GESTURE_SMOOTHING_ALPHA, ge=0, le=1)
     max_trajectory_points: int = Field(
         default=settings.GESTURE_MAX_TRAJECTORY_POINTS, ge=6, le=512
@@ -259,6 +293,21 @@ class GestureConfig(BaseModel):
     )
     two_hand_min_frames: int = Field(
         default=settings.GESTURE_TWO_HAND_MIN_FRAMES, ge=2, le=64
+    )
+    pinch_close_threshold: float = Field(
+        default=settings.GESTURE_PINCH_CLOSE_THRESHOLD, gt=0, le=1
+    )
+    pinch_open_threshold: float = Field(
+        default=settings.GESTURE_PINCH_OPEN_THRESHOLD, gt=0, le=1
+    )
+    pinch_smoothing_window: int = Field(
+        default=settings.GESTURE_PINCH_SMOOTHING_WINDOW, ge=1, le=24
+    )
+    pinch_cooldown_seconds: float = Field(
+        default=settings.GESTURE_PINCH_COOLDOWN_SECONDS, ge=0, le=3
+    )
+    pinch_confidence: float = Field(
+        default=settings.GESTURE_PINCH_CONFIDENCE, ge=0, le=1
     )
     runtime_circle_pose_max_openness: float = Field(
         default=settings.GESTURE_RUNTIME_CIRCLE_POSE_MAX_OPENNESS, ge=0, le=1
@@ -452,6 +501,8 @@ class GestureConfig(BaseModel):
     updated_at: datetime | None = None
 
     def offline_swipe_cycle_kwargs(self) -> dict[str, float | int]:
+        """Return swipe-cycle detector options derived from the config."""
+
         return {
             "min_cycle_points": self.offline_swipe_min_cycle_points,
             "motion_step_threshold": self.offline_swipe_motion_step_threshold,
@@ -464,6 +515,8 @@ class GestureConfig(BaseModel):
         }
 
     def offline_push_cycle_kwargs(self) -> dict[str, float | int]:
+        """Return push-cycle detector options derived from the config."""
+
         return {
             "min_cycle_points": self.offline_push_min_cycle_points,
             "activation_depth_threshold": self.push_depth_threshold,
@@ -478,6 +531,8 @@ class GestureConfig(BaseModel):
         }
 
     def trajectory_detection_kwargs(self) -> TrajectoryDetectionKwargs:
+        """Return options for trajectory-only gesture detection."""
+
         return {
             "swipe_threshold": self.swipe_threshold,
             "down_threshold": self.down_threshold,
@@ -493,7 +548,9 @@ class GestureConfig(BaseModel):
             "up_threshold": self.up_threshold,
             "horizontal_dominance_ratio": self.candidate_horizontal_dominance_ratio,
             "horizontal_max_off_axis_span_ratio": self.candidate_horizontal_max_off_axis_span_ratio,
-            "horizontal_max_off_axis_motion_ratio": self.candidate_horizontal_max_off_axis_motion_ratio,
+            "horizontal_max_off_axis_motion_ratio": (
+                self.candidate_horizontal_max_off_axis_motion_ratio
+            ),
             "vertical_dominance_ratio": self.candidate_vertical_dominance_ratio,
             "vertical_max_off_axis_span_ratio": self.candidate_vertical_max_off_axis_span_ratio,
             "vertical_max_off_axis_motion_ratio": self.candidate_vertical_max_off_axis_motion_ratio,
@@ -501,6 +558,8 @@ class GestureConfig(BaseModel):
         }
 
     def runtime_analysis_kwargs(self) -> RuntimeAnalysisKwargs:
+        """Return options for runtime gesture analysis."""
+
         return {
             "swipe_threshold": self.swipe_threshold,
             "circle_sweep_min": self.circle_sweep_min,
@@ -527,7 +586,9 @@ class GestureConfig(BaseModel):
             "primitive_circle_motion_threshold": self.primitive_circle_motion_threshold,
             "primitive_two_hand_threshold": self.primitive_two_hand_threshold,
             "resolver_push_centered_score_floor": self.resolver_push_centered_score_floor,
-            "resolver_tracking_quality_trajectory_weight": self.resolver_tracking_quality_trajectory_weight,
+            "resolver_tracking_quality_trajectory_weight": (
+                self.resolver_tracking_quality_trajectory_weight
+            ),
             "resolver_tracking_quality_pose_weight": self.resolver_tracking_quality_pose_weight,
             "resolver_tracking_quality_hand_weight": self.resolver_tracking_quality_hand_weight,
             "resolver_candidate_confidence_weight": self.resolver_candidate_confidence_weight,
@@ -541,4 +602,6 @@ class GestureConfig(BaseModel):
 
 
 class GestureConfigEnvelope(BaseModel):
+    """Response envelope for gesture detector configuration."""
+
     config: GestureConfig

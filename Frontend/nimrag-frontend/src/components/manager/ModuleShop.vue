@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, watch, onMounted, computed } from 'vue'
+import { ref, watch, onMounted, computed, markRaw } from 'vue'
 import { useHoverTrigger } from '../../composables/useHoverTrigger'
 import type { CursorPosition } from '../../composables/useHandTracking'
 
@@ -51,8 +51,14 @@ const displayedModules = computed<DisplayItem[]>(() => {
   }
 
   const center = currentIndex.value
-  const left  = (center - 1 + len) % len
   const right = (center + 1) % len
+  if (len === 2) {
+    result.push({ ...moduleList.value[center]!, position: 'center', index: center })
+    result.push({ ...moduleList.value[right]!, position: 'right', index: right })
+    return result
+  }
+
+  const left  = (center - 1 + len) % len
 
   result.push({ ...moduleList.value[left]!,   position: 'left',   index: left })
   result.push({ ...moduleList.value[center]!, position: 'center', index: center })
@@ -67,7 +73,7 @@ onMounted(async () => {
     const moduleLoader = modules[path]
     if (!moduleLoader) continue
     const module = (await moduleLoader()) as any
-    moduleList.value.push({ name: fileName, path, component: module.default })
+    moduleList.value.push({ name: fileName, path, component: markRaw(module.default) })
   }
 })
 
@@ -178,6 +184,11 @@ watch(() => props.gestureCursor, (pos) => {
       <div class="loading-ring" />
     </div>
 
+    <!-- Gesture hint: confirm with pinch close -->
+    <div v-if="moduleList.length > 0" class="shop-confirm-hint">
+      <span class="confirm-gesture-badge">Pinch</span>
+      <span class="confirm-hint-text">Widget hinzufügen</span>
+    </div>
     <!-- Add widget button: hover 1s to confirm -->
     <button
       v-if="moduleList.length > 0"
