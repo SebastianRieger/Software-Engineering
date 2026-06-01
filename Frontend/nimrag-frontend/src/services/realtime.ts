@@ -8,6 +8,15 @@ class RealtimeClient {
   private listeners = new Set<RealtimeListener>()
   private reconnectTimer: number | null = null
 
+  private scheduleReconnect(): void {
+    if (this.listeners.size > 0 && this.reconnectTimer === null) {
+      this.reconnectTimer = window.setTimeout(() => {
+        this.reconnectTimer = null
+        this.ensureConnected()
+      }, 1500)
+    }
+  }
+
   subscribe(listener: RealtimeListener): () => void {
     this.listeners.add(listener)
     this.ensureConnected()
@@ -37,12 +46,15 @@ class RealtimeClient {
 
     this.socket.addEventListener('close', () => {
       this.socket = null
-      if (this.listeners.size > 0 && this.reconnectTimer === null) {
-        this.reconnectTimer = window.setTimeout(() => {
-          this.reconnectTimer = null
-          this.ensureConnected()
-        }, 1500)
-      }
+      this.scheduleReconnect()
+    })
+
+    this.socket.addEventListener('error', () => {
+      const socket = this.socket
+      if (socket === null) return
+      this.socket = null
+      socket.close()
+      this.scheduleReconnect()
     })
   }
 

@@ -1,4 +1,4 @@
-import { describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { defineComponent } from 'vue'
 import { mount } from '@vue/test-utils'
 
@@ -17,6 +17,15 @@ vi.mock('@/services/realtime', () => ({
 }))
 
 import { useHandTracking } from '@/composables/useHandTracking'
+
+beforeEach(() => {
+  vi.useFakeTimers()
+})
+
+afterEach(() => {
+  vi.runOnlyPendingTimers()
+  vi.useRealTimers()
+})
 
 function mountHarness() {
   let exposed: ReturnType<typeof useHandTracking> | null = null
@@ -54,6 +63,7 @@ describe('useHandTracking', () => {
     expect(tracking.indexFingerCursor.value).toEqual({ x: 80, y: 30 })
     expect(tracking.pinchCursor.value).toEqual({ x: 75, y: 40 })
     expect(tracking.backendPinchDistance.value).toBe(0.1)
+    expect(tracking.isHandTrackingActive.value).toBe(true)
   })
 
   it('falls back to the thumb-index midpoint when no backend anchor is present', () => {
@@ -75,5 +85,73 @@ describe('useHandTracking', () => {
     })
 
     expect(tracking.pinchCursor.value).toEqual({ x: 70, y: 40 })
+  })
+
+  it('keeps the last cursor briefly when an empty tracking frame arrives', () => {
+    const { tracking } = mountHarness()
+
+    realtime.listener?.({
+      eventType: 'HandTrackingUpdated',
+      payload: {
+        hands: [
+          {
+            hand: 'right',
+            landmarks: {
+              index_tip: [0.2, 0.3],
+              thumb_tip: [0.4, 0.5],
+            },
+          },
+        ],
+      },
+    })
+    realtime.listener?.({ eventType: 'HandTrackingUpdated', payload: { hands: [] } })
+
+    vi.advanceTimersByTime(400)
+
+    expect(tracking.indexFingerCursor.value).toEqual({ x: 80, y: 30 })
+    expect(tracking.isHandTrackingActive.value).toBe(true)
+  })
+
+  it('clears the cursor after sustained hand loss and restores it on new tracking', () => {
+    const { tracking } = mountHarness()
+
+    realtime.listener?.({
+      eventType: 'HandTrackingUpdated',
+      payload: {
+        hands: [
+          {
+            hand: 'right',
+            landmarks: {
+              index_tip: [0.2, 0.3],
+              thumb_tip: [0.4, 0.5],
+            },
+          },
+        ],
+      },
+    })
+    realtime.listener?.({ eventType: 'HandTrackingUpdated', payload: { hands: [] } })
+
+    vi.advanceTimersByTime(650)
+
+    expect(tracking.indexFingerCursor.value).toBeNull()
+    expect(tracking.pinchCursor.value).toBeNull()
+    expect(tracking.isHandTrackingActive.value).toBe(false)
+
+    realtime.listener?.({
+      eventType: 'HandTrackingUpdated',
+      payload: {
+        hands: [
+          {
+            hand: 'right',
+            landmarks: {
+              index_tip: [0.1, 0.2],
+            },
+          },
+        ],
+      },
+    })
+
+    expect(tracking.indexFingerCursor.value).toEqual({ x: 90, y: 20 })
+    expect(tracking.isHandTrackingActive.value).toBe(true)
   })
 })

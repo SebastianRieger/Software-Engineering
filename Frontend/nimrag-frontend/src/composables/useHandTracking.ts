@@ -2,6 +2,8 @@ import { ref, computed, onBeforeUnmount } from 'vue'
 import { realtimeClient } from '../services/realtime'
 import type { RealtimeEvent } from '../types/realtime'
 
+const HAND_LOST_GRACE_MS = 650
+
 export interface HandLandmarks {
   [name: string]: [number, number]
 }
@@ -22,7 +24,23 @@ export function useHandTracking() {
   const trackedHands = ref<TrackedHand[]>([])
   const backendPinchAnchor = ref<[number, number] | null>(null)
   const backendPinchDistance = ref<number | null>(null)
+  const isHandTrackingActive = ref(false)
   let hideTimer: ReturnType<typeof setTimeout> | null = null
+
+  const clearLostHandTimer = (): void => {
+    if (hideTimer !== null) {
+      clearTimeout(hideTimer)
+      hideTimer = null
+    }
+  }
+
+  const clearTrackingState = (): void => {
+    trackedHands.value = []
+    backendPinchAnchor.value = null
+    backendPinchDistance.value = null
+    isHandTrackingActive.value = false
+    hideTimer = null
+  }
 
   const unsubscribe = realtimeClient.subscribe((event: RealtimeEvent) => {
     if (event.eventType !== 'HandTrackingUpdated') return
@@ -34,18 +52,19 @@ export function useHandTracking() {
         pinch_distance?: number | null
       }
     }).payload
-    trackedHands.value = payload?.hands ?? []
-    backendPinchAnchor.value = payload?.pinch_anchor ?? trackedHands.value[0]?.pinch_anchor ?? null
-    backendPinchDistance.value = payload?.pinch_distance ?? trackedHands.value[0]?.pinch_distance ?? null
-
-    if (hideTimer !== null) clearTimeout(hideTimer)
-    if (trackedHands.value.length > 0) {
-      hideTimer = setTimeout(() => {
-        trackedHands.value = []
-        backendPinchAnchor.value = null
-        backendPinchDistance.value = null
-      }, 300)
+    const hands = payload?.hands ?? []
+    if (hands.length === 0) {
+      if (isHandTrackingActive.value && hideTimer === null) {
+        hideTimer = setTimeout(clearTrackingState, HAND_LOST_GRACE_MS)
+      }
+      return
     }
+
+    clearLostHandTimer()
+    trackedHands.value = hands
+    backendPinchAnchor.value = payload?.pinch_anchor ?? hands[0]?.pinch_anchor ?? null
+    backendPinchDistance.value = payload?.pinch_distance ?? hands[0]?.pinch_distance ?? null
+    isHandTrackingActive.value = true
   })
 
   // Index finger tip position in viewport-percentage space (0-100).
@@ -75,9 +94,15 @@ export function useHandTracking() {
   })
 
   onBeforeUnmount(() => {
-    if (hideTimer !== null) clearTimeout(hideTimer)
+    clearLostHandTimer()
     unsubscribe()
   })
 
-  return { trackedHands, indexFingerCursor, pinchCursor, backendPinchDistance }
+  return {
+    trackedHands,
+    indexFingerCursor,
+    pinchCursor,
+    backendPinchDistance,
+    isHandTrackingActive,
+  }
 }

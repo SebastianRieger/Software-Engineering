@@ -130,22 +130,32 @@ export function useActionDispatcher(options: ActionDispatcherOptions) {
     return true
   }
 
+  const keepGridEditModeArmed = (): void => {
+    if (options.currentView?.value === 'grid') {
+      setArrangeMode(true)
+    }
+  }
+
   const dispatchAction = (payload: UIActionRequestedPayload): boolean => {
     switch (payload.action) {
 
-      // ── Edit mode toggle (circle) ──────────────────────────────
+      // ── Circle: enter grid mode or cancel transient gesture state ─
       case 'toggle_edit_mode':
         if (options.isShopOpen.value) {
           options.closeShop()
+          keepGridEditModeArmed()
         } else if (deleteConfirmCell.value !== null) {
           deleteConfirmCell.value = null
+          keepGridEditModeArmed()
         } else if (isDragging.value) {
           isDragging.value = false
           dragSourceCell.value = null
+          keepGridEditModeArmed()
+        } else if (options.currentView?.value === 'grid') {
+          setArrangeMode(true)
         } else if (options.isEditMode.value) {
           setArrangeMode(false)
         } else {
-          // Entering edit mode always switches to grid view first
           options.goToGrid?.()
           setArrangeMode(true)
         }
@@ -241,8 +251,9 @@ export function useActionDispatcher(options: ActionDispatcherOptions) {
           options.moduleShopRef.value.nextModule()
           return true
         }
-        if (!options.isEditMode.value && options.currentView?.value === 'home') {
+        if (options.currentView?.value === 'home') {
           options.goToGrid?.()
+          setArrangeMode(true)
           return true
         }
         return moveFocus('right')

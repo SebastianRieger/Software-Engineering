@@ -53,7 +53,7 @@ const availableCells = computed(() => {
 const { isEditMode, setEditMode, setupKeyboardListener } = useEditMode();
 const { isShopOpen, toggleShop, openShop, closeShop } = useModuleShop();
 const { toggleClockMode } = useClockWidgetMode();
-const { indexFingerCursor, pinchCursor } = useHandTracking();
+const { indexFingerCursor, pinchCursor, isHandTrackingActive } = useHandTracking();
 
 const moduleShopRef = ref<ComponentPublicInstance<{}, ModuleShopExposed> | null>(null);
 let unsubscribeRealtime: (() => void) | null = null;
@@ -181,6 +181,18 @@ setupKeyboardListener({
 });
 
 watch(availableCells, () => { syncFocusedCell(); });
+
+watch(isHandTrackingActive, (active) => {
+  if (active || !isDragging.value) return;
+  dispatchAction({
+    action: 'cancel_selection',
+    timestamp: new Date().toISOString(),
+    input_source: 'gesture',
+    raw_input: 'hand_tracking_lost',
+    action_args: {},
+    metadata: { reason: 'hand_tracking_lost' },
+  });
+});
 
 onMounted(() => {
   void checkExternalApiHealth().catch((error) => {

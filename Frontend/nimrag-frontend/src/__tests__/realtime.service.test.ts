@@ -116,6 +116,22 @@ describe('realtime service', () => {
     expect(MockWebSocket.instances).toHaveLength(2)
   })
 
+  it('closes and reconnects after websocket errors while listeners remain subscribed', async () => {
+    const { realtimeClient } = await loadRealtimeClient()
+
+    realtimeClient.subscribe(vi.fn())
+
+    const socket = MockWebSocket.instances[0]
+    socket.dispatch('error')
+
+    expect(socket.close).toHaveBeenCalledOnce()
+    expect(MockWebSocket.instances).toHaveLength(1)
+
+    vi.advanceTimersByTime(1500)
+
+    expect(MockWebSocket.instances).toHaveLength(2)
+  })
+
   it('cancels a scheduled reconnect when the last listener unsubscribes', async () => {
     const clearTimeoutSpy = vi.spyOn(window, 'clearTimeout')
     const { realtimeClient } = await loadRealtimeClient()

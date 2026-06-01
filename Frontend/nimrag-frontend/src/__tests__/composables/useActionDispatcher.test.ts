@@ -195,6 +195,83 @@ describe('useActionDispatcher', () => {
     expect(dispatcher.dragSourceCell.value).toBeNull()
   })
 
+  it('enters grid edit mode on the first right swipe from home', () => {
+    const currentView = ref<'home' | 'grid'>('home')
+    const setEditMode = vi.fn()
+    const goToGrid = vi.fn(() => {
+      currentView.value = 'grid'
+    })
+    const isEditMode = ref(false)
+
+    const dispatcher = useActionDispatcher({
+      isShopOpen: ref(false),
+      openShop: vi.fn(),
+      closeShop: vi.fn(),
+      toggleShop: vi.fn(),
+      isEditMode,
+      setEditMode,
+      visibleCellIds: () => [1, 2, 3, 4],
+      isCellAvailable: () => true,
+      moduleShopRef: ref(null),
+      currentView,
+      goToGrid,
+    })
+
+    expect(dispatcher.dispatchAction(createPayload('move_focus_right'))).toBe(true)
+    expect(goToGrid).toHaveBeenCalledOnce()
+    expect(isEditMode.value).toBe(true)
+    expect(setEditMode).toHaveBeenCalledWith(true)
+  })
+
+  it('keeps grid edit mode armed when circle is detected on the grid', () => {
+    const setEditMode = vi.fn()
+    const isEditMode = ref(true)
+
+    const dispatcher = useActionDispatcher({
+      isShopOpen: ref(false),
+      openShop: vi.fn(),
+      closeShop: vi.fn(),
+      toggleShop: vi.fn(),
+      isEditMode,
+      setEditMode,
+      visibleCellIds: () => [1, 2, 3, 4],
+      isCellAvailable: () => true,
+      moduleShopRef: ref(null),
+      currentView: ref('grid'),
+    })
+
+    expect(dispatcher.dispatchAction(createPayload('toggle_edit_mode'))).toBe(true)
+    expect(isEditMode.value).toBe(true)
+    expect(setEditMode).toHaveBeenCalledWith(true)
+  })
+
+  it('cancels dragging on circle but leaves grid edit mode enabled', () => {
+    const setEditMode = vi.fn()
+    const isEditMode = ref(true)
+    const dispatcher = useActionDispatcher({
+      isShopOpen: ref(false),
+      openShop: vi.fn(),
+      closeShop: vi.fn(),
+      toggleShop: vi.fn(),
+      isEditMode,
+      setEditMode,
+      visibleCellIds: () => [1, 2, 3, 4],
+      isCellAvailable: () => false,
+      isCellOccupied: (cellId) => cellId === 1,
+      moduleShopRef: ref(null),
+      currentView: ref('grid'),
+    })
+
+    dispatcher.dispatchAction(createPayload('primary_click'))
+    expect(dispatcher.isDragging.value).toBe(true)
+
+    expect(dispatcher.dispatchAction(createPayload('toggle_edit_mode'))).toBe(true)
+    expect(dispatcher.isDragging.value).toBe(false)
+    expect(dispatcher.dragSourceCell.value).toBeNull()
+    expect(isEditMode.value).toBe(true)
+    expect(setEditMode).toHaveBeenCalledWith(true)
+  })
+
   it('opens and closes shop actions directly', () => {
     const openShop = vi.fn()
     const closeShop = vi.fn()
