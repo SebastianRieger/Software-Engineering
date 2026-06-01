@@ -101,6 +101,15 @@ class GestureZoomSampleMetrics(BaseModel):
     frame_count: int = Field(ge=0)
 
 
+class GesturePinchSampleMetrics(BaseModel):
+    distance: float = Field(ge=0, le=1)
+    smoothed_distance: float | None = Field(default=None, ge=0, le=1)
+    tip_distance: float | None = Field(default=None, ge=0, le=1)
+    anchor_x: float | None = Field(default=None, ge=0, le=1)
+    anchor_y: float | None = Field(default=None, ge=0, le=1)
+    contact_pair: list[str] = Field(default_factory=list)
+
+
 class GestureFingerStateSnapshot(BaseModel):
     extended_score: float = Field(ge=0, le=1)
     curled_score: float = Field(ge=0, le=1)
@@ -187,6 +196,7 @@ class GestureCalibrationSamplePayload(BaseModel):
     trajectory: GestureTrajectorySummary | None = None
     push: GesturePushSampleMetrics | None = None
     zoom: GestureZoomSampleMetrics | None = None
+    pinch: GesturePinchSampleMetrics | None = None
     pose: GesturePoseSnapshot | None = None
     temporal: GestureTemporalWindowSummary | None = None
     sequence: GestureSequenceArtifact | None = None

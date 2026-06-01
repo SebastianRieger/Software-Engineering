@@ -35,7 +35,7 @@ describe('GridBoard', () => {
   })
 
   it('marks the focused cell with a dedicated class', () => {
-    const wrapper = mount(GridBoard, { props: { isEditMode: false, focusedCellId: 3 } })
+    const wrapper = mount(GridBoard, { props: { isEditMode: true, focusedCellId: 3 } })
     const focusedCell = wrapper.find('[data-cell-id="3"]')
 
     expect(focusedCell.classes()).toContain('grid-cell-focused')

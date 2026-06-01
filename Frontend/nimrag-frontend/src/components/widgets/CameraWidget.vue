@@ -1,26 +1,39 @@
 <script setup lang="ts">
 import { ref, watch, onMounted, onBeforeUnmount } from 'vue'
 import { useGestureFrameStream } from '../../services/gestureFrameStream'
+import { buildApiUrl } from '../../services/apiConfig'
 import { useHandTracking } from '../../composables/useHandTracking'
 
 const { frameUrl, start, stop } = useGestureFrameStream()
 const { trackedHands } = useHandTracking()
 
 const canvasRef = ref<HTMLCanvasElement | null>(null)
+const captureStatus = ref<'idle' | 'running' | 'done' | 'error'>('idle')
+const captureOutputDir = ref<string | null>(null)
+const showDevCapture = import.meta.env.DEV
+let captureStatusTimer: ReturnType<typeof window.setTimeout> | null = null
+let resizeObserver: ResizeObserver | null = null
 
 const CONNECTIONS: [string, string][] = [
-  ['wrist', 'index_mcp'],
-  ['wrist', 'middle_mcp'],
-  ['wrist', 'ring_mcp'],
-  ['wrist', 'pinky_mcp'],
+  ['wrist', 'thumb_cmc'],
+  ['thumb_cmc', 'thumb_mcp'],
+  ['thumb_mcp', 'thumb_ip'],
+  ['thumb_ip', 'thumb_tip'],
   ['index_mcp', 'middle_mcp'],
   ['middle_mcp', 'ring_mcp'],
   ['ring_mcp', 'pinky_mcp'],
-  ['index_mcp', 'index_tip'],
-  ['middle_mcp', 'middle_tip'],
-  ['ring_mcp', 'ring_tip'],
-  ['pinky_mcp', 'pinky_tip'],
-  ['wrist', 'thumb_tip'],
+  ['index_mcp', 'index_pip'],
+  ['index_pip', 'index_dip'],
+  ['index_dip', 'index_tip'],
+  ['middle_mcp', 'middle_pip'],
+  ['middle_pip', 'middle_dip'],
+  ['middle_dip', 'middle_tip'],
+  ['ring_mcp', 'ring_pip'],
+  ['ring_pip', 'ring_dip'],
+  ['ring_dip', 'ring_tip'],
+  ['pinky_mcp', 'pinky_pip'],
+  ['pinky_pip', 'pinky_dip'],
+  ['pinky_dip', 'pinky_tip'],
 ]
 
 const PALM_POINTS = new Set(['wrist', 'index_mcp', 'middle_mcp', 'ring_mcp', 'pinky_mcp'])
@@ -89,18 +102,45 @@ function drawLandmarks(): void {
   }
 }
 
-const resizeObserver = new ResizeObserver(syncCanvasSize)
+async function startDevCapture(): Promise<void> {
+  if (captureStatus.value === 'running') return
+
+  if (captureStatusTimer !== null) {
+    window.clearTimeout(captureStatusTimer)
+    captureStatusTimer = null
+  }
+
+  captureStatus.value = 'running'
+  captureOutputDir.value = null
+  try {
+    const res = await fetch(buildApiUrl('gestures/dev/capture'), { method: 'POST' })
+    if (!res.ok) throw new Error(`capture failed: ${res.status}`)
+    const data = (await res.json()) as { output_dir?: string }
+    captureOutputDir.value = data.output_dir ?? null
+    captureStatusTimer = window.setTimeout(() => {
+      if (captureStatus.value === 'running') captureStatus.value = 'done'
+    }, 3400)
+  } catch {
+    captureStatus.value = 'error'
+  }
+}
 
 onMounted(() => {
   start()
   syncCanvasSize()
-  if (canvasRef.value?.parentElement) {
+  if (typeof ResizeObserver !== 'undefined' && canvasRef.value?.parentElement) {
+    resizeObserver = new ResizeObserver(syncCanvasSize)
     resizeObserver.observe(canvasRef.value.parentElement)
   }
 })
 
 onBeforeUnmount(() => {
-  resizeObserver.disconnect()
+  if (captureStatusTimer !== null) {
+    window.clearTimeout(captureStatusTimer)
+    captureStatusTimer = null
+  }
+  resizeObserver?.disconnect()
+  resizeObserver = null
   stop()
 })
 
@@ -121,6 +161,24 @@ watch(trackedHands, drawLandmarks, { deep: true })
       <div class="scan-dot" />
     </div>
     <canvas ref="canvasRef" class="landmark-canvas" />
+    <button
+      v-if="showDevCapture"
+      class="dev-capture-button"
+      type="button"
+      :disabled="captureStatus === 'running'"
+      :title="captureOutputDir || 'Speichert 3 Sekunden Gestenframes nach pics/'"
+      @click.stop="startDevCapture"
+    >
+      {{
+        captureStatus === 'running'
+          ? 'Capturing...'
+          : captureStatus === 'done'
+            ? 'Saved'
+            : captureStatus === 'error'
+              ? 'Error'
+              : 'Capture 3s'
+      }}
+    </button>
   </div>
 </template>
 
@@ -177,6 +235,25 @@ watch(trackedHands, drawLandmarks, { deep: true })
   width: 100%;
   height: 100%;
   pointer-events: none;
+}
+
+.dev-capture-button {
+  position: absolute;
+  right: 8px;
+  bottom: 8px;
+  z-index: 2;
+  border: 1px solid rgba(255, 255, 255, 0.35);
+  background: rgba(0, 0, 0, 0.68);
+  color: #fff;
+  font-size: 12px;
+  line-height: 1;
+  padding: 7px 9px;
+  cursor: pointer;
+}
+
+.dev-capture-button:disabled {
+  cursor: wait;
+  opacity: 0.7;
 }
 
 @media (prefers-reduced-motion: reduce) {

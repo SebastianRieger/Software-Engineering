@@ -2,16 +2,16 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 from statistics import mean
+from typing import Any
 
 from services.gesture.detection import GestureDetectionResult
-from services.gesture.tracking import HandPoseFeatures
+from services.gesture.tracking import HandPoseFeatures, PinchContactMetrics
 
-# Distance between thumb_tip and index_tip (as a fraction of palm_span).
-# FingerState.spread_score for "thumb" is exactly this distance.
-_CLOSE_THRESHOLD = 0.30  # below → pinched
-_OPEN_THRESHOLD  = 0.52  # above → open (hysteresis gap prevents flicker)
-_WINDOW          = 4     # frames to smooth spread over
-_COOLDOWN        = 0.55  # minimum seconds between consecutive fires
+_DEFAULT_CLOSE_THRESHOLD = 0.30
+_DEFAULT_OPEN_THRESHOLD = 0.52
+_DEFAULT_WINDOW = 4
+_DEFAULT_COOLDOWN = 0.55
+_DEFAULT_CONFIDENCE = 0.92
 
 
 @dataclass(slots=True)
@@ -19,48 +19,93 @@ class PinchGestureState:
     pinch_closed: bool
     spread_window: list[float] = field(default_factory=list)
     last_fire_at: float = 0.0
+    anchor: tuple[float, float] | None = None
+    raw_distance: float | None = None
+    smoothed_distance: float | None = None
+    contact_pair: tuple[str, str] | None = None
+
+
+def _config_value(config: Any, name: str, default: float | int) -> float | int:
+    if config is None:
+        return default
+    value = getattr(config, name, default)
+    return value if isinstance(value, (int, float)) else default
+
+
+def _fallback_thumb_index_distance(pose_features: HandPoseFeatures | None) -> float | None:
+    if pose_features is None:
+        return None
+    thumb = pose_features.finger_states.get("thumb")
+    if thumb is None:
+        return None
+    return thumb.spread_score
 
 
 def detect_pinch_gesture(
     state: PinchGestureState | None,
     pose_features: HandPoseFeatures | None,
     observed_at: float,
+    *,
+    config: Any = None,
+    contact_metrics: PinchContactMetrics | None = None,
 ) -> tuple[PinchGestureState, GestureDetectionResult | None]:
-    if pose_features is None:
+    close_threshold = float(
+        _config_value(config, "pinch_close_threshold", _DEFAULT_CLOSE_THRESHOLD)
+    )
+    open_threshold = float(
+        _config_value(config, "pinch_open_threshold", _DEFAULT_OPEN_THRESHOLD)
+    )
+    window_size = max(
+        1, int(_config_value(config, "pinch_smoothing_window", _DEFAULT_WINDOW))
+    )
+    cooldown_seconds = float(
+        _config_value(config, "pinch_cooldown_seconds", _DEFAULT_COOLDOWN)
+    )
+    confidence = float(_config_value(config, "pinch_confidence", _DEFAULT_CONFIDENCE))
+
+    raw_distance = (
+        contact_metrics.distance
+        if contact_metrics is not None
+        else _fallback_thumb_index_distance(pose_features)
+    )
+    if raw_distance is None:
         return state or PinchGestureState(pinch_closed=False), None
 
-    thumb = pose_features.finger_states.get("thumb")
-    if thumb is None:
-        return state or PinchGestureState(pinch_closed=False), None
-
-    raw_spread = thumb.spread_score
-    window = ((state.spread_window if state else [])[-_WINDOW + 1:]) + [raw_spread]
+    window = ((state.spread_window if state else [])[-window_size + 1:]) + [
+        raw_distance
+    ]
     smoothed = mean(window)
+    anchor = contact_metrics.anchor if contact_metrics is not None else None
+    contact_pair = contact_metrics.contact_pair if contact_metrics is not None else None
 
     if state is None:
-        initial_closed = smoothed < _CLOSE_THRESHOLD
+        initial_closed = smoothed < close_threshold
         return PinchGestureState(
             pinch_closed=initial_closed,
             spread_window=window,
             last_fire_at=0.0,
+            anchor=anchor,
+            raw_distance=raw_distance,
+            smoothed_distance=smoothed,
+            contact_pair=contact_pair,
         ), None
 
-    cooldown_ok = observed_at - state.last_fire_at >= _COOLDOWN
+    cooldown_ok = observed_at - state.last_fire_at >= cooldown_seconds
     detection: GestureDetectionResult | None = None
     new_closed = state.pinch_closed
 
     if cooldown_ok:
-        if not state.pinch_closed and smoothed < _CLOSE_THRESHOLD:
+        if not state.pinch_closed and smoothed < close_threshold:
             detection = GestureDetectionResult(
                 gesture="pinch_close",
-                confidence=0.92,
+                confidence=confidence,
                 tracking_source="pinch_state",
             )
             new_closed = True
-        elif state.pinch_closed and smoothed > _OPEN_THRESHOLD:
+        elif state.pinch_closed and smoothed > open_threshold:
             detection = GestureDetectionResult(
                 gesture="pinch_open",
-                confidence=0.92,
+                confidence=confidence,
                 tracking_source="pinch_state",
             )
             new_closed = False
@@ -69,4 +114,8 @@ def detect_pinch_gesture(
         pinch_closed=new_closed,
         spread_window=window,
         last_fire_at=observed_at if detection is not None else state.last_fire_at,
+        anchor=anchor or state.anchor,
+        raw_distance=raw_distance,
+        smoothed_distance=smoothed,
+        contact_pair=contact_pair or state.contact_pair,
     ), detection

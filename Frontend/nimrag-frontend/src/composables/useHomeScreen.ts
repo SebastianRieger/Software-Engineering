@@ -17,19 +17,6 @@ export function useHomeScreen() {
 
   const { frameUrl, start: startStream, stop: stopStream } = useGestureFrameStream()
 
-  async function fetchFrame(): Promise<void> {
-    // kept for one-off probes (e.g. stale-frame check during init)
-    try {
-      const res = await fetch(buildApiUrl('gestures/frame'))
-      if (!res.ok) return
-      const data = (await res.json()) as { image: string; frame_age_ms: number | null }
-      frameUrl.value = data.image
-      if (loading.value) loading.value = false
-    } catch {
-      // ignore
-    }
-  }
-
   async function fetchCameraList(): Promise<void> {
     try {
       const res = await fetch(buildApiUrl('gestures/devices'))

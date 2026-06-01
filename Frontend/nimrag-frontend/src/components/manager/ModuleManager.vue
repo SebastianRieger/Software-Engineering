@@ -52,8 +52,8 @@ const availableCells = computed(() => {
 
 const { isEditMode, setEditMode, setupKeyboardListener } = useEditMode();
 const { isShopOpen, toggleShop, openShop, closeShop } = useModuleShop();
-const { clockAnalogMode, toggleClockMode } = useClockWidgetMode();
-const { trackedHands, indexFingerCursor } = useHandTracking();
+const { toggleClockMode } = useClockWidgetMode();
+const { indexFingerCursor, pinchCursor } = useHandTracking();
 
 const moduleShopRef = ref<ComponentPublicInstance<{}, ModuleShopExposed> | null>(null);
 let unsubscribeRealtime: (() => void) | null = null;
@@ -94,9 +94,13 @@ const {
   },
 });
 
+const activeGestureCursor = computed(() =>
+  isDragging.value ? (pinchCursor.value ?? indexFingerCursor.value) : indexFingerCursor.value
+);
+
 // Cursor → focusedCellId: always tracks the cell under the index finger in edit mode.
 // This makes pinch gestures always act on whatever the cursor is pointing at.
-watch(indexFingerCursor, (pos) => {
+watch(activeGestureCursor, (pos) => {
   if (!pos || !isEditMode.value) return;
   const x = (pos.x / 100) * window.innerWidth;
   const y = (pos.y / 100) * window.innerHeight;
@@ -197,7 +201,7 @@ onBeforeUnmount(() => {
     <!-- Finger cursor overlay (edit mode only) -->
     <GestureCursor
       v-if="isEditMode || isShopOpen"
-      :cursor="indexFingerCursor"
+      :cursor="activeGestureCursor"
       :is-dragging="isDragging"
       :drag-widget-name="dragWidgetName"
     />

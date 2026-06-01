@@ -123,6 +123,13 @@ export function useActionDispatcher(options: ActionDispatcherOptions) {
     return true
   }
 
+  const setArrangeMode = (value: boolean): boolean => {
+    if (options.setEditMode === undefined) return false
+    options.isEditMode.value = value
+    options.setEditMode(value)
+    return true
+  }
+
   const dispatchAction = (payload: UIActionRequestedPayload): boolean => {
     switch (payload.action) {
 
@@ -136,11 +143,11 @@ export function useActionDispatcher(options: ActionDispatcherOptions) {
           isDragging.value = false
           dragSourceCell.value = null
         } else if (options.isEditMode.value) {
-          options.setEditMode?.(false)
+          setArrangeMode(false)
         } else {
           // Entering edit mode always switches to grid view first
           options.goToGrid?.()
-          options.setEditMode?.(true)
+          setArrangeMode(true)
         }
         return true
 
@@ -151,16 +158,8 @@ export function useActionDispatcher(options: ActionDispatcherOptions) {
         if (options.isShopOpen.value) {
           return confirmFocusedSelection()
         }
-        // Dragging → drop at current focused cell (cursor position)
         if (options.isEditMode.value && isDragging.value) {
-          const source = dragSourceCell.value
-          const target = focusedCellId.value
-          isDragging.value = false
-          dragSourceCell.value = null
-          if (source !== null && source !== target) {
-            options.onWidgetMoved?.(source, target)
-          }
-          return true
+          return false
         }
         // Edit mode + empty cell under cursor → open shop
         if (options.isEditMode.value && options.isCellAvailable(focusedCellId.value)) {
@@ -232,7 +231,10 @@ export function useActionDispatcher(options: ActionDispatcherOptions) {
           options.moduleShopRef.value.prevModule()
           return true
         }
-        return false
+        if (!options.isEditMode.value && options.currentView?.value === 'home') {
+          return false
+        }
+        return moveFocus('left')
 
       case 'move_focus_right':
         if (options.isShopOpen.value && options.moduleShopRef.value) {
@@ -243,21 +245,21 @@ export function useActionDispatcher(options: ActionDispatcherOptions) {
           options.goToGrid?.()
           return true
         }
-        return false
+        return moveFocus('right')
 
       case 'move_focus_up':
         if (!options.isEditMode.value && options.currentView?.value === 'home') {
           options.navigateCamera?.('up')
           return true
         }
-        return false
+        return moveFocus('up')
 
       case 'move_focus_down':
         if (!options.isEditMode.value && options.currentView?.value === 'home') {
           options.navigateCamera?.('down')
           return true
         }
-        return false
+        return moveFocus('down')
 
       case 'focus_grid_cell':
         return focusGridCell(payload.action_args.cell_index)
@@ -277,12 +279,10 @@ export function useActionDispatcher(options: ActionDispatcherOptions) {
 
       // ── Edit mode (voice / legacy keyboard) ───────────────────
       case 'enter_arrange_mode':
-        options.setEditMode?.(true)
-        return options.setEditMode !== undefined
+        return setArrangeMode(true)
 
       case 'exit_arrange_mode':
-        options.setEditMode?.(false)
-        return options.setEditMode !== undefined
+        return setArrangeMode(false)
 
       // ── Cancel ─────────────────────────────────────────────────
       case 'cancel_selection':
