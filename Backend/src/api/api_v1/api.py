@@ -2,7 +2,7 @@ from fastapi import APIRouter
 
 from ..device_endpoints import musical_audio_router, voice_router
 from ..system_endpoints import calibration_router, config_router, gesture_router
-from .endpoints import bullshit, calendar, fact, led, market, news, nina, smart_home, system, trivia, weather
+from .endpoints import bullshit, calendar, fact, led, market, meme, news, nina, smart_home, system, trivia, weather
 
 
 api_router = APIRouter()
@@ -23,6 +23,7 @@ api_router.include_router(system.router, prefix="/system", tags=["system"])
 api_router.include_router(trivia.router, prefix="/trivia", tags=["trivia"])
 api_router.include_router(fact.router, prefix="/fact", tags=["fact"])
 api_router.include_router(bullshit.router, prefix="/bullshit", tags=["bullshit"])
+api_router.include_router(meme.router, prefix="/meme", tags=["meme"])
 api_router.include_router(voice_router, prefix="/voice", tags=["voice"])
 api_router.include_router(
     musical_audio_router, prefix="/musical-audio", tags=["musical-audio"]

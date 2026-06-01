@@ -138,7 +138,7 @@ const { fact, isLoading, error } = useFaktDesTages()
 /* ── Fakt-Text ─────────────────────────────────────── */
 .fdt-text {
   margin: 0;
-  font-size: 12px;
+  font-size: 15px;
   line-height: 1.6;
   color: var(--c-text);
   display: -webkit-box;
@@ -167,17 +167,17 @@ const { fact, isLoading, error } = useFaktDesTages()
 
 /* ── Größenvarianten ───────────────────────────────── */
 .fdt-widget--small .fdt-text {
-  font-size: 11px;
+  font-size: 13px;
   -webkit-line-clamp: 3;
 }
 
 .fdt-widget--medium .fdt-text {
-  font-size: 13px;
+  font-size: 16px;
   -webkit-line-clamp: 4;
 }
 
 .fdt-widget--large .fdt-text {
-  font-size: 16px;
+  font-size: 20px;
   line-height: 1.65;
   -webkit-line-clamp: 6;
 }
