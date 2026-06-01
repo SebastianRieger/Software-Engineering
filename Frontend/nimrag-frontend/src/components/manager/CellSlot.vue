@@ -1,13 +1,14 @@
 <script setup lang="ts">
-import { provide } from 'vue'
+import { computed, provide } from 'vue'
 import type { Component } from 'vue'
 import { useWidgetResize } from '../../composables/useWidgetResize'
 
-const props = defineProps<{ cellId: number; component: Component }>()
+const props = defineProps<{ cellId: number; component: Component; isEditMode?: boolean }>()
 const { cellSizes } = useWidgetResize()
 
 provide('cellId', props.cellId)
 provide('cellSizes', cellSizes)
+provide('isEditMode', computed(() => props.isEditMode ?? false))
 </script>
 
 <template>

@@ -34,12 +34,18 @@ export interface NinaWidgetConfig {
   refresh_seconds: number
 }
 
+export interface MemeWidgetConfig {
+  sfw_only: boolean
+  subreddit: string
+}
+
 export interface WidgetDefaultsConfig {
   weather: WeatherWidgetConfig
   news: NewsWidgetConfig
   camera: CameraWidgetConfig
   market: MarketWidgetConfig
   nina?: NinaWidgetConfig
+  meme: MemeWidgetConfig
 }
 
 export interface AppConfig {
