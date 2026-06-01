@@ -146,6 +146,11 @@ const handleCancelDelete = () => {
   deleteConfirmCell.value = null;
 };
 
+const handleRequestAdd = () => {
+  moduleShopRef.value?.addCurrentWidgetToCell(focusedCellId.value);
+  closeShop();
+};
+
 const handleHudAction = (action: UIActionType): void => {
   dispatchAction({
     action,
@@ -234,7 +239,12 @@ onBeforeUnmount(() => {
           <div v-if="isShopOpen" class="shop-overlay" @click.self="closeShop">
             <div class="shop-modal">
               <button class="close-btn" @click="closeShop" aria-label="Shop schließen">×</button>
-              <ModuleShop ref="moduleShopRef" @addWidget="handleAddWidget" />
+              <ModuleShop
+                ref="moduleShopRef"
+                :gesture-cursor="indexFingerCursor"
+                @addWidget="handleAddWidget"
+                @requestAdd="handleRequestAdd"
+              />
             </div>
           </div>
         </Transition>
@@ -245,6 +255,7 @@ onBeforeUnmount(() => {
           :is-dragging="isDragging"
           :drag-source-cell="dragSourceCell"
           :delete-confirm-cell="deleteConfirmCell"
+          :gesture-cursor="indexFingerCursor"
           @widgets-moved="handleWidgetsMoved"
           @delete-widget="handleDeleteWidget"
           @confirm-delete="handleConfirmDelete"

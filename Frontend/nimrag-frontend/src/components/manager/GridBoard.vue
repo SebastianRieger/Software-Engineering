@@ -1,7 +1,9 @@
 <script setup lang="ts">
-import { toRefs, ref, onMounted } from 'vue';
+import { toRefs, ref, watch, onMounted } from 'vue';
 import { useWidgetResize } from '../../composables/useWidgetResize';
 import { useWidgetManager } from '../../composables/useWidgetManager';
+import { useHoverTrigger } from '../../composables/useHoverTrigger';
+import type { CursorPosition } from '../../composables/useHandTracking';
 import CellSlot from './CellSlot.vue';
 
 const emit = defineEmits(['widgetsMoved', 'deleteWidget', 'confirmDelete', 'cancelDelete']);
@@ -12,6 +14,7 @@ const props = defineProps<{
   isDragging?: boolean
   dragSourceCell?: number | null
   deleteConfirmCell?: number | null
+  gestureCursor?: CursorPosition | null
 }>();
 
 const { isEditMode, focusedCellId } = toRefs(props);
@@ -20,6 +23,53 @@ const { widgetMap } = useWidgetManager();
 
 const draggingCell = ref<number | null>(null);
 const resizingCell = ref<number | null>(null);
+
+const { active: ringActive, x: ringX, y: ringY, start: hoverStart, cancel: hoverCancel, move: hoverMove } = useHoverTrigger();
+
+// Gesture-cursor dwell: same trigger logic, driven by hand-tracking position
+const gestureOverBtn = ref<string | null>(null)
+
+watch(() => props.gestureCursor, (pos) => {
+  if (!isEditMode.value || !pos) {
+    if (gestureOverBtn.value !== null) {
+      gestureOverBtn.value = null
+      hoverCancel()
+    }
+    return
+  }
+
+  const px = (pos.x / 100) * window.innerWidth
+  const py = (pos.y / 100) * window.innerHeight
+  const fakeEvent = { clientX: px, clientY: py } as MouseEvent
+
+  const el = document.elementFromPoint(px, py)
+  const btn = el?.closest('.delete-widget-btn, .resize-widget-btn') as HTMLElement | null
+
+  if (!btn) {
+    if (gestureOverBtn.value !== null) {
+      gestureOverBtn.value = null
+      hoverCancel()
+    }
+    return
+  }
+
+  const cellEl = btn.closest('[data-cell-id]') as HTMLElement | null
+  const cellId = cellEl ? Number(cellEl.dataset['cellId']) : NaN
+  if (isNaN(cellId)) return
+
+  const type = btn.classList.contains('delete-widget-btn') ? 'delete' : 'resize'
+  const key = `${type}-${cellId}`
+
+  if (gestureOverBtn.value === key) {
+    hoverMove(fakeEvent)
+  } else {
+    gestureOverBtn.value = key
+    const callback = type === 'delete'
+      ? () => onDeleteClick(cellId)
+      : () => onResizeClick(cellId)
+    hoverStart(fakeEvent, callback)
+  }
+})
 
 onMounted(() => {
   for (let i = 1; i <= 16; i++) {
@@ -79,11 +129,8 @@ function onDeleteClick(cellId: number) {
 
 function onResizeClick(cellId: number) {
   cycleCellSize(cellId);
-
   resizingCell.value = cellId;
-  setTimeout(() => {
-    resizingCell.value = null;
-  }, 200);
+  setTimeout(() => { resizingCell.value = null; }, 450);
 }
 </script>
 
@@ -134,7 +181,10 @@ function onResizeClick(cellId: number) {
       <button
           v-if="isEditMode && widgetMap[i] && !props.isDragging && props.deleteConfirmCell !== i"
           class="delete-widget-btn"
-          @click.stop="onDeleteClick(i)"
+          @click.stop
+          @mouseenter="(e) => hoverStart(e, () => onDeleteClick(i))"
+          @mouseleave="hoverCancel"
+          @mousemove="hoverMove"
           title="Widget löschen"
       >
         ×
@@ -153,13 +203,32 @@ function onResizeClick(cellId: number) {
       <button
           v-if="isEditMode && widgetMap[i] && !props.isDragging"
           :class="['resize-widget-btn', { 'resize-active': resizingCell === i }]"
-          @click.stop="onResizeClick(i)"
+          @click.stop
+          @mouseenter="(e) => hoverStart(e, () => onResizeClick(i))"
+          @mouseleave="hoverCancel"
+          @mousemove="hoverMove"
           :title="`Größe: ${getSizeLabel(i)}`"
       >
         ⤡
       </button>
+
     </div>
   </div>
+
+  <!-- Hover ring: follows cursor while dwell timer runs -->
+  <Teleport to="body">
+    <div
+      v-if="ringActive"
+      class="hover-ring"
+      :style="{ left: ringX + 'px', top: ringY + 'px' }"
+    >
+      <svg width="40" height="40" viewBox="0 0 40 40">
+        <circle cx="20" cy="20" r="16" fill="none" stroke="rgba(255,255,255,0.12)" stroke-width="1.5" />
+        <circle cx="20" cy="20" r="16" fill="none" stroke="rgba(255,255,255,0.9)" stroke-width="2"
+          stroke-linecap="round" stroke-dasharray="100.53" class="ring-arc" />
+      </svg>
+    </div>
+  </Teleport>
 </template>
 
 <style scoped>
@@ -223,7 +292,7 @@ function onResizeClick(cellId: number) {
   box-shadow: 0 4px 12px rgba(239, 68, 68, 0.5);
 }
 
-/* Resize-Button Styling mit Tailwind */
+/* Resize-Button Styling */
 .resize-widget-btn {
   position: absolute;
   visibility: visible;
@@ -241,38 +310,47 @@ function onResizeClick(cellId: number) {
   align-items: center;
   justify-content: center;
   z-index: 99;
-  transition: all 0.2s ease;
+  transition: transform 200ms ease, box-shadow 200ms ease;
   padding: 0;
   font-weight: 600;
+  overflow: hidden;
+}
+
+/* Confirm overlay — only opacity animates, no paint cost */
+.resize-widget-btn::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  background: linear-gradient(135deg, #10b981 0%, #059669 100%);
+  opacity: 0;
+  pointer-events: none;
 }
 
 .resize-widget-btn:hover {
-  background: linear-gradient(135deg, #4a4a4a 0%, #3a3a3a 100%);
-  transform: scale(1.1);
+  transform: scale(1.05);
   box-shadow: 0 4px 12px rgba(0, 0, 0, 0.5);
 }
 
-.resize-widget-btn:active {
-  transform: scale(0.95);
-}
-
+/* Post-hold confirmation: calm arrival, then fade back to idle */
 .resize-widget-btn.resize-active {
-  background: linear-gradient(135deg, #10b981 0%, #059669 100%);
-  animation: resize-pulse 0.3s ease-out;
+  animation: resize-confirm-scale 450ms cubic-bezier(0.22, 1, 0.36, 1) forwards;
 }
 
-@keyframes resize-pulse {
-  0% {
-    transform: scale(1);
-    box-shadow: 0 0 0 0 rgba(16, 185, 129, 0.7);
-  }
-  50% {
-    transform: scale(1.15);
-  }
-  100% {
-    transform: scale(1);
-    box-shadow: 0 0 0 8px rgba(16, 185, 129, 0);
-  }
+.resize-widget-btn.resize-active::after {
+  animation: resize-confirm-fill 450ms cubic-bezier(0.22, 1, 0.36, 1) forwards;
+}
+
+@keyframes resize-confirm-scale {
+  0%   { transform: scale(1.05); }
+  30%  { transform: scale(1); }
+  100% { transform: scale(1); }
+}
+
+@keyframes resize-confirm-fill {
+  0%   { opacity: 1; }
+  35%  { opacity: 1; }
+  100% { opacity: 0; }
 }
 
 .cell-dragging {
@@ -372,5 +450,34 @@ function onResizeClick(cellId: number) {
 @media (prefers-reduced-motion: reduce) {
   .cell-delete-confirm { animation: none; }
   .confirm-btn { transition: none; }
+  .resize-widget-btn.resize-active,
+  .resize-widget-btn.resize-active::after { animation: none; }
+  .resize-widget-btn.resize-active::after { opacity: 1; }
+}
+
+/* Hover-dwell ring — teleported to body, not scoped */
+</style>
+
+<style>
+.hover-ring {
+  position: fixed;
+  transform: translate(-50%, -50%);
+  pointer-events: none;
+  z-index: 99999;
+}
+
+.hover-ring svg {
+  display: block;
+  transform: rotate(-90deg);
+}
+
+@keyframes ring-fill {
+  from { stroke-dashoffset: 100.53; }
+  to   { stroke-dashoffset: 0; }
+}
+
+.ring-arc {
+  stroke-dashoffset: 100.53;
+  animation: ring-fill 1s linear forwards;
 }
 </style>
