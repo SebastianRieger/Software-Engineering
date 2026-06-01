@@ -124,6 +124,7 @@ function onResizeClick(cellId: number) {
           v-if="widgetMap[i]"
           :cell-id="i"
           :component="widgetMap[i]"
+          :is-edit-mode="isEditMode"
           class="w-full h-full"
       />
       <div v-else class="w-full h-full grid place-items-center text-2xl font-semibold opacity-70">

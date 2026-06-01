@@ -116,12 +116,18 @@ class NinaWidgetConfig(BaseModel):
     refresh_seconds: int = Field(default=300, ge=60, le=86400)
 
 
+class MemeWidgetConfig(BaseModel):
+    sfw_only: bool = True
+    subreddit: str = "memes"
+
+
 class WidgetDefaultsConfig(BaseModel):
     weather: WeatherWidgetConfig = Field(default_factory=WeatherWidgetConfig)
     news: NewsWidgetConfig = Field(default_factory=NewsWidgetConfig)
     camera: CameraWidgetConfig = Field(default_factory=CameraWidgetConfig)
     market: MarketWidgetConfig = Field(default_factory=MarketWidgetConfig)
     nina: NinaWidgetConfig | None = None
+    meme: MemeWidgetConfig = Field(default_factory=MemeWidgetConfig)
 
 
 class AppConfig(BaseModel):
