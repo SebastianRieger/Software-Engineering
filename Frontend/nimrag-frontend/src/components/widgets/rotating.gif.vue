@@ -1,5 +1,7 @@
 <script setup lang="ts">
-import { ref, onMounted, onUnmounted } from 'vue'
+import { ref, computed, onMounted, onUnmounted } from 'vue'
+
+const DUCK = 'https://media1.tenor.com/m/QuB7ztzrijgAAAAC/duck-spin.gif'
 
 const gifs = [
   'https://media1.tenor.com/m/-dL_f8KjIfsAAAAd/monkey-meme.gif',
@@ -11,13 +13,14 @@ const gifs = [
   'https://media1.tenor.com/m/t5fpt8VevjoAAAAC/chair-spin-spin-chair.gif',
   'https://media1.tenor.com/m/8VuZc8I8f7EAAAAC/oiia-cat.gif',
   'https://media1.tenor.com/m/ryculA0NQ1YAAAAC/capybara-horizontal.gif',
-  'https://media1.tenor.com/m/QuB7ztzrijgAAAAC/duck-spin.gif',
+  DUCK,
   'https://media1.tenor.com/m/pHsc-VB8NccAAAAC/horse-horses.gif',
   'https://media1.tenor.com/m/NnRKrKp-mysAAAAC/spinning-chicken-chicken.gif',
   'https://media1.tenor.com/m/qFgG7AXlgSwAAAAC/spinning-chips.gif',
 ]
 
 const currentGif = ref('')
+const fit = computed(() => currentGif.value === DUCK ? 'object-contain' : 'object-cover')
 let timer: ReturnType<typeof setInterval> | undefined
 
 function pickRandom() {
@@ -29,7 +32,7 @@ function pickRandom() {
 
 onMounted(() => {
   pickRandom()
-  timer = setInterval(pickRandom, 20_000)
+  timer = setInterval(pickRandom, 10_000)
 })
 
 onUnmounted(() => clearInterval(timer))
@@ -37,6 +40,6 @@ onUnmounted(() => clearInterval(timer))
 
 <template>
   <div class="w-full h-full overflow-hidden">
-    <img :src="currentGif" alt="" class="w-full h-full object-cover" />
+    <img :src="currentGif" alt="" class="w-full h-full" :class="fit" />
   </div>
 </template>
