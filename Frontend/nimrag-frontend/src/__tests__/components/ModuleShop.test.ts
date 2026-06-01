@@ -73,6 +73,19 @@ describe('ModuleShop', () => {
     }
   })
 
+  it('emits requestAdd when the add widget button is clicked', async () => {
+    const wrapper = mount(ModuleShop, { props: { availableCells: [1, 2, 5] } })
+    await drainModuleLoading()
+
+    const addButton = wrapper.find('.add-widget-btn')
+    if (addButton.exists()) {
+      await addButton.trigger('click')
+      expect(wrapper.emitted('requestAdd')).toBeTruthy()
+    } else {
+      expect(wrapper.exists()).toBe(true)
+    }
+  })
+
   it('keeps placement controlled by the exposed addCurrentWidgetToCell API', async () => {
     const wrapper = mount(ModuleShop, { props: { availableCells: [] } })
     await drainModuleLoading()

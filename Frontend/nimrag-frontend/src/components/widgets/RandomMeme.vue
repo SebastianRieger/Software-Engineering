@@ -22,6 +22,7 @@ const visibleCount = computed(() => size.value === 'medium' ? 4 : 2)
 const { memes, isLoading, error, onImageError } = useRandomMeme()
 
 const visibleMemes = computed(() => memes.value.slice(0, visibleCount.value))
+const currentSubreddit = computed(() => memes.value[0]?.subreddit ?? null)
 
 // Pick the right preview resolution per size to save bandwidth
 function resolveUrl(meme: MemeItem): string {
@@ -40,7 +41,7 @@ function resolveUrl(meme: MemeItem): string {
       <span class="rm-logo">Random Meme</span>
       <span v-if="isLoading" class="rm-status rm-status--loading"><span class="rm-dot" /></span>
       <span v-else-if="error" class="rm-status rm-status--error" :title="error">!</span>
-      <span v-else-if="memes.length" class="rm-subreddit">r/{{ memes[0].subreddit }}</span>
+      <span v-else-if="currentSubreddit" class="rm-subreddit">r/{{ currentSubreddit }}</span>
     </header>
 
     <!-- Systemzustände -->
@@ -57,7 +58,7 @@ function resolveUrl(meme: MemeItem): string {
         :class="`rm-grid--${visibleCount}`"
       >
         <div
-          v-for="(meme, index) in visibleMemes"
+          v-for="meme in visibleMemes"
           :key="meme.image_url"
           class="rm-cell"
         >
@@ -65,7 +66,7 @@ function resolveUrl(meme: MemeItem): string {
             :src="resolveUrl(meme)"
             :alt="meme.title"
             class="rm-image"
-            @error="onImageError(index)"
+            @error="onImageError"
           />
         </div>
       </div>

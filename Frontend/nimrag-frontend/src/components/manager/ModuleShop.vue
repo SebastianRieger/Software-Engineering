@@ -193,7 +193,7 @@ watch(() => props.gestureCursor, (pos) => {
     <button
       v-if="moduleList.length > 0"
       class="add-widget-btn"
-      @click.stop
+      @click.stop="hoverCancel(); emit('requestAdd')"
       @mouseenter="(e) => hoverStart(e, () => emit('requestAdd'))"
       @mouseleave="hoverCancel"
       @mousemove="hoverMove"

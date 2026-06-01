@@ -130,7 +130,7 @@ function onDeleteClick(cellId: number) {
 function onResizeClick(cellId: number) {
   cycleCellSize(cellId);
   resizingCell.value = cellId;
-  setTimeout(() => { resizingCell.value = null; }, 450);
+  setTimeout(() => { resizingCell.value = null; }, 200);
 }
 </script>
 
@@ -182,7 +182,7 @@ function onResizeClick(cellId: number) {
       <button
           v-if="isEditMode && widgetMap[i] && !props.isDragging && props.deleteConfirmCell !== i"
           class="delete-widget-btn"
-          @click.stop
+          @click.stop="hoverCancel(); onDeleteClick(i)"
           @mouseenter="(e) => hoverStart(e, () => onDeleteClick(i))"
           @mouseleave="hoverCancel"
           @mousemove="hoverMove"
@@ -204,7 +204,7 @@ function onResizeClick(cellId: number) {
       <button
           v-if="isEditMode && widgetMap[i] && !props.isDragging"
           :class="['resize-widget-btn', { 'resize-active': resizingCell === i }]"
-          @click.stop
+          @click.stop="hoverCancel(); onResizeClick(i)"
           @mouseenter="(e) => hoverStart(e, () => onResizeClick(i))"
           @mouseleave="hoverCancel"
           @mousemove="hoverMove"
