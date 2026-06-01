@@ -4,11 +4,14 @@ import { useWidgetResize } from '../../composables/useWidgetResize';
 import { useWidgetManager } from '../../composables/useWidgetManager';
 import CellSlot from './CellSlot.vue';
 
-const emit = defineEmits(['widgetsMoved', 'deleteWidget']);
+const emit = defineEmits(['widgetsMoved', 'deleteWidget', 'confirmDelete', 'cancelDelete']);
 
 const props = defineProps<{
   isEditMode: boolean
   focusedCellId?: number | null
+  isDragging?: boolean
+  dragSourceCell?: number | null
+  deleteConfirmCell?: number | null
 }>();
 
 const { isEditMode, focusedCellId } = toRefs(props);
@@ -104,7 +107,10 @@ function onResizeClick(cellId: number) {
         :data-cell-id="i"
       :class="['grid-cell', getGridClass(i), {
         'cell-dragging': draggingCell === i,
-        'grid-cell-focused': focusedCellId === i,
+        'cell-drag-source': props.isDragging && props.dragSourceCell === i,
+        'cell-drag-target': props.isDragging && focusedCellId === i && props.dragSourceCell !== i,
+        'cell-delete-confirm': props.deleteConfirmCell === i,
+        'grid-cell-focused': isEditMode && focusedCellId === i && !props.isDragging,
       }]"
         :aria-selected="focusedCellId === i"
         draggable="true"
@@ -124,9 +130,9 @@ function onResizeClick(cellId: number) {
         {{ String(i).padStart(2, '0') }}
       </div>
 
-      <!-- Delete-Button: Obere rechte Ecke -->
+      <!-- Delete-Button: Obere rechte Ecke (Maus-Fallback) -->
       <button
-          v-if="isEditMode && widgetMap[i]"
+          v-if="isEditMode && widgetMap[i] && !props.isDragging && props.deleteConfirmCell !== i"
           class="delete-widget-btn"
           @click.stop="onDeleteClick(i)"
           title="Widget löschen"
@@ -134,9 +140,18 @@ function onResizeClick(cellId: number) {
         ×
       </button>
 
+      <!-- Delete-Confirm Overlay -->
+      <div v-if="props.deleteConfirmCell === i" class="delete-confirm-overlay">
+        <span class="delete-confirm-label">Löschen?</span>
+        <div class="delete-confirm-actions">
+          <button class="confirm-btn confirm-btn--yes" @click.stop="emit('confirmDelete', i)">✓</button>
+          <button class="confirm-btn confirm-btn--no" @click.stop="emit('cancelDelete')">×</button>
+        </div>
+      </div>
+
       <!-- Resize-Button: Untere rechte Ecke -->
       <button
-          v-if="isEditMode && widgetMap[i]"
+          v-if="isEditMode && widgetMap[i] && !props.isDragging"
           :class="['resize-widget-btn', { 'resize-active': resizingCell === i }]"
           @click.stop="onResizeClick(i)"
           :title="`Größe: ${getSizeLabel(i)}`"
@@ -268,5 +283,94 @@ function onResizeClick(cellId: number) {
 .cell-drop-target {
   box-shadow: inset 0 0 0 2px rgba(255, 255, 255, 0.6);
   transition: box-shadow 0.2s ease;
+}
+
+/* Gesture drag states */
+.cell-drag-source {
+  opacity: 0.28;
+  border: 2px dashed rgba(255, 255, 255, 0.35);
+  transition: opacity 180ms ease, border 180ms ease;
+}
+
+.cell-drag-target {
+  box-shadow:
+    inset 0 0 0 2px rgba(255, 255, 255, 0.9),
+    0 0 0 4px rgba(255, 255, 255, 0.18);
+  background: #333333;
+  transition: box-shadow 120ms ease, background 120ms ease;
+}
+
+/* Delete confirm state */
+.cell-delete-confirm {
+  box-shadow: inset 0 0 0 2px rgba(239, 68, 68, 0.9);
+  animation: delete-pulse 0.8s ease-in-out infinite alternate;
+}
+
+@keyframes delete-pulse {
+  from { box-shadow: inset 0 0 0 2px rgba(239, 68, 68, 0.7); }
+  to   { box-shadow: inset 0 0 0 2px rgba(239, 68, 68, 1), 0 0 0 4px rgba(239, 68, 68, 0.18); }
+}
+
+/* Delete confirm overlay */
+.delete-confirm-overlay {
+  position: absolute;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.72);
+  border-radius: inherit;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  z-index: 110;
+}
+
+.delete-confirm-label {
+  font-size: 0.72rem;
+  font-weight: 600;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: rgba(239, 68, 68, 0.9);
+}
+
+.delete-confirm-actions {
+  display: flex;
+  gap: 8px;
+}
+
+.confirm-btn {
+  width: 34px;
+  height: 34px;
+  border-radius: 6px;
+  border: none;
+  font-size: 16px;
+  font-weight: 700;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: transform 150ms ease, background 150ms ease;
+}
+
+.confirm-btn:active { transform: scale(0.92); }
+
+.confirm-btn--yes {
+  background: rgba(239, 68, 68, 0.9);
+  color: #ffffff;
+}
+
+.confirm-btn--yes:hover { background: rgb(239, 68, 68); }
+
+.confirm-btn--no {
+  background: rgba(255, 255, 255, 0.1);
+  color: rgba(255, 255, 255, 0.8);
+  border: 1px solid rgba(255, 255, 255, 0.18);
+}
+
+.confirm-btn--no:hover { background: rgba(255, 255, 255, 0.18); }
+
+@media (prefers-reduced-motion: reduce) {
+  .cell-delete-confirm { animation: none; }
+  .confirm-btn { transition: none; }
 }
 </style>

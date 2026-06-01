@@ -45,6 +45,7 @@ from services.gesture.detection import (
     extract_temporal_gesture_window,
     select_best_gesture_candidate,
 )
+from services.gesture.pinch_runtime import PinchGestureState, detect_pinch_gesture
 from services.gesture.push_runtime import (
     PushGestureState,
     detect_push_gesture,
@@ -343,6 +344,7 @@ class GestureService:
         self.latest_frame_data_url: str | None = None
         self.latest_frame_captured_at: datetime | None = None
         self._push_state: PushGestureState | None = None
+        self._pinch_state: PinchGestureState | None = None
         self._pending_gesture: PendingGestureDetection | None = None
         self._last_detectable_observation: GestureObservation | None = None
         self.last_gesture: GestureName | None = None
@@ -1775,6 +1777,10 @@ class GestureService:
         if push_detection is not None:
             candidates.append(push_detection)
 
+        pinch_detection = self._detect_pinch_gesture(observation, observed_at)
+        if pinch_detection is not None:
+            candidates.append(pinch_detection)
+
         trajectory_window = self._select_runtime_single_hand_trajectory(
             trajectory=trajectory,
             trajectory_timestamps=trajectory_timestamps,
@@ -2241,6 +2247,19 @@ class GestureService:
             observation=observation,
             observed_at=observed_at,
             config=active_config,
+        )
+        return detection
+
+    def _detect_pinch_gesture(
+        self,
+        observation: GestureObservation,
+        observed_at: float,
+    ) -> GestureDetectionResult | None:
+        pose_features = extract_hand_pose_features(observation)
+        self._pinch_state, detection = detect_pinch_gesture(
+            state=self._pinch_state,
+            pose_features=pose_features,
+            observed_at=observed_at,
         )
         return detection
 

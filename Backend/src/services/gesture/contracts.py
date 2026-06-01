@@ -242,6 +242,43 @@ def default_gesture_contracts() -> dict[GestureType, GestureContract]:
             score_threshold=0.54,
             priority=50,
         ),
+        GestureContract(
+            contract_id="gesture_contract.pinch_close.v1",
+            spec_id="gesture.pinch_close.v1",
+            gesture="pinch_close",
+            display_name="Pinch Zusammen",
+            start_pose="zeigefinger und daumen gespreizt",
+            motion_profile="daumen und zeigefinger aufeinander zufuehren",
+            end_pose="daumen und zeigefinger beruehren sich",
+            tempo_hint="bewusste zusammenfuehrbewegung",
+            recording_notes=(
+                "daumen und zeigefinger gleichzeitig aufeinander zubewegen",
+                "restliche finger koennen leicht eingeklappt oder entspannt sein",
+            ),
+            detector_bias=("pinch_transition_preferred",),
+            required_primitives=(),
+            allowed_phases=("preparing", "committing", "releasing", "holding"),
+            score_threshold=0.0,
+            priority=70,
+        ),
+        GestureContract(
+            contract_id="gesture_contract.pinch_open.v1",
+            spec_id="gesture.pinch_open.v1",
+            gesture="pinch_open",
+            display_name="Pinch Auseinander",
+            start_pose="daumen und zeigefinger zusammen",
+            motion_profile="daumen und zeigefinger auseinanderziehen",
+            end_pose="daumen und zeigefinger wieder gespreizt",
+            tempo_hint="bewusste oeffnungsbewegung",
+            recording_notes=(
+                "daumen und zeigefinger auseinanderziehen bis deutlicher abstand erkennbar",
+            ),
+            detector_bias=("pinch_release_preferred",),
+            required_primitives=(),
+            allowed_phases=("preparing", "committing", "releasing", "holding"),
+            score_threshold=0.0,
+            priority=70,
+        ),
     ]
     return {contract.gesture: contract for contract in contracts}
 

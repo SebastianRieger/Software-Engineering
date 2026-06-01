@@ -1,7 +1,6 @@
 <script setup lang="ts">
 import { ref, onMounted, computed } from 'vue'
 
-const props = defineProps<{ availableCells: number[] }>()
 const emit = defineEmits(['addWidget'])
 const modules = import.meta.glob("../widgets/*.vue")
 
@@ -136,23 +135,10 @@ defineExpose({ addCurrentWidgetToCell, nextModule, prevModule, setCurrentModule 
       <div class="loading-ring" />
     </div>
 
-    <!-- Cell Selection -->
-    <div v-if="moduleList.length > 0" class="cell-section">
-      <div class="cell-section-head">
-        <span v-if="props.availableCells.length" class="cell-label">In Zelle einfügen</span>
-        <span v-else class="cell-label cell-label--full">Alle Zellen belegt</span>
-      </div>
-      <div class="cell-grid">
-        <button
-          v-for="n in 16"
-          :key="n"
-          class="cell-btn"
-          :class="{ 'cell-btn--free': props.availableCells.includes(n) }"
-          :disabled="!props.availableCells.includes(n)"
-          @click="addCurrentWidgetToCell(n)"
-          :aria-label="`Zelle ${n}`"
-        >{{ n }}</button>
-      </div>
+    <!-- Gesture hint: confirm with push -->
+    <div v-if="moduleList.length > 0" class="shop-confirm-hint">
+      <span class="confirm-gesture-badge">▶</span>
+      <span class="confirm-hint-text">Widget hinzufügen</span>
     </div>
 
   </div>
@@ -409,72 +395,32 @@ defineExpose({ addCurrentWidgetToCell, nextModule, prevModule, setCurrentModule 
 
 @keyframes spin { to { transform: rotate(360deg); } }
 
-/* ── Cell Selection ── */
-.cell-section {
+/* ── Confirm hint ── */
+.shop-confirm-hint {
   flex-shrink: 0;
-  padding-top: 16px;
+  padding-top: 14px;
   border-top: 1px solid rgba(255, 255, 255, 0.06);
-}
-
-.cell-section-head {
-  margin-bottom: 11px;
-}
-
-.cell-label {
-  font-size: 0.68rem;
-  font-weight: 600;
-  letter-spacing: 0.15em;
-  text-transform: uppercase;
-  color: rgba(255, 255, 255, 0.32);
-}
-
-.cell-label--full {
-  color: rgba(255, 255, 255, 0.18);
-}
-
-/* 8 columns on wide, 4 on narrow */
-.cell-grid {
-  display: grid;
-  grid-template-columns: repeat(8, 1fr);
-  gap: 5px;
-}
-
-.cell-btn {
-  aspect-ratio: 1;
-  background: #141414;
-  border: 1px solid rgba(255, 255, 255, 0.05);
-  border-radius: 6px;
-  color: rgba(255, 255, 255, 0.15);
-  font-size: 0.72rem;
-  font-weight: 600;
-  cursor: not-allowed;
   display: flex;
   align-items: center;
   justify-content: center;
-  transition:
-    background 180ms ease,
-    border-color 180ms ease,
-    color 180ms ease,
-    transform 180ms ease;
+  gap: 8px;
 }
 
-.cell-btn--free {
-  background: #242424;
-  border-color: rgba(255, 255, 255, 0.13);
-  color: rgba(255, 255, 255, 0.65);
-  cursor: pointer;
-}
-
-.cell-btn--free:hover {
-  background: #303030;
-  border-color: rgba(255, 255, 255, 0.48);
+.confirm-gesture-badge {
+  background: rgba(255, 255, 255, 0.12);
+  border-radius: 4px;
+  padding: 3px 8px;
+  font-size: 0.78rem;
+  font-weight: 700;
   color: #ffffff;
-  transform: translateY(-1px);
 }
 
-.cell-btn--free:active {
-  transform: translateY(0);
-  background: #3a3a3a;
+.confirm-hint-text {
+  font-size: 0.72rem;
+  font-weight: 600;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: rgba(255, 255, 255, 0.4);
 }
 
 /* ── Responsive ── */
@@ -496,10 +442,6 @@ defineExpose({ addCurrentWidgetToCell, nextModule, prevModule, setCurrentModule 
 
   .nav-btn { width: 38px; height: 38px; }
   .nav-btn svg { width: 16px; height: 16px; }
-
-  /* 4 columns on narrow screens — matches the actual 4×4 grid layout */
-  .cell-grid { grid-template-columns: repeat(4, 1fr); gap: 6px; }
-  .cell-btn { font-size: 0.8rem; border-radius: 8px; }
 }
 
 @media (max-width: 480px) {
