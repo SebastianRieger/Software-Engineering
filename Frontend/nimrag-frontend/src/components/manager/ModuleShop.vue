@@ -1,7 +1,13 @@
 <script setup lang="ts">
-import { ref, onMounted, computed } from 'vue'
+import { ref, watch, onMounted, computed } from 'vue'
+import { useHoverTrigger } from '../../composables/useHoverTrigger'
+import type { CursorPosition } from '../../composables/useHandTracking'
 
-const emit = defineEmits(['addWidget'])
+const props = defineProps<{
+  gestureCursor?: CursorPosition | null
+}>()
+
+const emit = defineEmits(['addWidget', 'requestAdd'])
 const modules = import.meta.glob("../widgets/*.vue")
 
 type ModuleItem = {
@@ -71,6 +77,43 @@ const setCurrentModule = (index: number) => {
 }
 
 defineExpose({ addCurrentWidgetToCell, nextModule, prevModule, setCurrentModule })
+
+const { active: ringActive, x: ringX, y: ringY, start: hoverStart, cancel: hoverCancel, move: hoverMove } = useHoverTrigger()
+
+// Gesture-cursor dwell for the add button
+const gestureOverAdd = ref(false)
+
+watch(() => props.gestureCursor, (pos) => {
+  if (!pos) {
+    if (gestureOverAdd.value) {
+      gestureOverAdd.value = false
+      hoverCancel()
+    }
+    return
+  }
+
+  const px = (pos.x / 100) * window.innerWidth
+  const py = (pos.y / 100) * window.innerHeight
+  const fakeEvent = { clientX: px, clientY: py } as MouseEvent
+
+  const el = document.elementFromPoint(px, py)
+  const btn = el?.closest('.add-widget-btn')
+
+  if (!btn) {
+    if (gestureOverAdd.value) {
+      gestureOverAdd.value = false
+      hoverCancel()
+    }
+    return
+  }
+
+  if (gestureOverAdd.value) {
+    hoverMove(fakeEvent)
+  } else {
+    gestureOverAdd.value = true
+    hoverStart(fakeEvent, () => emit('requestAdd'))
+  }
+})
 </script>
 
 <template>
@@ -135,13 +178,34 @@ defineExpose({ addCurrentWidgetToCell, nextModule, prevModule, setCurrentModule 
       <div class="loading-ring" />
     </div>
 
-    <!-- Gesture hint: confirm with push -->
-    <div v-if="moduleList.length > 0" class="shop-confirm-hint">
-      <span class="confirm-gesture-badge">▶</span>
-      <span class="confirm-hint-text">Widget hinzufügen</span>
-    </div>
+    <!-- Add widget button: hover 1s to confirm -->
+    <button
+      v-if="moduleList.length > 0"
+      class="add-widget-btn"
+      @click.stop
+      @mouseenter="(e) => hoverStart(e, () => emit('requestAdd'))"
+      @mouseleave="hoverCancel"
+      @mousemove="hoverMove"
+    >
+      Widget hinzufügen
+    </button>
 
   </div>
+
+  <!-- Hover ring -->
+  <Teleport to="body">
+    <div
+      v-if="ringActive"
+      class="hover-ring"
+      :style="{ left: ringX + 'px', top: ringY + 'px' }"
+    >
+      <svg width="40" height="40" viewBox="0 0 40 40">
+        <circle cx="20" cy="20" r="16" fill="none" stroke="rgba(255,255,255,0.12)" stroke-width="1.5" />
+        <circle cx="20" cy="20" r="16" fill="none" stroke="rgba(255,255,255,0.9)" stroke-width="2"
+          stroke-linecap="round" stroke-dasharray="100.53" class="ring-arc" />
+      </svg>
+    </div>
+  </Teleport>
 </template>
 
 <style scoped>
@@ -395,32 +459,29 @@ defineExpose({ addCurrentWidgetToCell, nextModule, prevModule, setCurrentModule 
 
 @keyframes spin { to { transform: rotate(360deg); } }
 
-/* ── Confirm hint ── */
-.shop-confirm-hint {
+/* ── Add widget button ── */
+.add-widget-btn {
   flex-shrink: 0;
-  padding-top: 14px;
-  border-top: 1px solid rgba(255, 255, 255, 0.06);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: 8px;
-}
-
-.confirm-gesture-badge {
-  background: rgba(255, 255, 255, 0.12);
-  border-radius: 4px;
-  padding: 3px 8px;
+  width: 100%;
+  padding: 13px 0;
+  margin-top: 6px;
+  background: rgba(255, 255, 255, 0.08);
+  color: rgba(255, 255, 255, 0.85);
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  border-radius: 10px;
   font-size: 0.78rem;
   font-weight: 700;
-  color: #ffffff;
-}
-
-.confirm-hint-text {
-  font-size: 0.72rem;
-  font-weight: 600;
   letter-spacing: 0.12em;
   text-transform: uppercase;
-  color: rgba(255, 255, 255, 0.4);
+  cursor: pointer;
+  transition: background 180ms ease, border-color 180ms ease, color 180ms ease, transform 180ms ease;
+}
+
+.add-widget-btn:hover {
+  background: rgba(255, 255, 255, 0.14);
+  border-color: rgba(255, 255, 255, 0.36);
+  color: #ffffff;
+  transform: translateY(-1px);
 }
 
 /* ── Responsive ── */
@@ -453,7 +514,7 @@ defineExpose({ addCurrentWidgetToCell, nextModule, prevModule, setCurrentModule 
 
 /* ── Reduced motion ── */
 @media (prefers-reduced-motion: reduce) {
-  .module-card, .nav-btn, .cell-btn, .pip { transition: none; }
+  .module-card, .nav-btn, .add-widget-btn, .pip { transition: none; }
   .loading-ring { animation: none; border-top-color: rgba(255,255,255,0.4); }
 }
 </style>

@@ -48,14 +48,13 @@ const hints = computed<Hint[]>(() => {
     case 'edit-empty-focused':
       return [
         { icon: 'pinch-close', label: 'Shop öffnen',   action: 'primary_click' },
-        { icon: 'push-short',  label: 'Skalieren',      action: 'resize_expand' },
         { icon: 'circle',      label: 'Beenden',        action: 'toggle_edit_mode' },
       ]
     case 'edit-widget-focused':
       return [
         { icon: 'pinch-close', label: 'Greifen',        action: 'primary_click' },
         { icon: 'push-long',   label: 'Löschen',        action: 'delete_widget' },
-        { icon: 'push-short',  label: 'Skalieren',      action: 'resize_expand' },
+        { icon: 'push-long',   label: 'Skalieren',      action: 'resize_expand' },
         { icon: 'circle',      label: 'Beenden',        action: 'toggle_edit_mode' },
       ]
     case 'dragging':
