@@ -1765,7 +1765,9 @@ def test_cooldown_prevents_spam_and_emits_event():
     )
 
     service.start()
-    assert wait_until(lambda: len(hub.messages) >= 1)
+    assert wait_until(
+        lambda: len(filter_messages(hub.messages, "GestureDetected")) >= 1
+    )
     service.stop()
 
     gesture_messages = filter_messages(hub.messages, "GestureDetected")
