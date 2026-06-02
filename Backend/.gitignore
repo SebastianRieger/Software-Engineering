@@ -36,7 +36,7 @@ ENV/
 *.swo
 
 # Environment variables
-.env
+# .env
 
 # Database
 *.db
