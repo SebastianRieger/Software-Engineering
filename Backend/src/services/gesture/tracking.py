@@ -314,13 +314,25 @@ def _segment_contact_candidates(
     first_on_second = _closest_point_on_segment(first_end, second_start, second_end)
     second_on_first = _closest_point_on_segment(second_end, first_start, first_end)
     return [
-        (first_end_name, f"{second_start_name}-{second_end_name}", first_end, first_on_second),
-        (f"{first_start_name}-{first_end_name}", second_end_name, second_on_first, second_end),
+        (
+            first_end_name,
+            f"{second_start_name}-{second_end_name}",
+            first_end,
+            first_on_second,
+        ),
+        (
+            f"{first_start_name}-{first_end_name}",
+            second_end_name,
+            second_on_first,
+            second_end,
+        ),
     ]
 
 
 def compute_pinch_contact_metrics(
-    observation: GestureObservation | TrackedHandObservation | NormalizedHandObservation,
+    observation: (
+        GestureObservation | TrackedHandObservation | NormalizedHandObservation
+    ),
 ) -> PinchContactMetrics | None:
     normalized = (
         observation
@@ -331,7 +343,9 @@ def compute_pinch_contact_metrics(
     if landmarks is None:
         return None
 
-    hand_size = normalized.palm_span or normalized.hand_size or estimate_hand_size(landmarks)
+    hand_size = (
+        normalized.palm_span or normalized.hand_size or estimate_hand_size(landmarks)
+    )
     if hand_size is None or hand_size <= 0:
         return None
 
@@ -365,15 +379,14 @@ def compute_pinch_contact_metrics(
     thumb_tip = landmarks.get("thumb_tip")
     index_tip = landmarks.get("index_tip")
     if thumb_tip is not None and index_tip is not None:
-        tip_distance = math.hypot(
-            thumb_tip[0] - index_tip[0], thumb_tip[1] - index_tip[1]
-        ) / hand_size
+        tip_distance = (
+            math.hypot(thumb_tip[0] - index_tip[0], thumb_tip[1] - index_tip[1])
+            / hand_size
+        )
 
     best_left_name, best_right_name, best_left, best_right = min(
         candidates,
-        key=lambda item: math.hypot(
-            item[2][0] - item[3][0], item[2][1] - item[3][1]
-        ),
+        key=lambda item: math.hypot(item[2][0] - item[3][0], item[2][1] - item[3][1]),
     )
     distance = math.hypot(best_left[0] - best_right[0], best_left[1] - best_right[1])
     anchor = ((best_left[0] + best_right[0]) / 2, (best_left[1] + best_right[1]) / 2)
@@ -381,7 +394,9 @@ def compute_pinch_contact_metrics(
         distance=max(0.0, min(1.0, distance / hand_size)),
         anchor=anchor,
         contact_pair=(best_left_name, best_right_name),
-        tip_distance=max(0.0, min(1.0, tip_distance)) if tip_distance is not None else None,
+        tip_distance=(
+            max(0.0, min(1.0, tip_distance)) if tip_distance is not None else None
+        ),
     )
 
 

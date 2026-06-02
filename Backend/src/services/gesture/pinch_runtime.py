@@ -32,7 +32,9 @@ def _config_value(config: Any, name: str, default: float | int) -> float | int:
     return value if isinstance(value, (int, float)) else default
 
 
-def _fallback_thumb_index_distance(pose_features: HandPoseFeatures | None) -> float | None:
+def _fallback_thumb_index_distance(
+    pose_features: HandPoseFeatures | None,
+) -> float | None:
     if pose_features is None:
         return None
     thumb = pose_features.finger_states.get("thumb")
@@ -71,7 +73,7 @@ def detect_pinch_gesture(
     if raw_distance is None:
         return state or PinchGestureState(pinch_closed=False), None
 
-    window = ((state.spread_window if state else [])[-window_size + 1:]) + [
+    window = ((state.spread_window if state else [])[-window_size + 1 :]) + [
         raw_distance
     ]
     smoothed = mean(window)
@@ -80,15 +82,18 @@ def detect_pinch_gesture(
 
     if state is None:
         initial_closed = smoothed < close_threshold
-        return PinchGestureState(
-            pinch_closed=initial_closed,
-            spread_window=window,
-            last_fire_at=0.0,
-            anchor=anchor,
-            raw_distance=raw_distance,
-            smoothed_distance=smoothed,
-            contact_pair=contact_pair,
-        ), None
+        return (
+            PinchGestureState(
+                pinch_closed=initial_closed,
+                spread_window=window,
+                last_fire_at=0.0,
+                anchor=anchor,
+                raw_distance=raw_distance,
+                smoothed_distance=smoothed,
+                contact_pair=contact_pair,
+            ),
+            None,
+        )
 
     cooldown_ok = observed_at - state.last_fire_at >= cooldown_seconds
     detection: GestureDetectionResult | None = None
@@ -110,12 +115,15 @@ def detect_pinch_gesture(
             )
             new_closed = False
 
-    return PinchGestureState(
-        pinch_closed=new_closed,
-        spread_window=window,
-        last_fire_at=observed_at if detection is not None else state.last_fire_at,
-        anchor=anchor or state.anchor,
-        raw_distance=raw_distance,
-        smoothed_distance=smoothed,
-        contact_pair=contact_pair or state.contact_pair,
-    ), detection
+    return (
+        PinchGestureState(
+            pinch_closed=new_closed,
+            spread_window=window,
+            last_fire_at=observed_at if detection is not None else state.last_fire_at,
+            anchor=anchor or state.anchor,
+            raw_distance=raw_distance,
+            smoothed_distance=smoothed,
+            contact_pair=contact_pair or state.contact_pair,
+        ),
+        detection,
+    )

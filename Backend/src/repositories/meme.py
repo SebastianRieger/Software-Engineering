@@ -9,8 +9,8 @@ from core.database import get_db_connection
 
 MEME_API_BASE_URL = "https://meme-api.com/gimme"
 
-FETCH_BATCH_SIZE = 15   # fetch 15, pick best N clean ones
-MAX_MEMES = 4           # max returned to frontend (enough for the largest view)
+FETCH_BATCH_SIZE = 15  # fetch 15, pick best N clean ones
+MAX_MEMES = 4  # max returned to frontend (enough for the largest view)
 MAX_RETRIES = 3
 FALLBACK_CACHE_KEY = "meme:latest"
 
@@ -22,7 +22,9 @@ class MemeRepositoryError(Exception):
 
 
 class MemeRepository:
-    async def get_memes(self, subreddit: str = "memes", sfw_only: bool = True) -> dict[str, Any]:
+    async def get_memes(
+        self, subreddit: str = "memes", sfw_only: bool = True
+    ) -> dict[str, Any]:
         try:
             live_data = await self._fetch_memes(subreddit=subreddit, sfw_only=sfw_only)
         except MemeRepositoryError:
@@ -61,17 +63,22 @@ class MemeRepository:
                         "meme-api.com is not reachable.", status_code=502
                     ) from exc
 
-                raw_memes = payload.get("memes", []) if isinstance(payload, dict) else []
+                raw_memes = (
+                    payload.get("memes", []) if isinstance(payload, dict) else []
+                )
 
                 candidates = [
-                    m for m in raw_memes
+                    m
+                    for m in raw_memes
                     if m.get("url")
                     and (not sfw_only or (not m.get("nsfw") and not m.get("spoiler")))
                 ]
 
                 if candidates:
                     random.shuffle(candidates)
-                    return {"memes": [self._parse_meme(m) for m in candidates[:MAX_MEMES]]}
+                    return {
+                        "memes": [self._parse_meme(m) for m in candidates[:MAX_MEMES]]
+                    }
 
         raise MemeRepositoryError(
             f"No suitable memes found in r/{subreddit} after {MAX_RETRIES} retries.",

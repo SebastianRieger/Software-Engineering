@@ -1496,11 +1496,16 @@ def test_service_retries_transient_adapter_failure_and_recovers():
     )
 
     service.start()
-    assert wait_until(lambda: len(filter_messages(hub.messages, "GestureDetected")) >= 1)
+    assert wait_until(
+        lambda: len(filter_messages(hub.messages, "GestureDetected")) >= 1
+    )
     service.stop()
 
     assert adapter.failures_seen == 1
-    assert filter_messages(hub.messages, "GestureDetected")[0]["payload"]["gesture"] == "swipe_left"
+    assert (
+        filter_messages(hub.messages, "GestureDetected")[0]["payload"]["gesture"]
+        == "swipe_left"
+    )
 
 
 def test_stop_sets_error_when_thread_does_not_finish_in_time():
@@ -1604,7 +1609,9 @@ def test_reload_config_safe_during_detection():
     )
     service.reload_config()
 
-    assert wait_until(lambda: len(filter_messages(hub.messages, "GestureDetected")) >= 1)
+    assert wait_until(
+        lambda: len(filter_messages(hub.messages, "GestureDetected")) >= 1
+    )
     status = service.get_status()
     service.stop()
 
@@ -1663,7 +1670,9 @@ def test_service_detects_and_exposes_confidence_metadata():
     )
 
     service.start()
-    assert wait_until(lambda: len(filter_messages(hub.messages, "GestureDetected")) >= 1)
+    assert wait_until(
+        lambda: len(filter_messages(hub.messages, "GestureDetected")) >= 1
+    )
     status = service.get_status()
     service.stop()
 

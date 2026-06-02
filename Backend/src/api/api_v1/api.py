@@ -2,8 +2,20 @@ from fastapi import APIRouter
 
 from ..device_endpoints import musical_audio_router, voice_router
 from ..system_endpoints import calibration_router, config_router, gesture_router
-from .endpoints import bullshit, calendar, fact, led, market, meme, news, nina, smart_home, system, trivia, weather
-
+from .endpoints import (
+    bullshit,
+    calendar,
+    fact,
+    led,
+    market,
+    meme,
+    news,
+    nina,
+    smart_home,
+    system,
+    trivia,
+    weather,
+)
 
 api_router = APIRouter()
 

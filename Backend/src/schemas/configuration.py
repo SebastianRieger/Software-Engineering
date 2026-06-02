@@ -111,6 +111,8 @@ class MarketWidgetConfig(BaseModel):
         default_factory=lambda: ["AAPL", "MSFT", "NVDA", "BTC/USD", "ETH/USD"]
     )
     refresh_seconds: int = Field(default=900, ge=60, le=86400)
+
+
 class NinaWidgetConfig(BaseModel):
     ars: str  # Pflichtfeld – kein Standardwert, muss in app_config.json stehen
     refresh_seconds: int = Field(default=300, ge=60, le=86400)
