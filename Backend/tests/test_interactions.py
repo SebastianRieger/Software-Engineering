@@ -218,6 +218,39 @@ def test_input_orchestrator_allows_higher_priority_action_inside_global_cooldown
     ]
 
 
+def test_input_orchestrator_allows_circle_toggle_after_navigation_swipe():
+    hub = CapturingRealtimeHub()
+    repository = StaticInteractionConfigRepository(InputActionConfig())
+    orchestrator = InputOrchestrator(
+        realtime=hub,
+        config_repository_factory=lambda: repository,
+    )
+
+    orchestrator.reload_config()
+
+    assert (
+        orchestrator.publish_ui_action_requested(
+            input_source="gesture",
+            raw_input="swipe_right",
+            timestamp=datetime.now(timezone.utc),
+        )
+        is True
+    )
+    assert (
+        orchestrator.publish_ui_action_requested(
+            input_source="gesture",
+            raw_input="circle",
+            timestamp=datetime.now(timezone.utc),
+        )
+        is True
+    )
+    assert [
+        message["payload"]["action"]
+        for message in hub.messages
+        if message["eventType"] == "UIActionRequested"
+    ] == ["move_focus_right", "toggle_edit_mode"]
+
+
 def test_input_orchestrator_blocks_disabled_modality_from_active_command_profile():
     hub = CapturingRealtimeHub()
     repository = StaticInteractionConfigRepository(

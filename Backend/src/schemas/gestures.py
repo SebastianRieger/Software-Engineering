@@ -309,8 +309,44 @@ class GestureConfig(BaseModel):
     pinch_confidence: float = Field(
         default=settings.GESTURE_PINCH_CONFIDENCE, ge=0, le=1
     )
-    runtime_circle_pose_max_openness: float = Field(
-        default=settings.GESTURE_RUNTIME_CIRCLE_POSE_MAX_OPENNESS, ge=0, le=1
+    pinch_pose_min_hand_openness: float = Field(
+        default=settings.GESTURE_PINCH_POSE_MIN_HAND_OPENNESS, ge=0, le=1
+    )
+    pinch_pose_min_thumb_extended: float = Field(
+        default=settings.GESTURE_PINCH_POSE_MIN_THUMB_EXTENDED, ge=0, le=1
+    )
+    pinch_pose_min_index_extended: float = Field(
+        default=settings.GESTURE_PINCH_POSE_MIN_INDEX_EXTENDED, ge=0, le=1
+    )
+    pinch_pose_max_curled_support_fingers: int = Field(
+        default=settings.GESTURE_PINCH_POSE_MAX_CURLED_SUPPORT_FINGERS, ge=0, le=3
+    )
+    pinch_pose_reject_fist_like_threshold: float = Field(
+        default=settings.GESTURE_PINCH_POSE_REJECT_FIST_LIKE_THRESHOLD, ge=0, le=1
+    )
+    runtime_circle_start_max_openness: float = Field(
+        default=settings.GESTURE_RUNTIME_CIRCLE_START_MAX_OPENNESS, ge=0, le=1
+    )
+    runtime_circle_track_max_openness: float = Field(
+        default=settings.GESTURE_RUNTIME_CIRCLE_TRACK_MAX_OPENNESS, ge=0, le=1
+    )
+    runtime_circle_commit_min_openness: float = Field(
+        default=settings.GESTURE_RUNTIME_CIRCLE_COMMIT_MIN_OPENNESS, ge=0, le=1
+    )
+    runtime_circle_return_max_distance: float = Field(
+        default=settings.GESTURE_RUNTIME_CIRCLE_RETURN_MAX_DISTANCE, gt=0, le=1
+    )
+    runtime_circle_center_max_distance: float = Field(
+        default=settings.GESTURE_RUNTIME_CIRCLE_CENTER_MAX_DISTANCE, gt=0, le=1
+    )
+    runtime_circle_gap_max_frames: int = Field(
+        default=settings.GESTURE_RUNTIME_CIRCLE_GAP_MAX_FRAMES, ge=0, le=24
+    )
+    runtime_circle_open_commit_seconds: float = Field(
+        default=settings.GESTURE_RUNTIME_CIRCLE_OPEN_COMMIT_SECONDS, ge=0, le=3
+    )
+    runtime_circle_push_suppression_enabled: bool = Field(
+        default=settings.GESTURE_RUNTIME_CIRCLE_PUSH_SUPPRESSION_ENABLED
     )
     runtime_swipe_block_max_openness: float = Field(
         default=settings.GESTURE_RUNTIME_SWIPE_BLOCK_MAX_OPENNESS, ge=0, le=1

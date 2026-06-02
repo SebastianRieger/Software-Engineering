@@ -14,7 +14,10 @@ def test_gesture_contracts_define_recording_profiles_for_core_gestures():
         contracts["swipe_up"].start_pose
         == "offene handflaeche in der mittleren kamerazone"
     )
-    assert contracts["circle"].start_pose == "faust in der mittleren kamerazone"
+    assert (
+        contracts["circle"].start_pose
+        == "kompakte hand oder faust in der mittleren kamerazone"
+    )
     assert contracts["zoom_in_hands"].required_primitives == ("two_hand_expand",)
     assert contracts["zoom_out_hands"].required_primitives == ("two_hand_contract",)
 

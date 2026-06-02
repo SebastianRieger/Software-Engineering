@@ -102,6 +102,49 @@ def make_swipe_sample(
     )
 
 
+def make_circle_sample(
+    *,
+    confidence: float = 0.94,
+    sweep: float = 5.4,
+    radius_cv: float = 0.24,
+    radius_mean: float = 0.11,
+    return_distance: float = 0.045,
+    start_openness: float = 0.24,
+    end_openness: float = 0.66,
+) -> CalibrationCollectedSample:
+    captured_at = datetime(2026, 4, 28, 12, 0, tzinfo=timezone.utc)
+    return CalibrationCollectedSample(
+        sample_id=f"sample-circle-{confidence}-{sweep}",
+        modality="gesture",
+        target_id="circle",
+        collected_at=captured_at,
+        gesture_payload=GestureCalibrationSamplePayload(
+            gesture="circle",
+            confidence=confidence,
+            tracking_source="palm_center",
+            hand="right",
+            duration_seconds=0.78,
+            hand_size=0.16,
+            hand_size_scale=1.0,
+            trajectory=GestureTrajectorySummary(
+                point_count=18,
+                dx_total=0.01,
+                dy_total=0.02,
+                span_x=0.24,
+                span_y=0.23,
+                radius_mean=radius_mean,
+                radius_cv=radius_cv,
+                total_sweep=sweep,
+            ),
+            feature_windows={
+                "circle_return_distance": return_distance,
+                "circle_start_hand_openness": start_openness,
+                "circle_end_hand_openness": end_openness,
+            },
+        ),
+    )
+
+
 def make_sequence_profile_set(
     *, gesture: str = "swipe_right"
 ) -> GestureSequenceProfileSet:
@@ -161,6 +204,31 @@ def make_sequence_profile_set(
             )
         ],
     )
+
+
+def test_analyze_circle_recommends_runtime_commit_thresholds(tmp_path):
+    service = build_calibration_service(tmp_path)
+    analysis = service._analyze_circle(
+        [
+            make_circle_sample(),
+            make_circle_sample(
+                confidence=0.91,
+                sweep=5.1,
+                radius_cv=0.27,
+                radius_mean=0.10,
+                return_distance=0.052,
+                start_openness=0.28,
+                end_openness=0.72,
+            ),
+        ],
+        GestureConfig(),
+    )
+
+    assert analysis is not None
+    recommended = {item.parameter for item in analysis.recommendations}
+    assert "runtime_circle_return_max_distance" in recommended
+    assert "runtime_circle_start_max_openness" in recommended
+    assert "runtime_circle_commit_min_openness" in recommended
 
 
 def test_config_repository_round_trips_calibration_session(tmp_path):

@@ -43,6 +43,79 @@ def _fallback_thumb_index_distance(
     return thumb.spread_score
 
 
+def is_pinch_pose_candidate(
+    pose_features: HandPoseFeatures | None,
+    *,
+    config: Any = None,
+) -> bool:
+    if pose_features is None:
+        return False
+
+    min_hand_openness = float(
+        _config_value(
+            config,
+            "pinch_pose_min_hand_openness",
+            0.38,
+        )
+    )
+    min_thumb_extended = float(
+        _config_value(
+            config,
+            "pinch_pose_min_thumb_extended",
+            0.4,
+        )
+    )
+    min_index_extended = float(
+        _config_value(
+            config,
+            "pinch_pose_min_index_extended",
+            0.55,
+        )
+    )
+    max_curled_support_fingers = int(
+        _config_value(
+            config,
+            "pinch_pose_max_curled_support_fingers",
+            1,
+        )
+    )
+    reject_fist_like_threshold = float(
+        _config_value(
+            config,
+            "pinch_pose_reject_fist_like_threshold",
+            0.6,
+        )
+    )
+
+    if pose_features.hand_openness < min_hand_openness:
+        return False
+
+    thumb = pose_features.finger_states.get("thumb")
+    index = pose_features.finger_states.get("index")
+    if thumb is None or index is None:
+        return False
+
+    if thumb.extended_score < min_thumb_extended:
+        return False
+    if index.extended_score < min_index_extended:
+        return False
+
+    support_fingers = (
+        pose_features.finger_states.get("middle"),
+        pose_features.finger_states.get("ring"),
+        pose_features.finger_states.get("pinky"),
+    )
+    curled_support_fingers = sum(
+        1
+        for finger in support_fingers
+        if finger is not None and finger.curled_score >= reject_fist_like_threshold
+    )
+    if curled_support_fingers > max_curled_support_fingers:
+        return False
+
+    return True
+
+
 def detect_pinch_gesture(
     state: PinchGestureState | None,
     pose_features: HandPoseFeatures | None,
@@ -79,9 +152,10 @@ def detect_pinch_gesture(
     smoothed = mean(window)
     anchor = contact_metrics.anchor if contact_metrics is not None else None
     contact_pair = contact_metrics.contact_pair if contact_metrics is not None else None
+    pose_valid = is_pinch_pose_candidate(pose_features, config=config)
 
     if state is None:
-        initial_closed = smoothed < close_threshold
+        initial_closed = pose_valid and smoothed < close_threshold
         return (
             PinchGestureState(
                 pinch_closed=initial_closed,
@@ -100,7 +174,7 @@ def detect_pinch_gesture(
     new_closed = state.pinch_closed
 
     if cooldown_ok:
-        if not state.pinch_closed and smoothed < close_threshold:
+        if not state.pinch_closed and pose_valid and smoothed < close_threshold:
             detection = GestureDetectionResult(
                 gesture="pinch_close",
                 confidence=confidence,

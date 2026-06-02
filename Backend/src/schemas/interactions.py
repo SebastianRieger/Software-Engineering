@@ -45,111 +45,163 @@ class InputActionMapping(BaseModel):
     action: UIActionType
     enabled: bool = True
     action_args: UIActionArguments = Field(default_factory=UIActionArguments)
+    cooldown_group: str | None = Field(default=None, min_length=1)
+    cooldown_exempt_after: list[UIActionType] = Field(default_factory=list)
     metadata: dict[str, Any] = Field(default_factory=dict)
 
 
 def build_default_input_action_mappings() -> list[InputActionMapping]:
     return [
         InputActionMapping(
-            input_source="gesture", raw_input="swipe_left", action="move_focus_left"
+            input_source="gesture",
+            raw_input="swipe_left",
+            action="move_focus_left",
+            cooldown_group="navigation",
         ),
         InputActionMapping(
-            input_source="gesture", raw_input="swipe_right", action="move_focus_right"
+            input_source="gesture",
+            raw_input="swipe_right",
+            action="move_focus_right",
+            cooldown_group="navigation",
         ),
         InputActionMapping(
-            input_source="gesture", raw_input="swipe_up", action="move_focus_up"
+            input_source="gesture",
+            raw_input="swipe_up",
+            action="move_focus_up",
+            cooldown_group="navigation",
         ),
         InputActionMapping(
-            input_source="gesture", raw_input="swipe_down", action="move_focus_down"
+            input_source="gesture",
+            raw_input="swipe_down",
+            action="move_focus_down",
+            cooldown_group="navigation",
         ),
         InputActionMapping(
-            input_source="gesture", raw_input="circle", action="toggle_edit_mode"
+            input_source="gesture",
+            raw_input="circle",
+            action="toggle_edit_mode",
+            cooldown_group="mode_toggle",
+            cooldown_exempt_after=["move_focus_right"],
         ),
         InputActionMapping(
-            input_source="gesture", raw_input="pinch_close", action="primary_click"
+            input_source="gesture",
+            raw_input="pinch_close",
+            action="primary_click",
+            cooldown_group="edit_primary",
         ),
         InputActionMapping(
-            input_source="gesture", raw_input="pinch_open", action="drop_widget"
+            input_source="gesture",
+            raw_input="pinch_open",
+            action="drop_widget",
+            cooldown_group="edit_drop",
         ),
         InputActionMapping(
-            input_source="gesture", raw_input="push_click_short", action="resize_expand"
+            input_source="gesture",
+            raw_input="push_click_short",
+            action="resize_expand",
+            cooldown_group="edit_resize",
         ),
         InputActionMapping(
             input_source="gesture",
             raw_input="push_click_long",
             action="delete_widget",
+            cooldown_group="edit_delete",
         ),
         InputActionMapping(
-            input_source="gesture", raw_input="zoom_out_hands", action="resize_shrink"
+            input_source="gesture",
+            raw_input="zoom_out_hands",
+            action="resize_shrink",
+            cooldown_group="edit_resize",
         ),
         InputActionMapping(
-            input_source="gesture", raw_input="zoom_in_hands", action="resize_expand"
+            input_source="gesture",
+            raw_input="zoom_in_hands",
+            action="resize_expand",
+            cooldown_group="edit_resize",
         ),
         InputActionMapping(
             input_source="voice",
             raw_input="voice.move_focus_left",
             action="move_focus_left",
+            cooldown_group="navigation",
         ),
         InputActionMapping(
             input_source="voice",
             raw_input="voice.move_focus_right",
             action="move_focus_right",
+            cooldown_group="navigation",
         ),
         InputActionMapping(
             input_source="voice",
             raw_input="voice.move_focus_up",
             action="move_focus_up",
+            cooldown_group="navigation",
         ),
         InputActionMapping(
             input_source="voice",
             raw_input="voice.move_focus_down",
             action="move_focus_down",
+            cooldown_group="navigation",
         ),
         InputActionMapping(
-            input_source="voice", raw_input="voice.open_shop", action="open_shop"
+            input_source="voice",
+            raw_input="voice.open_shop",
+            action="open_shop",
+            cooldown_group="shop",
         ),
         InputActionMapping(
-            input_source="voice", raw_input="voice.close_shop", action="close_shop"
+            input_source="voice",
+            raw_input="voice.close_shop",
+            action="close_shop",
+            cooldown_group="shop",
         ),
         InputActionMapping(
             input_source="voice",
             raw_input="voice.confirm_selection",
             action="confirm_selection",
+            cooldown_group="selection",
         ),
         InputActionMapping(
             input_source="voice",
             raw_input="voice.cancel_selection",
             action="cancel_selection",
+            cooldown_group="selection",
         ),
         InputActionMapping(
             input_source="voice",
             raw_input="voice.enter_arrange_mode",
             action="enter_arrange_mode",
+            cooldown_group="mode_toggle",
         ),
         InputActionMapping(
             input_source="voice",
             raw_input="voice.exit_arrange_mode",
             action="exit_arrange_mode",
+            cooldown_group="mode_toggle",
         ),
         InputActionMapping(
             input_source="voice",
             raw_input="voice.resize_expand",
             action="resize_expand",
+            cooldown_group="edit_resize",
         ),
         InputActionMapping(
             input_source="voice",
             raw_input="voice.resize_shrink",
             action="resize_shrink",
+            cooldown_group="edit_resize",
         ),
         InputActionMapping(
             input_source="voice",
             raw_input="voice.focus_grid_cell",
             action="focus_grid_cell",
+            cooldown_group="navigation",
         ),
         InputActionMapping(
             input_source="voice",
             raw_input="voice.focus_widget_type",
             action="focus_widget_type",
+            cooldown_group="navigation",
         ),
     ]
 

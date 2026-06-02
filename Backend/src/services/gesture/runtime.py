@@ -128,6 +128,36 @@ class PendingGestureDetection:
 
 
 @dataclass(slots=True)
+class CircleRuntimeState:
+    hand: str | None
+    tracking_source: str | None
+    started_at: float
+    last_seen_at: float
+    start_anchor: tuple[float, float]
+    current_anchor: tuple[float, float]
+    trajectory: list[tuple[float, float]] = field(default_factory=list)
+    trajectory_timestamps: list[float] = field(default_factory=list)
+    hand_openness_samples: list[float] = field(default_factory=list)
+    accumulated_abs_sweep: float = 0.0
+    signed_sweep: float = 0.0
+    max_radius: float = 0.0
+    radius_mean: float | None = None
+    radius_cv: float | None = None
+    normalized_span_x: float = 0.0
+    normalized_span_y: float = 0.0
+    aspect_ratio: float = 0.0
+    return_distance: float | None = None
+    ready_to_commit: bool = False
+    ready_since_at: float | None = None
+    last_compact_at: float | None = None
+    last_open_at: float | None = None
+    commit_block_reason: str | None = "awaiting_circle_motion"
+    gap_frames: int = 0
+    suppressed_candidates: tuple[str, ...] = ()
+    confidence: float = 0.0
+
+
+@dataclass(slots=True)
 class CalibrationCaptureFrame:
     observed_at: float
     point: tuple[float, float] | None
@@ -407,12 +437,15 @@ class GestureService:
         self.latest_frame_captured_at: datetime | None = None
         self._push_state: PushGestureState | None = None
         self._pinch_state: PinchGestureState | None = None
+        self._circle_state: CircleRuntimeState | None = None
+        self._last_circle_debug_state: CircleRuntimeState | None = None
         self._pending_gesture: PendingGestureDetection | None = None
         self._last_detectable_observation: GestureObservation | None = None
         self.last_gesture: GestureName | None = None
         self.last_gesture_at: datetime | None = None
         self.last_confidence: float | None = None
         self.last_gesture_time_by_name: dict[str, float] = {}
+        self.last_gesture_time_by_group: dict[str, float] = {}
         self.last_hand: str | None = None
         self.last_tracking_source: str | None = None
         self.last_tracking_quality: float | None = None
@@ -902,6 +935,7 @@ class GestureService:
         with self._lock:
             active_capture = self._active_dev_capture
             pinch_state = self._pinch_state
+            circle_state = self._last_circle_debug_state
 
         if active_capture is None or active_capture.completed:
             return
@@ -939,6 +973,7 @@ class GestureService:
             publish_suppressed_reason=publish_suppressed_reason,
             observed_at=observed_at,
             pinch_state=pinch_state,
+            circle_state=circle_state,
             image_file=frame_name if preview_bytes is not None else None,
             raw_image_file=(f"raw/{frame_name}" if preview_bytes is not None else None),
         )
@@ -1033,6 +1068,7 @@ class GestureService:
         publish_suppressed_reason: str | None,
         observed_at: float,
         pinch_state: PinchGestureState | None,
+        circle_state: CircleRuntimeState | None,
         image_file: str | None,
         raw_image_file: str | None,
     ) -> dict[str, object]:
@@ -1128,6 +1164,9 @@ class GestureService:
                     pinch_state.last_fire_at if pinch_state is not None else None
                 ),
             },
+            "circle_state": GestureService._serialize_circle_runtime_state(
+                circle_state
+            ),
             "runtime": (
                 {
                     "active_phase": analysis.active_phase,
@@ -1136,6 +1175,11 @@ class GestureService:
                     "primitive_hits": dict(analysis.primitive_hits),
                     "reject_reason": analysis.reject_reason,
                     "dominant_hand_pose": analysis.dominant_hand_pose,
+                    "suppressed_candidates": (
+                        list(circle_state.suppressed_candidates)
+                        if circle_state is not None
+                        else []
+                    ),
                     "detection": GestureService._serialize_dev_capture_detection(
                         analysis_detection
                     ),
@@ -1418,6 +1462,42 @@ class GestureService:
                 "center_distance": mean(center_distances) if center_distances else 0.0,
                 "index_extension_ratio": (
                     mean(index_extension_ratios) if index_extension_ratios else 0.0
+                ),
+                "circle_return_distance": (
+                    math.hypot(
+                        trajectory[-1][0] - trajectory[0][0],
+                        trajectory[-1][1] - trajectory[0][1],
+                    )
+                    if target_id == "circle" and len(trajectory) >= 2
+                    else 0.0
+                ),
+                "circle_start_hand_openness": (
+                    min(
+                        value
+                        for value in [
+                            frame.hand_openness
+                            for frame in frames[: max(1, len(frames) // 2)]
+                            if frame.hand_openness is not None
+                        ]
+                    )
+                    if target_id == "circle"
+                    and any(frame.hand_openness is not None for frame in frames)
+                    else 0.0
+                ),
+                "circle_end_hand_openness": (
+                    max(
+                        value
+                        for value in [
+                            frame.hand_openness
+                            for frame in frames[
+                                max(0, len(frames) - max(1, len(frames) // 4)) :
+                            ]
+                            if frame.hand_openness is not None
+                        ]
+                    )
+                    if target_id == "circle"
+                    and any(frame.hand_openness is not None for frame in frames)
+                    else 0.0
                 ),
             },
         )
@@ -2174,7 +2254,9 @@ class GestureService:
                 self._pending_gesture = None
             return None
 
-        if detection.gesture in {"pinch_close", "pinch_open"}:
+        if detection.gesture in {"pinch_close", "pinch_open"} or bool(
+            detection.metrics.get("finalize_immediately", False)
+        ):
             self._pending_gesture = None
             return detection
 
@@ -2310,14 +2392,56 @@ class GestureService:
                 if now - last_same <= cooldown_seconds:
                     return False
                 self.last_gesture_time_by_name[gesture] = now
+                self.last_gesture_time_by_group["pinch"] = now
                 return True
 
-            last_seen = max(self.last_gesture_time_by_name.values(), default=0.0)
-            if now - last_seen <= cooldown_seconds:
+            group = self._gesture_cooldown_group(gesture)
+            exempt_after = self._gesture_cooldown_exempt_after(gesture)
+            last_same_group = self.last_gesture_time_by_group.get(group, 0.0)
+            last_non_exempt = self._last_non_exempt_gesture_seen_at(
+                exempt_after=exempt_after
+            )
+            if (
+                now - last_same_group <= cooldown_seconds
+                or now - last_non_exempt <= cooldown_seconds
+            ):
                 return False
 
             self.last_gesture_time_by_name[gesture] = now
+            self.last_gesture_time_by_group[group] = now
             return True
+
+    def _gesture_cooldown_group(self, gesture: GestureName) -> str:
+        if gesture in {"pinch_close", "pinch_open"}:
+            return "pinch"
+        if gesture.startswith("swipe_"):
+            return "swipe"
+        if gesture == "circle":
+            return "circle"
+        if gesture.startswith("push_click"):
+            return "push"
+        if gesture.startswith("zoom_"):
+            return "zoom"
+        return gesture
+
+    def _gesture_cooldown_exempt_after(self, gesture: GestureName) -> set[GestureName]:
+        if gesture == "circle":
+            return {"swipe_left", "swipe_right", "swipe_up", "swipe_down"}
+        return set()
+
+    def _last_non_exempt_gesture_seen_at(
+        self,
+        *,
+        exempt_after: set[GestureName],
+    ) -> float:
+        return max(
+            (
+                seen_at
+                for name, seen_at in self.last_gesture_time_by_name.items()
+                if name not in exempt_after
+            ),
+            default=0.0,
+        )
 
     def _detect_gesture(
         self,
@@ -2345,6 +2469,9 @@ class GestureService:
         pose_features: HandPoseFeatures | None = None,
     ) -> GestureRuntimeAnalysis:
         candidates: list[GestureDetectionResult] = []
+        resolved_pose_features = pose_features or extract_hand_pose_features(
+            observation
+        )
 
         zoom_detection = self._detect_zoom_gesture(observation, observed_at)
         if zoom_detection is not None:
@@ -2358,12 +2485,6 @@ class GestureService:
             self._pinch_state.pinch_closed if self._pinch_state is not None else False
         )
 
-        push_detection = None
-        if not pinch_closed:
-            push_detection = self._detect_push_gesture(observation, observed_at)
-        if push_detection is not None:
-            candidates.append(push_detection)
-
         trajectory_window = self._select_runtime_single_hand_trajectory(
             trajectory=trajectory,
             trajectory_timestamps=trajectory_timestamps,
@@ -2374,6 +2495,25 @@ class GestureService:
             if trajectory_window
             else []
         )
+        circle_state, circle_commit_detection = self._update_circle_runtime_state(
+            observation=observation,
+            observed_at=observed_at,
+            hand_size=hand_size,
+            pose_features=resolved_pose_features,
+        )
+        suppressed_candidates = (
+            set(circle_state.suppressed_candidates) if circle_state else set()
+        )
+
+        push_detection = None
+        if (
+            not pinch_closed
+            and "push_click_short" not in suppressed_candidates
+            and "push_click_long" not in suppressed_candidates
+        ):
+            push_detection = self._detect_push_gesture(observation, observed_at)
+        if push_detection is not None:
+            candidates.append(push_detection)
         hand_count = (
             len(observation.hands)
             if observation.hands
@@ -2390,8 +2530,12 @@ class GestureService:
                     trajectory=trajectory_window,
                     hand_size=hand_size,
                     tracking_source=observation.tracking_source,
+                    pose_features=resolved_pose_features,
+                    suppressed_candidates=suppressed_candidates,
                 )
             )
+        if circle_commit_detection is not None:
+            candidates.append(circle_commit_detection)
 
         with self._lock:
             active_config = self._active_config
@@ -2400,10 +2544,6 @@ class GestureService:
                 bool(self.last_gesture_time_by_name)
                 and time.time() - last_seen <= active_config.cooldown_seconds
             )
-
-        resolved_pose_features = pose_features or extract_hand_pose_features(
-            observation
-        )
         sequence_scores: dict[str, float] = {}
         sequence_distances: dict[str, float] = {}
         sequence_margins: dict[str, float] = {}
@@ -2432,7 +2572,7 @@ class GestureService:
                         len(trajectory_window)
                     ),
                 )
-        return analyze_runtime_gesture(
+        analysis = analyze_runtime_gesture(
             candidates=candidates,
             trajectory=analysis_trajectory,
             trajectory_timestamps=analysis_timestamps,
@@ -2447,6 +2587,21 @@ class GestureService:
             sequence_margins=sequence_margins,
             **active_config.runtime_analysis_kwargs(),
         )
+        if circle_state is not None and circle_state.confidence > 0:
+            analysis.candidate_scores["circle"] = max(
+                analysis.candidate_scores.get("circle", 0.0),
+                round(circle_state.confidence, 4),
+            )
+            if circle_state.accumulated_abs_sweep > 0:
+                analysis.primitive_hits["circular_motion"] = max(
+                    analysis.primitive_hits.get("circular_motion", 0.0),
+                    round(circle_state.confidence, 4),
+                )
+        if circle_commit_detection is not None:
+            analysis.detection = circle_commit_detection
+            analysis.spec_id = "gesture.circle.v1"
+            analysis.reject_reason = None
+        return analysis
 
     def _detect_runtime_gesture(
         self,
@@ -2463,6 +2618,417 @@ class GestureService:
             trajectory_timestamps=trajectory_timestamps,
             hand_size=hand_size,
         ).detection
+
+    @staticmethod
+    def _count_non_extended_digits(pose_features: HandPoseFeatures) -> int:
+        relevant_digits = ("index", "middle", "ring", "pinky")
+        return sum(
+            1
+            for name in relevant_digits
+            if pose_features.finger_states.get(name) is None
+            or pose_features.finger_states[name].extended_score < 0.6
+        )
+
+    def _is_circle_compact_pose(
+        self,
+        pose_features: HandPoseFeatures,
+        active_config: GestureConfig,
+    ) -> bool:
+        if (
+            pose_features.center_distance
+            > active_config.runtime_circle_center_max_distance
+        ):
+            return False
+        if (
+            pose_features.hand_openness
+            > active_config.runtime_circle_start_max_openness
+        ):
+            return False
+        if pose_features.push_depth >= active_config.push_depth_threshold * 0.9:
+            return False
+        if pose_features.index_extension_ratio >= max(
+            active_config.push_pose_extension_ratio * 1.1,
+            1.18,
+        ):
+            return False
+        return self._count_non_extended_digits(pose_features) >= 3
+
+    @staticmethod
+    def _is_circle_open_commit_pose(
+        pose_features: HandPoseFeatures,
+        active_config: GestureConfig,
+    ) -> bool:
+        if (
+            pose_features.hand_openness
+            < active_config.runtime_circle_commit_min_openness
+        ):
+            return False
+        thumb_state = pose_features.finger_states.get("thumb")
+        index_state = pose_features.finger_states.get("index")
+        thumb_extended = thumb_state is not None and thumb_state.extended_score >= 0.55
+        index_extended = index_state is not None and index_state.extended_score >= 0.55
+        return thumb_extended or index_extended
+
+    @staticmethod
+    def _is_circle_track_pose(
+        pose_features: HandPoseFeatures,
+        active_config: GestureConfig,
+    ) -> bool:
+        return (
+            pose_features.center_distance
+            <= active_config.runtime_circle_center_max_distance * 1.15
+            and pose_features.hand_openness
+            <= active_config.runtime_circle_track_max_openness
+        )
+
+    @staticmethod
+    def _serialize_circle_runtime_state(
+        state: CircleRuntimeState | None,
+    ) -> dict[str, object] | None:
+        if state is None:
+            return None
+        return {
+            "hand": state.hand,
+            "tracking_source": state.tracking_source,
+            "started_at": state.started_at,
+            "last_seen_at": state.last_seen_at,
+            "start_anchor": list(state.start_anchor),
+            "current_anchor": list(state.current_anchor),
+            "accumulated_sweep": state.accumulated_abs_sweep,
+            "signed_sweep": state.signed_sweep,
+            "max_radius": state.max_radius,
+            "radius_mean": state.radius_mean,
+            "radius_cv": state.radius_cv,
+            "normalized_span_x": state.normalized_span_x,
+            "normalized_span_y": state.normalized_span_y,
+            "aspect_ratio": state.aspect_ratio,
+            "return_distance": state.return_distance,
+            "ready_to_commit": state.ready_to_commit,
+            "ready_since_at": state.ready_since_at,
+            "last_compact_at": state.last_compact_at,
+            "last_open_at": state.last_open_at,
+            "commit_block_reason": state.commit_block_reason,
+            "gap_frames": state.gap_frames,
+            "suppressed_candidates": list(state.suppressed_candidates),
+            "confidence": state.confidence,
+        }
+
+    @staticmethod
+    def _circle_motion_ready_for_suppression(
+        state: CircleRuntimeState,
+        active_config: GestureConfig,
+    ) -> bool:
+        return (
+            state.accumulated_abs_sweep
+            >= max(active_config.circle_sweep_min * 0.3, 0.9)
+            and min(state.normalized_span_x, state.normalized_span_y)
+            >= active_config.swipe_min_span * 0.5
+        )
+
+    def _estimate_circle_runtime_confidence(
+        self,
+        *,
+        state: CircleRuntimeState,
+        active_config: GestureConfig,
+        pose_features: HandPoseFeatures,
+    ) -> float:
+        sweep_score = min(
+            1.0,
+            state.accumulated_abs_sweep / max(active_config.circle_sweep_min, 1e-6),
+        )
+        radius_score = (
+            0.0
+            if state.radius_cv is None
+            else min(
+                1.0, active_config.circle_radius_cv_max / max(state.radius_cv, 1e-6)
+            )
+        )
+        return_score = (
+            0.0
+            if state.return_distance is None
+            else min(
+                1.0,
+                active_config.runtime_circle_return_max_distance
+                / max(state.return_distance, 1e-6),
+            )
+        )
+        openness_score = min(
+            1.0,
+            pose_features.hand_openness
+            / max(active_config.runtime_circle_commit_min_openness, 1e-6),
+        )
+        return min(
+            1.0, (sweep_score + radius_score + return_score + openness_score) / 4.0
+        )
+
+    def _build_circle_commit_detection(
+        self,
+        *,
+        observation: GestureObservation,
+        pose_features: HandPoseFeatures,
+        state: CircleRuntimeState,
+        active_config: GestureConfig,
+    ) -> GestureDetectionResult:
+        confidence = self._estimate_circle_runtime_confidence(
+            state=state,
+            active_config=active_config,
+            pose_features=pose_features,
+        )
+        return GestureDetectionResult(
+            gesture="circle",
+            confidence=confidence,
+            tracking_source=observation.tracking_source,
+            candidate_scores={"circle": round(confidence, 4)},
+            primitive_hits={
+                "circular_motion": 1.0,
+                "hand_centered": min(
+                    1.0,
+                    active_config.runtime_circle_center_max_distance
+                    / max(pose_features.center_distance, 1e-6),
+                ),
+                "open_commit": min(
+                    1.0,
+                    pose_features.hand_openness
+                    / max(active_config.runtime_circle_commit_min_openness, 1e-6),
+                ),
+            },
+            metrics={
+                "finalize_immediately": True,
+                "return_distance": state.return_distance,
+                "circle_sweep": state.accumulated_abs_sweep,
+                "circle_signed_sweep": state.signed_sweep,
+                "circle_radius_cv": state.radius_cv,
+                "circle_radius_mean": state.radius_mean,
+                "circle_start_hand_openness": (
+                    state.hand_openness_samples[0]
+                    if state.hand_openness_samples
+                    else None
+                ),
+                "circle_end_hand_openness": pose_features.hand_openness,
+                "center_distance": pose_features.center_distance,
+                "index_extension_ratio": pose_features.index_extension_ratio,
+            },
+        )
+
+    def _update_circle_runtime_state(
+        self,
+        *,
+        observation: GestureObservation,
+        observed_at: float,
+        hand_size: float | None,
+        pose_features: HandPoseFeatures | None,
+    ) -> tuple[CircleRuntimeState | None, GestureDetectionResult | None]:
+        with self._lock:
+            active_config = self._active_config
+            state = self._circle_state
+
+        if observation.point is None or pose_features is None:
+            with self._lock:
+                self._circle_state = None
+                self._last_circle_debug_state = None
+            return None, None
+
+        compact_pose = self._is_circle_compact_pose(pose_features, active_config)
+        open_pose = self._is_circle_open_commit_pose(pose_features, active_config)
+        track_pose = self._is_circle_track_pose(pose_features, active_config)
+
+        if (
+            state is not None
+            and state.hand is not None
+            and observation.hand is not None
+            and state.hand != observation.hand
+        ):
+            state = None
+
+        if state is None:
+            if not compact_pose:
+                with self._lock:
+                    self._circle_state = None
+                    self._last_circle_debug_state = None
+                return None, None
+            state = CircleRuntimeState(
+                hand=observation.hand,
+                tracking_source=observation.tracking_source,
+                started_at=observed_at,
+                last_seen_at=observed_at,
+                start_anchor=observation.point,
+                current_anchor=observation.point,
+                trajectory=[observation.point],
+                trajectory_timestamps=[observed_at],
+                hand_openness_samples=[pose_features.hand_openness],
+                last_compact_at=observed_at,
+                commit_block_reason="insufficient_sweep",
+            )
+            with self._lock:
+                self._circle_state = state
+                self._last_circle_debug_state = state
+            return state, None
+
+        state.last_seen_at = observed_at
+        state.current_anchor = observation.point
+        if compact_pose:
+            state.last_compact_at = observed_at
+            state.gap_frames = 0
+        elif open_pose:
+            state.last_open_at = observed_at
+        elif not track_pose:
+            state.gap_frames += 1
+            if state.gap_frames > active_config.runtime_circle_gap_max_frames:
+                with self._lock:
+                    self._circle_state = None
+                    self._last_circle_debug_state = None
+                return None, None
+
+        state.trajectory.append(observation.point)
+        state.trajectory_timestamps.append(observed_at)
+        state.hand_openness_samples.append(pose_features.hand_openness)
+        while len(state.trajectory) > active_config.max_trajectory_points:
+            state.trajectory.pop(0)
+            state.trajectory_timestamps.pop(0)
+            state.hand_openness_samples.pop(0)
+            state.start_anchor = state.trajectory[0]
+
+        features = extract_gesture_features(
+            trajectory=state.trajectory,
+            min_detection_points=max(4, active_config.min_detection_points - 2),
+            hand_size=hand_size,
+            hand_size_reference=active_config.hand_size_reference,
+            hand_size_scale_min=active_config.hand_size_scale_min,
+            hand_size_scale_max=active_config.hand_size_scale_max,
+        )
+        if (
+            features is None
+            or features.radius_mean is None
+            or features.radius_cv is None
+            or features.total_sweep is None
+        ):
+            state.commit_block_reason = "insufficient_points"
+            with self._lock:
+                self._circle_state = state
+                self._last_circle_debug_state = state
+            return state, None
+
+        hand_scale = max(features.hand_size_scale, 1e-6)
+        state.signed_sweep = features.total_sweep
+        state.accumulated_abs_sweep = abs(features.total_sweep)
+        state.radius_mean = features.radius_mean
+        state.radius_cv = features.radius_cv
+        state.max_radius = max(state.max_radius, features.radius_mean)
+        state.normalized_span_x = features.span_x / hand_scale
+        state.normalized_span_y = features.span_y / hand_scale
+        state.aspect_ratio = min(
+            state.normalized_span_x, state.normalized_span_y
+        ) / max(
+            state.normalized_span_x,
+            state.normalized_span_y,
+            1e-6,
+        )
+        state.return_distance = math.hypot(
+            state.current_anchor[0] - state.start_anchor[0],
+            state.current_anchor[1] - state.start_anchor[1],
+        )
+
+        circle_shape_ready = (
+            features.radius_mean > active_config.circle_min_radius
+            and state.accumulated_abs_sweep >= active_config.circle_sweep_min
+            and features.radius_cv <= active_config.circle_radius_cv_max
+            and min(state.normalized_span_x, state.normalized_span_y)
+            >= active_config.swipe_min_span
+            and state.aspect_ratio >= active_config.runtime_circle_hold_min_aspect_ratio
+        )
+        return_ready = (
+            state.return_distance <= active_config.runtime_circle_return_max_distance
+        )
+        centered_ready = (
+            pose_features.center_distance
+            <= active_config.runtime_circle_center_max_distance
+        )
+
+        if not circle_shape_ready:
+            if features.radius_mean <= active_config.circle_min_radius:
+                state.commit_block_reason = "radius_too_small"
+            elif state.accumulated_abs_sweep < active_config.circle_sweep_min:
+                state.commit_block_reason = "insufficient_sweep"
+            elif features.radius_cv > active_config.circle_radius_cv_max:
+                state.commit_block_reason = "radius_unstable"
+            else:
+                state.commit_block_reason = "shape_not_closed"
+            state.ready_to_commit = False
+            state.ready_since_at = None
+        elif not return_ready:
+            state.commit_block_reason = "return_distance_too_large"
+            state.ready_to_commit = False
+            state.ready_since_at = None
+        elif not centered_ready:
+            state.commit_block_reason = "outside_center_zone"
+            state.ready_to_commit = False
+            state.ready_since_at = None
+        else:
+            state.ready_to_commit = True
+            if state.ready_since_at is None:
+                state.ready_since_at = observed_at
+            state.commit_block_reason = None
+
+        suppressed_candidates: set[str] = set()
+        if (
+            active_config.runtime_circle_push_suppression_enabled
+            and self._circle_motion_ready_for_suppression(state, active_config)
+        ):
+            suppressed_candidates.update(
+                {
+                    "push_click_short",
+                    "push_click_long",
+                    "swipe_left",
+                    "swipe_right",
+                    "swipe_up",
+                    "swipe_down",
+                }
+            )
+        state.suppressed_candidates = tuple(sorted(suppressed_candidates))
+        state.confidence = min(
+            1.0,
+            (
+                min(
+                    1.0,
+                    state.accumulated_abs_sweep
+                    / max(active_config.circle_sweep_min, 1e-6),
+                )
+                + min(
+                    1.0,
+                    active_config.circle_radius_cv_max / max(features.radius_cv, 1e-6),
+                )
+            )
+            / 2.0,
+        )
+
+        detection = None
+        if state.ready_to_commit and open_pose:
+            ready_window_elapsed = (
+                state.ready_since_at is not None
+                and observed_at - state.ready_since_at
+                > active_config.runtime_circle_open_commit_seconds
+            )
+            if not ready_window_elapsed:
+                detection = self._build_circle_commit_detection(
+                    observation=observation,
+                    pose_features=pose_features,
+                    state=state,
+                    active_config=active_config,
+                )
+                with self._lock:
+                    self._circle_state = None
+                    self._last_circle_debug_state = state
+                return state, detection
+            state.commit_block_reason = "open_commit_window_elapsed"
+            with self._lock:
+                self._circle_state = None
+                self._last_circle_debug_state = state
+            return state, None
+
+        with self._lock:
+            self._circle_state = state
+            self._last_circle_debug_state = state
+        return state, None
 
     def _detect_runtime_single_hand_gesture(
         self,
@@ -2509,6 +3075,8 @@ class GestureService:
         trajectory: list[tuple[float, float]],
         hand_size: float | None,
         tracking_source: str | None,
+        pose_features: HandPoseFeatures | None = None,
+        suppressed_candidates: set[str] | None = None,
     ) -> list[GestureDetectionResult]:
         with self._lock:
             active_config = self._active_config
@@ -2533,14 +3101,10 @@ class GestureService:
         ):
             return []
 
-        pose_features = extract_hand_pose_features(observation)
-        circle_pose_allowed = True
+        pose_features = pose_features or extract_hand_pose_features(observation)
+        suppressed_candidates = suppressed_candidates or set()
         swipe_pose_blocked = False
         if pose_features is not None:
-            circle_pose_allowed = (
-                pose_features.hand_openness
-                < active_config.runtime_circle_pose_max_openness
-            )
             index_primary_like = (
                 pose_features.index_extension_ratio
                 >= active_config.push_pose_extension_ratio
@@ -2552,26 +3116,9 @@ class GestureService:
             )
 
         candidates: list[GestureDetectionResult] = []
-
-        primary_detection = self._detect_gesture(
-            trajectory,
-            hand_size=hand_size,
-            tracking_source=tracking_source,
-        )
-        if (
-            primary_detection is not None
-            and primary_detection.gesture == "circle"
-            and circle_pose_allowed
+        if swipe_pose_blocked or suppressed_candidates.issuperset(
+            {"swipe_left", "swipe_right", "swipe_up", "swipe_down"}
         ):
-            candidates.append(primary_detection)
-
-        if (
-            self._should_hold_swipe_for_circle(trajectory, hand_size)
-            and circle_pose_allowed
-        ):
-            return candidates
-
-        if swipe_pose_blocked:
             return candidates
 
         horizontal_segment = self._select_runtime_horizontal_segment(trajectory)
@@ -2581,10 +3128,11 @@ class GestureService:
             tracking_source=tracking_source,
             runtime_min_detection_points=runtime_min_detection_points,
         )
-        if horizontal_detection is not None and horizontal_detection.gesture in {
-            "swipe_left",
-            "swipe_right",
-        }:
+        if (
+            horizontal_detection is not None
+            and horizontal_detection.gesture in {"swipe_left", "swipe_right"}
+            and horizontal_detection.gesture not in suppressed_candidates
+        ):
             candidates.append(horizontal_detection)
 
         upward_segment = self._select_runtime_upstroke_segment(trajectory)
@@ -2595,7 +3143,11 @@ class GestureService:
                 tracking_source=tracking_source,
                 runtime_min_detection_points=runtime_min_detection_points,
             )
-            if upward_detection is not None and upward_detection.gesture == "swipe_up":
+            if (
+                upward_detection is not None
+                and upward_detection.gesture == "swipe_up"
+                and upward_detection.gesture not in suppressed_candidates
+            ):
                 candidates.append(upward_detection)
 
         directional_segment = self._select_runtime_downstroke_segment(trajectory)
@@ -2608,7 +3160,11 @@ class GestureService:
             tracking_source=tracking_source,
             runtime_min_detection_points=runtime_min_detection_points,
         )
-        if detection is not None and detection.gesture == "swipe_down":
+        if (
+            detection is not None
+            and detection.gesture == "swipe_down"
+            and detection.gesture not in suppressed_candidates
+        ):
             candidates.append(detection)
         return self._dedupe_detection_candidates(candidates)
 
@@ -3112,6 +3668,21 @@ class GestureService:
                     "center_distance": self._metric_float(
                         detection.metrics, "center_distance"
                     ),
+                    "circle_return_distance": self._metric_float(
+                        detection.metrics, "return_distance"
+                    ),
+                    "circle_start_hand_openness": self._metric_float(
+                        detection.metrics, "circle_start_hand_openness"
+                    ),
+                    "circle_end_hand_openness": self._metric_float(
+                        detection.metrics, "circle_end_hand_openness"
+                    ),
+                    "circle_sweep": self._metric_float(
+                        detection.metrics, "circle_sweep"
+                    ),
+                    "circle_radius_cv": self._metric_float(
+                        detection.metrics, "circle_radius_cv"
+                    ),
                     "candidate_scores": runtime_analysis.candidate_scores,
                     "primitive_hits": runtime_analysis.primitive_hits,
                     "tracking_quality": runtime_analysis.tracking_quality,
@@ -3178,6 +3749,8 @@ class GestureService:
         self._last_detectable_observation = None
         self._push_state = None
         self._pinch_state = None
+        self._circle_state = None
+        self._last_circle_debug_state = None
         self.last_gesture = None
         self.last_gesture_at = None
         self.last_confidence = None
@@ -3196,6 +3769,7 @@ class GestureService:
         self.last_primitive_hits = {}
         self.last_error = None
         self.last_gesture_time_by_name = {}
+        self.last_gesture_time_by_group = {}
 
     def _reset_calibration_motion_window(
         self, observed_at: float | None = None
@@ -3225,6 +3799,14 @@ class GestureService:
             or missing_observed_at - self._push_state.last_seen_at > 0.2
         ):
             self._push_state = None
+        if (
+            missing_observed_at is None
+            or self._circle_state is None
+            or missing_observed_at - self._circle_state.last_seen_at > 0.2
+        ):
+            self._circle_state = None
+        if self._circle_state is None:
+            self._last_circle_debug_state = None
 
 
 gesture_service = GestureService(input_orchestrator_service=input_orchestrator)
