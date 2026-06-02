@@ -275,7 +275,11 @@ class InputOrchestrator:
 
         last_group = self._last_action_group
         current_group = mapping.cooldown_group
-        if last_group is not None and current_group is not None and last_group != current_group:
+        if (
+            last_group is not None
+            and current_group is not None
+            and last_group != current_group
+        ):
             return False
 
         if current_group is None:
