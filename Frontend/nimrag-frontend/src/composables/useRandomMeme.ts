@@ -25,7 +25,7 @@ export function useRandomMeme() {
     }
   }
 
-  async function onImageError(index: number) {
+  async function onImageError(_index: number) {
     if (retryGuard || isLoading.value) return
     retryGuard = true
     await load()

@@ -52,7 +52,11 @@ class BullshitRepository:
                             status_code=502,
                         )
                     payload = await response.json(content_type=None)
-                    text = payload.get("phrase", "").strip() if isinstance(payload, dict) else ""
+                    text = (
+                        payload.get("phrase", "").strip()
+                        if isinstance(payload, dict)
+                        else ""
+                    )
                     if not text:
                         return BullshitRepositoryError(
                             "Corporate BS API returned no phrase.", status_code=502

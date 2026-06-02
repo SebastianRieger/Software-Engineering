@@ -40,7 +40,7 @@ function resolveUrl(meme: MemeItem): string {
       <span class="rm-logo">Random Meme</span>
       <span v-if="isLoading" class="rm-status rm-status--loading"><span class="rm-dot" /></span>
       <span v-else-if="error" class="rm-status rm-status--error" :title="error">!</span>
-      <span v-else-if="memes.length" class="rm-subreddit">r/{{ memes[0].subreddit }}</span>
+      <span v-else-if="memes.length" class="rm-subreddit">r/{{ memes[0]?.subreddit }}</span>
     </header>
 
     <!-- Systemzustände -->

@@ -1555,7 +1555,10 @@ class CalibrationService:
                 0.16,
                 0.90,
             )
-        if candidate_config.pinch_open_threshold <= candidate_config.pinch_close_threshold:
+        if (
+            candidate_config.pinch_open_threshold
+            <= candidate_config.pinch_close_threshold
+        ):
             candidate_config.pinch_open_threshold = _clamp(
                 candidate_config.pinch_close_threshold + 0.12,
                 0.16,
@@ -1611,7 +1614,9 @@ class CalibrationService:
                     target_id=target_id,
                     sample_count=len(target_samples),
                     metrics=[
-                        _metric_summary("pinch_distance", [float(v) for v in distances]),
+                        _metric_summary(
+                            "pinch_distance", [float(v) for v in distances]
+                        ),
                         _metric_summary(
                             "pinch_smoothed_distance",
                             [float(v) for v in smoothed_distances],

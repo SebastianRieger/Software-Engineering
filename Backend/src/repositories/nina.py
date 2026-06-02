@@ -42,17 +42,19 @@ class NinaRepository:
         data = item.get("payload", {}).get("data", {})
         i18n_title = item.get("i18nTitle", {})
 
-        headline = (
-            data.get("headline")
-            or i18n_title.get("de")
-            or "Unbekannte Warnung"
-        )
+        headline = data.get("headline") or i18n_title.get("de") or "Unbekannte Warnung"
 
         severity_raw = data.get("severity", "Unknown")
-        severity = severity_raw if severity_raw in {"Extreme", "Severe", "Moderate", "Minor"} else "Unknown"
+        severity = (
+            severity_raw
+            if severity_raw in {"Extreme", "Severe", "Moderate", "Minor"}
+            else "Unknown"
+        )
 
         msg_type_raw = item.get("type", "Alert")
-        msg_type = msg_type_raw if msg_type_raw in {"Alert", "Update", "Cancel"} else "Alert"
+        msg_type = (
+            msg_type_raw if msg_type_raw in {"Alert", "Update", "Cancel"} else "Alert"
+        )
 
         return NinaNormalizedWarning(
             id=item.get("id", ""),
@@ -102,7 +104,9 @@ class NinaRepository:
         cached = self._get_cached_payload(cache_key)
         if cached is not None:
             warnings = [NinaNormalizedWarning(**w) for w in cached]
-            return NinaWarningsResponse(ars=ars, warnings=warnings, fetched_at=now, source="cache")
+            return NinaWarningsResponse(
+                ars=ars, warnings=warnings, fetched_at=now, source="cache"
+            )
 
         url = NINA_API_URL.format(ars=ars)
         timeout = aiohttp.ClientTimeout(total=settings.WEATHER_TIMEOUT_SECONDS)
@@ -129,4 +133,6 @@ class NinaRepository:
 
         self._store_payload(cache_key, [w.model_dump() for w in active_warnings])
 
-        return NinaWarningsResponse(ars=ars, warnings=active_warnings, fetched_at=now, source="live")
+        return NinaWarningsResponse(
+            ars=ars, warnings=active_warnings, fetched_at=now, source="live"
+        )

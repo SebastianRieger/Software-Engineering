@@ -867,16 +867,22 @@ class GestureService:
                         pinch_metrics.distance if pinch_metrics is not None else None
                     ),
                     pinch_smoothed_distance=(
-                        pinch_state.smoothed_distance if pinch_state is not None else None
+                        pinch_state.smoothed_distance
+                        if pinch_state is not None
+                        else None
                     ),
                     pinch_tip_distance=(
-                        pinch_metrics.tip_distance if pinch_metrics is not None else None
+                        pinch_metrics.tip_distance
+                        if pinch_metrics is not None
+                        else None
                     ),
                     pinch_anchor=(
                         pinch_metrics.anchor if pinch_metrics is not None else None
                     ),
                     pinch_contact_pair=(
-                        pinch_metrics.contact_pair if pinch_metrics is not None else None
+                        pinch_metrics.contact_pair
+                        if pinch_metrics is not None
+                        else None
                     ),
                     recognition=detection or analysis.detection,
                 )
@@ -934,9 +940,7 @@ class GestureService:
             observed_at=observed_at,
             pinch_state=pinch_state,
             image_file=frame_name if preview_bytes is not None else None,
-            raw_image_file=(
-                f"raw/{frame_name}" if preview_bytes is not None else None
-            ),
+            raw_image_file=(f"raw/{frame_name}" if preview_bytes is not None else None),
         )
         metadata_payload = json.dumps(metadata, ensure_ascii=True, sort_keys=True)
         (active_capture.output_dir / metadata_name).write_text(
@@ -1052,9 +1056,7 @@ class GestureService:
         analysis_detection = analysis.detection if analysis is not None else None
         return {
             "frame_index": frame_index,
-            "elapsed_ms": int(
-                max(0.0, observed_at - active_capture.started_at) * 1000
-            ),
+            "elapsed_ms": int(max(0.0, observed_at - active_capture.started_at) * 1000),
             "observed_at_monotonic": observed_at,
             "image_file": image_file,
             "raw_image_file": raw_image_file,
@@ -1110,7 +1112,9 @@ class GestureService:
                     else None
                 ),
                 "anchor": (
-                    list(contact_metrics.anchor) if contact_metrics is not None else None
+                    list(contact_metrics.anchor)
+                    if contact_metrics is not None
+                    else None
                 ),
                 "tip_distance": (
                     contact_metrics.tip_distance
@@ -1205,9 +1209,11 @@ class GestureService:
                         image,
                         center,
                         radius,
-                        (255, 255, 255)
-                        if name in DEV_CAPTURE_PALM_POINTS
-                        else (255, 170, 70),
+                        (
+                            (255, 255, 255)
+                            if name in DEV_CAPTURE_PALM_POINTS
+                            else (255, 170, 70)
+                        ),
                         -1,
                         lineType=cv2.LINE_AA,
                     )
@@ -1324,9 +1330,7 @@ class GestureService:
             )
 
         pinch_distances = [
-            frame.pinch_distance
-            for frame in frames
-            if frame.pinch_distance is not None
+            frame.pinch_distance for frame in frames if frame.pinch_distance is not None
         ]
         pinch_metrics = None
         if target_id in {"pinch_close", "pinch_open"} and pinch_distances:
@@ -1951,9 +1955,7 @@ class GestureService:
                                         else None
                                     ),
                                     "pinch_distance": (
-                                        _pinch.distance
-                                        if _pinch is not None
-                                        else None
+                                        _pinch.distance if _pinch is not None else None
                                     ),
                                 }
                             )
