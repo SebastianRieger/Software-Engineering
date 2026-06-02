@@ -51,7 +51,7 @@ class GestureDetectionResult:
 GesturePhase = Literal[
     "idle", "preparing", "holding", "committing", "releasing", "cooldown"
 ]
-RuntimeGestureGroup = Literal["single_hand_motion", "push", "two_hand_zoom"]
+RuntimeGestureGroup = Literal["single_hand_motion", "push", "two_hand_zoom", "pinch"]
 
 
 @dataclass(slots=True)
@@ -593,6 +593,8 @@ def _runtime_gesture_group_for_spec(
         return "two_hand_zoom"
     if specification.gesture in {"push_click_short", "push_click_long"}:
         return "push"
+    if specification.gesture in {"pinch_close", "pinch_open"}:
+        return "pinch"
     return "single_hand_motion"
 
 
@@ -601,6 +603,7 @@ def _runtime_gesture_group_rank(group: RuntimeGestureGroup) -> int:
         "single_hand_motion": 0,
         "two_hand_zoom": 1,
         "push": 2,
+        "pinch": 3,
     }[group]
 
 

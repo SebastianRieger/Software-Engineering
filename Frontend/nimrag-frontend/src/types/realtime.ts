@@ -32,7 +32,11 @@ export interface HandTrackingUpdatedEvent {
     hands: Array<{
       hand: string | null
       landmarks: Record<string, [number, number]>
+      pinch_anchor?: [number, number] | null
+      pinch_distance?: number | null
     }>
+    pinch_anchor?: [number, number] | null
+    pinch_distance?: number | null
   }
 }
 

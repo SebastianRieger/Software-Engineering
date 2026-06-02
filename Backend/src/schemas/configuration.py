@@ -111,9 +111,16 @@ class MarketWidgetConfig(BaseModel):
         default_factory=lambda: ["AAPL", "MSFT", "NVDA", "BTC/USD", "ETH/USD"]
     )
     refresh_seconds: int = Field(default=900, ge=60, le=86400)
+
+
 class NinaWidgetConfig(BaseModel):
     ars: str  # Pflichtfeld – kein Standardwert, muss in app_config.json stehen
     refresh_seconds: int = Field(default=300, ge=60, le=86400)
+
+
+class MemeWidgetConfig(BaseModel):
+    sfw_only: bool = True
+    subreddit: str = "memes"
 
 
 class WidgetDefaultsConfig(BaseModel):
@@ -122,6 +129,7 @@ class WidgetDefaultsConfig(BaseModel):
     camera: CameraWidgetConfig = Field(default_factory=CameraWidgetConfig)
     market: MarketWidgetConfig = Field(default_factory=MarketWidgetConfig)
     nina: NinaWidgetConfig | None = None
+    meme: MemeWidgetConfig = Field(default_factory=MemeWidgetConfig)
 
 
 class AppConfig(BaseModel):

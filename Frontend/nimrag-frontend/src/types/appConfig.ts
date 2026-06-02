@@ -27,10 +27,16 @@ export interface CameraWidgetConfig {
 
 export interface MarketWidgetConfig {
   symbols: string[]
+  refresh_seconds: number
 }
 export interface NinaWidgetConfig {
   ars: string
   refresh_seconds: number
+}
+
+export interface MemeWidgetConfig {
+  sfw_only: boolean
+  subreddit: string
 }
 
 export interface WidgetDefaultsConfig {
@@ -39,6 +45,7 @@ export interface WidgetDefaultsConfig {
   camera: CameraWidgetConfig
   market: MarketWidgetConfig
   nina?: NinaWidgetConfig
+  meme: MemeWidgetConfig
 }
 
 export interface AppConfig {

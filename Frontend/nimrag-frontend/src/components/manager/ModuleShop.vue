@@ -1,8 +1,13 @@
 <script setup lang="ts">
-import { ref, onMounted, computed } from 'vue'
+import { ref, watch, onMounted, computed, markRaw } from 'vue'
+import { useHoverTrigger } from '../../composables/useHoverTrigger'
+import type { CursorPosition } from '../../composables/useHandTracking'
 
-const props = defineProps<{ availableCells: number[] }>()
-const emit = defineEmits(['addWidget'])
+const props = defineProps<{
+  gestureCursor?: CursorPosition | null
+}>()
+
+const emit = defineEmits(['addWidget', 'requestAdd'])
 const modules = import.meta.glob("../widgets/*.vue")
 
 type ModuleItem = {
@@ -46,8 +51,14 @@ const displayedModules = computed<DisplayItem[]>(() => {
   }
 
   const center = currentIndex.value
-  const left  = (center - 1 + len) % len
   const right = (center + 1) % len
+  if (len === 2) {
+    result.push({ ...moduleList.value[center]!, position: 'center', index: center })
+    result.push({ ...moduleList.value[right]!, position: 'right', index: right })
+    return result
+  }
+
+  const left  = (center - 1 + len) % len
 
   result.push({ ...moduleList.value[left]!,   position: 'left',   index: left })
   result.push({ ...moduleList.value[center]!, position: 'center', index: center })
@@ -62,7 +73,7 @@ onMounted(async () => {
     const moduleLoader = modules[path]
     if (!moduleLoader) continue
     const module = (await moduleLoader()) as any
-    moduleList.value.push({ name: fileName, path, component: module.default })
+    moduleList.value.push({ name: fileName, path, component: markRaw(module.default) })
   }
 })
 
@@ -72,6 +83,43 @@ const setCurrentModule = (index: number) => {
 }
 
 defineExpose({ addCurrentWidgetToCell, nextModule, prevModule, setCurrentModule })
+
+const { active: ringActive, x: ringX, y: ringY, start: hoverStart, cancel: hoverCancel, move: hoverMove } = useHoverTrigger()
+
+// Gesture-cursor dwell for the add button
+const gestureOverAdd = ref(false)
+
+watch(() => props.gestureCursor, (pos) => {
+  if (!pos) {
+    if (gestureOverAdd.value) {
+      gestureOverAdd.value = false
+      hoverCancel()
+    }
+    return
+  }
+
+  const px = (pos.x / 100) * window.innerWidth
+  const py = (pos.y / 100) * window.innerHeight
+  const fakeEvent = { clientX: px, clientY: py } as MouseEvent
+
+  const el = document.elementFromPoint(px, py)
+  const btn = el?.closest('.add-widget-btn')
+
+  if (!btn) {
+    if (gestureOverAdd.value) {
+      gestureOverAdd.value = false
+      hoverCancel()
+    }
+    return
+  }
+
+  if (gestureOverAdd.value) {
+    hoverMove(fakeEvent)
+  } else {
+    gestureOverAdd.value = true
+    hoverStart(fakeEvent, () => emit('requestAdd'))
+  }
+})
 </script>
 
 <template>
@@ -136,26 +184,39 @@ defineExpose({ addCurrentWidgetToCell, nextModule, prevModule, setCurrentModule 
       <div class="loading-ring" />
     </div>
 
-    <!-- Cell Selection -->
-    <div v-if="moduleList.length > 0" class="cell-section">
-      <div class="cell-section-head">
-        <span v-if="props.availableCells.length" class="cell-label">In Zelle einfügen</span>
-        <span v-else class="cell-label cell-label--full">Alle Zellen belegt</span>
-      </div>
-      <div class="cell-grid">
-        <button
-          v-for="n in 16"
-          :key="n"
-          class="cell-btn"
-          :class="{ 'cell-btn--free': props.availableCells.includes(n) }"
-          :disabled="!props.availableCells.includes(n)"
-          @click="addCurrentWidgetToCell(n)"
-          :aria-label="`Zelle ${n}`"
-        >{{ n }}</button>
-      </div>
+    <!-- Gesture hint: confirm with pinch close -->
+    <div v-if="moduleList.length > 0" class="shop-confirm-hint">
+      <span class="confirm-gesture-badge">Pinch</span>
+      <span class="confirm-hint-text">Widget hinzufügen</span>
     </div>
+    <!-- Add widget button: hover 1s to confirm -->
+    <button
+      v-if="moduleList.length > 0"
+      class="add-widget-btn"
+      @click.stop
+      @mouseenter="(e) => hoverStart(e, () => emit('requestAdd'))"
+      @mouseleave="hoverCancel"
+      @mousemove="hoverMove"
+    >
+      Widget hinzufügen
+    </button>
 
   </div>
+
+  <!-- Hover ring -->
+  <Teleport to="body">
+    <div
+      v-if="ringActive"
+      class="hover-ring"
+      :style="{ left: ringX + 'px', top: ringY + 'px' }"
+    >
+      <svg width="40" height="40" viewBox="0 0 40 40">
+        <circle cx="20" cy="20" r="16" fill="none" stroke="rgba(255,255,255,0.12)" stroke-width="1.5" />
+        <circle cx="20" cy="20" r="16" fill="none" stroke="rgba(255,255,255,0.9)" stroke-width="2"
+          stroke-linecap="round" stroke-dasharray="100.53" class="ring-arc" />
+      </svg>
+    </div>
+  </Teleport>
 </template>
 
 <style scoped>
@@ -409,72 +470,29 @@ defineExpose({ addCurrentWidgetToCell, nextModule, prevModule, setCurrentModule 
 
 @keyframes spin { to { transform: rotate(360deg); } }
 
-/* ── Cell Selection ── */
-.cell-section {
+/* ── Add widget button ── */
+.add-widget-btn {
   flex-shrink: 0;
-  padding-top: 16px;
-  border-top: 1px solid rgba(255, 255, 255, 0.06);
-}
-
-.cell-section-head {
-  margin-bottom: 11px;
-}
-
-.cell-label {
-  font-size: 0.68rem;
-  font-weight: 600;
-  letter-spacing: 0.15em;
+  width: 100%;
+  padding: 13px 0;
+  margin-top: 6px;
+  background: rgba(255, 255, 255, 0.08);
+  color: rgba(255, 255, 255, 0.85);
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  border-radius: 10px;
+  font-size: 0.78rem;
+  font-weight: 700;
+  letter-spacing: 0.12em;
   text-transform: uppercase;
-  color: rgba(255, 255, 255, 0.32);
-}
-
-.cell-label--full {
-  color: rgba(255, 255, 255, 0.18);
-}
-
-/* 8 columns on wide, 4 on narrow */
-.cell-grid {
-  display: grid;
-  grid-template-columns: repeat(8, 1fr);
-  gap: 5px;
-}
-
-.cell-btn {
-  aspect-ratio: 1;
-  background: #141414;
-  border: 1px solid rgba(255, 255, 255, 0.05);
-  border-radius: 6px;
-  color: rgba(255, 255, 255, 0.15);
-  font-size: 0.72rem;
-  font-weight: 600;
-  cursor: not-allowed;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  transition:
-    background 180ms ease,
-    border-color 180ms ease,
-    color 180ms ease,
-    transform 180ms ease;
-}
-
-.cell-btn--free {
-  background: #242424;
-  border-color: rgba(255, 255, 255, 0.13);
-  color: rgba(255, 255, 255, 0.65);
   cursor: pointer;
+  transition: background 180ms ease, border-color 180ms ease, color 180ms ease, transform 180ms ease;
 }
 
-.cell-btn--free:hover {
-  background: #303030;
-  border-color: rgba(255, 255, 255, 0.48);
+.add-widget-btn:hover {
+  background: rgba(255, 255, 255, 0.14);
+  border-color: rgba(255, 255, 255, 0.36);
   color: #ffffff;
   transform: translateY(-1px);
-}
-
-.cell-btn--free:active {
-  transform: translateY(0);
-  background: #3a3a3a;
 }
 
 /* ── Responsive ── */
@@ -496,10 +514,6 @@ defineExpose({ addCurrentWidgetToCell, nextModule, prevModule, setCurrentModule 
 
   .nav-btn { width: 38px; height: 38px; }
   .nav-btn svg { width: 16px; height: 16px; }
-
-  /* 4 columns on narrow screens — matches the actual 4×4 grid layout */
-  .cell-grid { grid-template-columns: repeat(4, 1fr); gap: 6px; }
-  .cell-btn { font-size: 0.8rem; border-radius: 8px; }
 }
 
 @media (max-width: 480px) {
@@ -511,7 +525,7 @@ defineExpose({ addCurrentWidgetToCell, nextModule, prevModule, setCurrentModule 
 
 /* ── Reduced motion ── */
 @media (prefers-reduced-motion: reduce) {
-  .module-card, .nav-btn, .cell-btn, .pip { transition: none; }
+  .module-card, .nav-btn, .add-widget-btn, .pip { transition: none; }
   .loading-ring { animation: none; border-top-color: rgba(255,255,255,0.4); }
 }
 </style>

@@ -97,6 +97,104 @@ describe('useActionDispatcher', () => {
     expect(closeShop).toHaveBeenCalledOnce()
   })
 
+  it('opens the shop from an empty focused cell in edit mode', () => {
+    const openShop = vi.fn()
+
+    const dispatcher = useActionDispatcher({
+      isShopOpen: ref(false),
+      openShop,
+      closeShop: vi.fn(),
+      toggleShop: vi.fn(),
+      isEditMode: ref(true),
+      visibleCellIds: () => [1, 2, 3, 4],
+      isCellAvailable: (cellId) => cellId === 2,
+      isCellOccupied: () => false,
+      moduleShopRef: ref(null),
+    })
+
+    dispatcher.dispatchAction(createPayloadWithArgs('focus_grid_cell', { cell_index: 2 }))
+
+    expect(dispatcher.dispatchAction(createPayload('primary_click'))).toBe(true)
+    expect(openShop).toHaveBeenCalledOnce()
+    expect(dispatcher.isDragging.value).toBe(false)
+  })
+
+  it('starts dragging an occupied focused cell and drops it on pinch open', () => {
+    const onWidgetMoved = vi.fn()
+
+    const dispatcher = useActionDispatcher({
+      isShopOpen: ref(false),
+      openShop: vi.fn(),
+      closeShop: vi.fn(),
+      toggleShop: vi.fn(),
+      isEditMode: ref(true),
+      visibleCellIds: () => [1, 2, 3, 4],
+      isCellAvailable: (cellId) => cellId === 3,
+      isCellOccupied: (cellId) => cellId === 1,
+      moduleShopRef: ref(null),
+      onWidgetMoved,
+    })
+
+    expect(dispatcher.dispatchAction(createPayload('primary_click'))).toBe(true)
+    expect(dispatcher.isDragging.value).toBe(true)
+    expect(dispatcher.dragSourceCell.value).toBe(1)
+
+    dispatcher.dispatchAction(createPayloadWithArgs('focus_grid_cell', { cell_index: 3 }))
+
+    expect(dispatcher.dispatchAction(createPayload('drop_widget'))).toBe(true)
+    expect(onWidgetMoved).toHaveBeenCalledWith(1, 3)
+    expect(dispatcher.isDragging.value).toBe(false)
+    expect(dispatcher.dragSourceCell.value).toBeNull()
+  })
+
+  it('keeps primary click from dropping an already dragged widget', () => {
+    const onWidgetMoved = vi.fn()
+
+    const dispatcher = useActionDispatcher({
+      isShopOpen: ref(false),
+      openShop: vi.fn(),
+      closeShop: vi.fn(),
+      toggleShop: vi.fn(),
+      isEditMode: ref(true),
+      visibleCellIds: () => [1, 2, 3, 4],
+      isCellAvailable: (cellId) => cellId === 2,
+      isCellOccupied: (cellId) => cellId === 1,
+      moduleShopRef: ref(null),
+      onWidgetMoved,
+    })
+
+    dispatcher.dispatchAction(createPayload('primary_click'))
+    dispatcher.dispatchAction(createPayloadWithArgs('focus_grid_cell', { cell_index: 2 }))
+
+    expect(dispatcher.dispatchAction(createPayload('primary_click'))).toBe(false)
+    expect(onWidgetMoved).not.toHaveBeenCalled()
+    expect(dispatcher.isDragging.value).toBe(true)
+  })
+
+  it('clears drag state without moving when dropping on the source cell', () => {
+    const onWidgetMoved = vi.fn()
+
+    const dispatcher = useActionDispatcher({
+      isShopOpen: ref(false),
+      openShop: vi.fn(),
+      closeShop: vi.fn(),
+      toggleShop: vi.fn(),
+      isEditMode: ref(true),
+      visibleCellIds: () => [1, 2, 3, 4],
+      isCellAvailable: () => false,
+      isCellOccupied: (cellId) => cellId === 1,
+      moduleShopRef: ref(null),
+      onWidgetMoved,
+    })
+
+    dispatcher.dispatchAction(createPayload('primary_click'))
+
+    expect(dispatcher.dispatchAction(createPayload('drop_widget'))).toBe(true)
+    expect(onWidgetMoved).not.toHaveBeenCalled()
+    expect(dispatcher.isDragging.value).toBe(false)
+    expect(dispatcher.dragSourceCell.value).toBeNull()
+  })
+
   it('opens and closes shop actions directly', () => {
     const openShop = vi.fn()
     const closeShop = vi.fn()
@@ -186,24 +284,26 @@ describe('useActionDispatcher', () => {
   it('supports arrange-mode and resize actions when optional handlers exist', () => {
     const setEditMode = vi.fn()
     const resizeCell = vi.fn()
+    const isEditMode = ref(false)
 
     const dispatcher = useActionDispatcher({
       isShopOpen: ref(false),
       openShop: vi.fn(),
       closeShop: vi.fn(),
       toggleShop: vi.fn(),
-      isEditMode: ref(false),
+      isEditMode,
       setEditMode,
       visibleCellIds: () => [1, 2, 3, 4],
       isCellAvailable: () => true,
+      isCellOccupied: () => true,
       resizeCell,
       moduleShopRef: ref(null),
     })
 
     expect(dispatcher.dispatchAction(createPayload('enter_arrange_mode'))).toBe(true)
-    expect(dispatcher.dispatchAction(createPayload('exit_arrange_mode'))).toBe(true)
     expect(dispatcher.dispatchAction(createPayload('resize_expand'))).toBe(true)
     expect(dispatcher.dispatchAction(createPayload('resize_shrink'))).toBe(true)
+    expect(dispatcher.dispatchAction(createPayload('exit_arrange_mode'))).toBe(true)
 
     expect(setEditMode).toHaveBeenNthCalledWith(1, true)
     expect(setEditMode).toHaveBeenNthCalledWith(2, false)

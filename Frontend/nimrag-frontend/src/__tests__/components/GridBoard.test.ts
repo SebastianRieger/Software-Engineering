@@ -35,7 +35,7 @@ describe('GridBoard', () => {
   })
 
   it('marks the focused cell with a dedicated class', () => {
-    const wrapper = mount(GridBoard, { props: { isEditMode: false, focusedCellId: 3 } })
+    const wrapper = mount(GridBoard, { props: { isEditMode: true, focusedCellId: 3 } })
     const focusedCell = wrapper.find('[data-cell-id="3"]')
 
     expect(focusedCell.classes()).toContain('grid-cell-focused')
@@ -87,7 +87,8 @@ describe('GridBoard', () => {
     expect(wrapper.find('.resize-widget-btn').exists()).toBe(true)
   })
 
-  it('emits deleteWidget when delete button is clicked', async () => {
+  it('emits deleteWidget after hover-dwell on delete button', async () => {
+    vi.useFakeTimers()
     const { widgetMap } = useWidgetManager()
     widgetMap.value = { 1: markRaw(DummyWidget) }
 
@@ -96,8 +97,12 @@ describe('GridBoard', () => {
 
     const deleteBtn = wrapper.find('.delete-widget-btn')
     expect(deleteBtn.exists()).toBe(true)
-    await deleteBtn.trigger('click')
+    await deleteBtn.trigger('mouseenter')
+    vi.advanceTimersByTime(1000)
+    await wrapper.vm.$nextTick()
     expect(wrapper.emitted('deleteWidget')).toBeTruthy()
+
+    vi.useRealTimers()
   })
 
   it('executes full drag-start logic (ghost element) when cell contains a widget', async () => {
@@ -154,7 +159,7 @@ describe('GridBoard', () => {
     vi.useRealTimers()
   })
 
-  it('triggers resize animation when resize button is clicked', async () => {
+  it('triggers resize animation after hover-dwell on resize button', async () => {
     vi.useFakeTimers()
     const { widgetMap } = useWidgetManager()
     widgetMap.value = { 1: markRaw(DummyWidget) }
@@ -165,14 +170,15 @@ describe('GridBoard', () => {
     const resizeBtn = wrapper.find('.resize-widget-btn')
     expect(resizeBtn.exists()).toBe(true)
 
-    await resizeBtn.trigger('click')
+    await resizeBtn.trigger('mouseenter')
+    vi.advanceTimersByTime(1000)
     await wrapper.vm.$nextTick()
 
-    // resize-active class is applied immediately after click
+    // resize-active class is applied after dwell completes
     expect(resizeBtn.classes()).toContain('resize-active')
 
-    // After 200ms timeout, class is removed
-    vi.advanceTimersByTime(200)
+    // After 450ms timeout, class is removed
+    vi.advanceTimersByTime(450)
     await wrapper.vm.$nextTick()
     expect(resizeBtn.classes()).not.toContain('resize-active')
 

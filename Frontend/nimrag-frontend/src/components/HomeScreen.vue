@@ -12,7 +12,10 @@ const props = defineProps<{
   slideDirection: 'up' | 'down' | null
 }>()
 
-const emit = defineEmits<{ goToGrid: [] }>()
+const emit = defineEmits<{
+  'goto-grid': []
+  'navigate-camera': [direction: 'up' | 'down']
+}>()
 
 // --- Camera display ---
 const currentCameraName = computed(() => {
@@ -255,12 +258,12 @@ watch(trackedHands, drawLandmarks, { deep: true })
           <span class="cam-name">{{ currentCameraName }}</span>
         </div>
         <div class="hint-chips">
-          <span class="chip">
+          <button class="chip chip-btn" @click="emit('goto-grid')">
             <span class="chip-key">←</span> Grid öffnen
-          </span>
-          <span v-if="cameras.length > 1" class="chip">
+          </button>
+          <button v-if="cameras.length > 1" class="chip chip-btn" @click="emit('navigate-camera', 'down')">
             <span class="chip-key">↑↓</span> Kamera wechseln
-          </span>
+          </button>
         </div>
       </div>
     </div>
@@ -654,6 +657,10 @@ watch(trackedHands, drawLandmarks, { deep: true })
   pointer-events: none;
 }
 
+.bottom-bar .hint-chips {
+  pointer-events: auto;
+}
+
 .bottom-gradient {
   position: absolute;
   inset: 0;
@@ -716,6 +723,21 @@ watch(trackedHands, drawLandmarks, { deep: true })
   padding: 1px 6px;
   border-radius: 4px;
   font-size: 0.78rem;
+}
+
+.chip-btn {
+  cursor: pointer;
+  transition: background 0.18s ease, border-color 0.18s ease, transform 0.12s ease;
+}
+
+.chip-btn:hover {
+  background: rgba(255, 255, 255, 0.18);
+  border-color: rgba(255, 255, 255, 0.30);
+}
+
+.chip-btn:active {
+  transform: scale(0.95);
+  background: rgba(255, 255, 255, 0.25);
 }
 
 /* ── Reduced Motion ── */

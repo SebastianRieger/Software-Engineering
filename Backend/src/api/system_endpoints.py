@@ -27,6 +27,7 @@ from schemas.gestures import (
     GestureCameraListResponse,
     GestureConfig,
     GestureConfigEnvelope,
+    GestureDevCaptureResponse,
     GestureFrameResponse,
     GestureStartRequest,
     GestureStatusResponse,
@@ -515,6 +516,16 @@ async def get_preview_frame(
     if isinstance(frame, str):
         return {"image": frame, "captured_at": None, "frame_age_ms": None}
     return frame
+
+
+@gesture_router.post("/dev/capture", response_model=GestureDevCaptureResponse)
+async def start_dev_capture(
+    service: GestureService = Depends(get_gesture_service),
+):
+    try:
+        return service.begin_dev_capture()
+    except GestureServiceError as exc:
+        raise HTTPException(status_code=exc.status_code, detail=str(exc)) from exc
 
 
 @gesture_router.post(
