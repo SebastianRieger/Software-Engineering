@@ -1,0 +1,10 @@
+flowchart LR
+    A["📄 Nimrag_Image.yaml"] --> B["rpi-image-gen\nOrchestrator"]
+    B --> C["mmdebstrap\nDebian Rootfs"]
+    C --> D["customize-hooks\nKiosk · Autologin\nSystemd · First-Boot"]
+    D --> E["genimage\nPartitionierung"]
+    E --> F["💾 Nimrag_Image.img\nFAT32 + ext4"]
+
+    style A fill:#1a1a2e,color:#fff
+    style B fill:#5b21b6,color:#fff
+    style F fill:#059669,color:#fff

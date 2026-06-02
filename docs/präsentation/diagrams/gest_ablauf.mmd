@@ -1,0 +1,15 @@
+graph LR
+    A([Kamera]) --> B[Hand erkannt]
+    B --> C[Cursor aktiv]
+    C --> D{Eingabe}
+    D -->|Wischen| E[Widget wechseln]
+    D -->|Kreis| F[Aktion bestätigen]
+    D -->|Cursor halten| G[Button klicken]
+    D -->|Pinch| H[Widget verschieben]
+    E --> I([Frontend reagiert])
+    F --> I
+    G --> I
+    H --> I
+    style A fill:#1a1a2e,color:#fff
+    style C fill:#5b21b6,color:#fff
+    style I fill:#059669,color:#fff

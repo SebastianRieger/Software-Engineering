@@ -1,0 +1,22 @@
+graph TB
+    subgraph API["API-Layer"]
+        EP["Endpunkte REST"]
+        WS["WebSocket /ws"]
+    end
+    subgraph SVC["Services"]
+        GS["Gestensteuerung"]
+        IO["Input-Orchestrator"]
+        DS["Datendienste"]
+    end
+    subgraph REPO["Repositories"]
+        DB[("SQLite")]
+    end
+    EP --> GS
+    EP --> DS
+    GS -->|Geste erkannt| IO
+    IO -->|UI-Aktion| WS
+    DS --> DB
+    GS --> DB
+    style GS fill:#5b21b6,color:#fff
+    style IO fill:#7c3aed,color:#fff
+    style WS fill:#1a1a2e,color:#fff
