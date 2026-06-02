@@ -207,6 +207,12 @@ class Settings(BaseSettings):
     MUSICAL_AUDIO_MAX_PATTERN_WINDOW_SECONDS: float = 4.0
     MUSICAL_AUDIO_STOP_JOIN_TIMEOUT_SECONDS: float = 2.0
 
+    # Spotify settings
+    SPOTIFY_CLIENT_ID: str = ""
+    SPOTIFY_CLIENT_SECRET: str = ""
+    SPOTIFY_REDIRECT_URI: str = "http://localhost:8000/api/v1/spotify/callback"
+    SPOTIFY_TIMEOUT_SECONDS: float = 5.0
+
     # MQTT settings
     MQTT_BROKER: str = "localhost"
     MQTT_PORT: int = 1883
