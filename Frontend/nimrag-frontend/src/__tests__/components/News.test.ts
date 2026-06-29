@@ -2,6 +2,19 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { mount, flushPromises } from '@vue/test-utils'
 import { ref } from 'vue'
 import News from '@/components/widgets/News.vue'
+import { loadAppConfig } from '@/composables/useAppConfig'
+import { getNews } from '@/services/news'
+
+vi.mock('@/composables/useAppConfig', () => ({
+  loadAppConfig: vi.fn(),
+}))
+
+vi.mock('@/services/news', () => ({
+  getNews: vi.fn(),
+}))
+
+const mockedLoadAppConfig = vi.mocked(loadAppConfig)
+const mockedGetNews = vi.mocked(getNews)
 
 const makeNewsItem = (overrides: Partial<Record<string, unknown>> = {}) => ({
   sophoraId: 'id-1',
@@ -20,35 +33,48 @@ const makeNewsItem = (overrides: Partial<Record<string, unknown>> = {}) => ({
   ...overrides,
 })
 
-const mockFetch = (items: unknown[] = [makeNewsItem()]) => {
-  vi.stubGlobal(
-    'fetch',
-    vi.fn().mockResolvedValue({
-      ok: true,
-      json: async () => ({ news: items }),
-    })
-  )
+const mockNews = (items: unknown[] = [makeNewsItem()]) => {
+  mockedGetNews.mockResolvedValue({ news: items as never, source: 'live' })
 }
 
 beforeEach(() => {
   vi.useFakeTimers()
+  mockedLoadAppConfig.mockReset()
+  mockedGetNews.mockReset()
+  mockedLoadAppConfig.mockResolvedValue({
+    version: 1,
+    system: {
+      location_name: 'Stuttgart',
+      latitude: 48.7758,
+      longitude: 9.1829,
+      units: 'metric',
+      theme: 'dark',
+      weather_refresh_seconds: 900,
+      updated_at: null,
+    },
+    widgets: {
+      weather: { refresh_seconds: 900 },
+      news: { ressort: null, regions: [1], refresh_seconds: 3600 },
+      camera: { preferred_device_id: null, preferred_device_label: null },
+      market: { symbols: ['AAPL', 'BTC/USD'], refresh_seconds: 900 },
+    },
+  })
+  mockNews()
 })
 
 afterEach(() => {
   vi.useRealTimers()
-  vi.unstubAllGlobals()
 })
 
 describe('News widget', () => {
   it('shows loading state while fetching', () => {
-    // Fetch never resolves → loading stays true
-    vi.stubGlobal('fetch', vi.fn().mockReturnValue(new Promise(() => {})))
+    mockedGetNews.mockReturnValue(new Promise(() => {}))
     const wrapper = mount(News)
     expect(wrapper.text()).toContain('Lädt')
   })
 
   it('displays news items after successful fetch', async () => {
-    mockFetch([makeNewsItem({ title: 'Breaking News' })])
+    mockNews([makeNewsItem({ title: 'Breaking News' })])
     const wrapper = mount(News)
     await flushPromises()
 
@@ -57,10 +83,7 @@ describe('News widget', () => {
   })
 
   it('shows error state when fetch fails', async () => {
-    vi.stubGlobal(
-      'fetch',
-      vi.fn().mockResolvedValue({ ok: false, status: 500 })
-    )
+    mockedGetNews.mockRejectedValueOnce(new Error('HTTP 500'))
     const wrapper = mount(News)
     await flushPromises()
 
@@ -68,7 +91,7 @@ describe('News widget', () => {
   })
 
   it('shows "Keine Meldungen" when news array is empty', async () => {
-    mockFetch([])
+    mockNews([])
     const wrapper = mount(News)
     await flushPromises()
 
@@ -76,7 +99,7 @@ describe('News widget', () => {
   })
 
   it('renders tagesschau logo in the header', async () => {
-    mockFetch()
+    mockNews()
     const wrapper = mount(News)
     await flushPromises()
 
@@ -84,7 +107,7 @@ describe('News widget', () => {
   })
 
   it('renders in medium size when cellSizes provides value 2', async () => {
-    mockFetch([
+    mockNews([
       makeNewsItem({ title: 'News 1' }),
       makeNewsItem({ sophoraId: 'id-2', title: 'News 2' }),
       makeNewsItem({ sophoraId: 'id-3', title: 'News 3' }),
@@ -105,7 +128,7 @@ describe('News widget', () => {
   })
 
   it('renders in large size when cellSizes provides value 4', async () => {
-    mockFetch([
+    mockNews([
       makeNewsItem({ title: 'News 1' }),
       makeNewsItem({ sophoraId: 'id-2', title: 'News 2' }),
     ])
@@ -124,7 +147,7 @@ describe('News widget', () => {
   })
 
   it('renders in small size by default (no provide)', async () => {
-    mockFetch([makeNewsItem(), makeNewsItem({ sophoraId: 'id-2', title: 'Second' })])
+    mockNews([makeNewsItem(), makeNewsItem({ sophoraId: 'id-2', title: 'Second' })])
     const wrapper = mount(News)
     await flushPromises()
 
@@ -132,7 +155,7 @@ describe('News widget', () => {
   })
 
   it('shows image placeholder when item has no teaserImage', async () => {
-    mockFetch([
+    mockNews([
       makeNewsItem({ teaserImage: undefined }),
       makeNewsItem({ sophoraId: 'id-2', teaserImage: undefined }),
     ])
@@ -148,7 +171,7 @@ describe('News widget', () => {
   })
 
   it('renders breaking news styling', async () => {
-    mockFetch([makeNewsItem({ breakingNews: true })])
+    mockNews([makeNewsItem({ breakingNews: true })])
     const wrapper = mount(News)
     await flushPromises()
 
@@ -156,7 +179,7 @@ describe('News widget', () => {
   })
 
   it('shows topline text when present', async () => {
-    mockFetch([makeNewsItem({ topline: 'Eilmeldung Topline' })])
+    mockNews([makeNewsItem({ topline: 'Eilmeldung Topline' })])
     const wrapper = mount(News)
     await flushPromises()
 
@@ -164,7 +187,7 @@ describe('News widget', () => {
   })
 
   it('clears the refresh interval on unmount', async () => {
-    mockFetch()
+    mockNews()
     const clearSpy = vi.spyOn(window, 'clearInterval')
     const wrapper = mount(News)
     await flushPromises()
@@ -173,10 +196,7 @@ describe('News widget', () => {
   })
 
   it('handles fetch error thrown as a non-Error value', async () => {
-    vi.stubGlobal(
-      'fetch',
-      vi.fn().mockRejectedValue('string error')
-    )
+    mockedGetNews.mockRejectedValueOnce('string error')
     const wrapper = mount(News)
     await flushPromises()
 
@@ -186,7 +206,7 @@ describe('News widget', () => {
   // ── Medium-size branch coverage ─────────────────────────────────────────
 
   it('renders breaking news row styling in medium size', async () => {
-    mockFetch([
+    mockNews([
       makeNewsItem({ breakingNews: true }),
       makeNewsItem({ sophoraId: 'id-2', breakingNews: true }),
     ])
@@ -199,7 +219,7 @@ describe('News widget', () => {
   })
 
   it('shows topline as badge in medium size when ressort is absent', async () => {
-    mockFetch([
+    mockNews([
       makeNewsItem({ ressort: undefined, topline: 'Politik' }),
       makeNewsItem({ sophoraId: 'id-2', ressort: undefined, topline: 'Sport' }),
     ])
@@ -213,7 +233,7 @@ describe('News widget', () => {
   })
 
   it('shows em dash as badge in medium size when both ressort and topline are absent', async () => {
-    mockFetch([
+    mockNews([
       makeNewsItem({ ressort: undefined, topline: undefined }),
       makeNewsItem({ sophoraId: 'id-2', ressort: undefined, topline: undefined }),
     ])
@@ -229,7 +249,7 @@ describe('News widget', () => {
   // ── Large-size branch coverage ──────────────────────────────────────────
 
   it('renders breaking news badge and card styling in large size', async () => {
-    mockFetch([
+    mockNews([
       makeNewsItem({ breakingNews: true }),
       makeNewsItem({ sophoraId: 'id-2', breakingNews: true }),
     ])
@@ -243,7 +263,7 @@ describe('News widget', () => {
   })
 
   it('renders large size gracefully without optional fields (topline / firstSentence / ressort / date)', async () => {
-    mockFetch([
+    mockNews([
       makeNewsItem({ topline: undefined, firstSentence: undefined, ressort: undefined, date: '' }),
       makeNewsItem({ sophoraId: 'id-2', topline: undefined, firstSentence: undefined, ressort: undefined, date: '' }),
     ])
@@ -262,7 +282,7 @@ describe('News widget', () => {
   // ── getImage() fallback chains ──────────────────────────────────────────
 
   it('uses 16x9-640 variant when 16x9-960 is absent', async () => {
-    mockFetch([
+    mockNews([
       makeNewsItem({ teaserImage: { imageVariants: { '16x9-640': 'https://img.example.com/640.jpg' }, alttext: 'Alt' } }),
       makeNewsItem({ sophoraId: 'id-2', teaserImage: { imageVariants: { '16x9-640': 'https://img.example.com/640-b.jpg' }, alttext: 'B' } }),
     ])
@@ -277,7 +297,7 @@ describe('News widget', () => {
   })
 
   it('uses 16x9-480 variant as third fallback', async () => {
-    mockFetch([
+    mockNews([
       makeNewsItem({ teaserImage: { imageVariants: { '16x9-480': 'https://img.example.com/480.jpg' }, alttext: 'Alt' } }),
       makeNewsItem({ sophoraId: 'id-2', teaserImage: { imageVariants: { '16x9-480': 'https://img.example.com/480-b.jpg' }, alttext: 'B' } }),
     ])
@@ -292,7 +312,7 @@ describe('News widget', () => {
   })
 
   it('uses first available variant key as last-resort fallback', async () => {
-    mockFetch([
+    mockNews([
       makeNewsItem({ teaserImage: { imageVariants: { 'custom-key': 'https://img.example.com/custom.jpg' }, alttext: 'Alt' } }),
       makeNewsItem({ sophoraId: 'id-2', teaserImage: { imageVariants: { 'custom-key': 'https://img.example.com/custom-b.jpg' }, alttext: 'B' } }),
     ])

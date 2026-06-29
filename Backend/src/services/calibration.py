@@ -204,6 +204,18 @@ class CalibrationService:
             display_name="Zoom In Hands",
             description="Kalibriert Zwei-Hand-Zoom nach aussen.",
         ),
+        CalibrationTargetDefinition(
+            id="pinch_close",
+            modality="gesture",
+            display_name="Pinch Close",
+            description="Kalibriert den Daumen-Zeigefinger-Kontakt fuer Greifen.",
+        ),
+        CalibrationTargetDefinition(
+            id="pinch_open",
+            modality="gesture",
+            display_name="Pinch Open",
+            description="Kalibriert das Oeffnen nach einem Pinch fuer Ablegen.",
+        ),
     ]
 
     def __init__(
@@ -929,6 +941,10 @@ class CalibrationService:
         if zoom_analyses:
             target_analyses.extend(zoom_analyses)
 
+        pinch_analyses = self._analyze_pinch(session.samples, candidate_config)
+        if pinch_analyses:
+            target_analyses.extend(pinch_analyses)
+
         gesture_config_patch = _build_gesture_config_patch(
             base_config=base_config,
             candidate_config=candidate_config,
@@ -1492,6 +1508,125 @@ class CalibrationService:
                         ),
                     ],
                     artifacts={"family": "push"},
+                )
+            )
+        return analyses
+
+    def _analyze_pinch(
+        self,
+        samples: list[CalibrationCollectedSample],
+        candidate_config: GestureConfig,
+    ) -> list[CalibrationTargetAnalysis]:
+        analyses: list[CalibrationTargetAnalysis] = []
+        grouped: dict[str, list[CalibrationCollectedSample]] = {
+            target_id: [
+                sample
+                for sample in samples
+                if sample.target_id == target_id
+                and sample.gesture_payload is not None
+                and sample.gesture_payload.pinch is not None
+            ]
+            for target_id in ("pinch_close", "pinch_open")
+        }
+        close_distances = [
+            sample.gesture_payload.pinch.distance
+            for sample in grouped["pinch_close"]
+            if sample.gesture_payload is not None
+            and sample.gesture_payload.pinch is not None
+        ]
+        open_distances = [
+            sample.gesture_payload.pinch.distance
+            for sample in grouped["pinch_open"]
+            if sample.gesture_payload is not None
+            and sample.gesture_payload.pinch is not None
+        ]
+
+        original_close = candidate_config.pinch_close_threshold
+        original_open = candidate_config.pinch_open_threshold
+        if close_distances:
+            candidate_config.pinch_close_threshold = _clamp(
+                (_percentile(close_distances, 0.90) or original_close) * 1.15,
+                0.04,
+                0.48,
+            )
+        if open_distances:
+            candidate_config.pinch_open_threshold = _clamp(
+                (_percentile(open_distances, 0.10) or original_open) * 0.90,
+                0.16,
+                0.90,
+            )
+        if (
+            candidate_config.pinch_open_threshold
+            <= candidate_config.pinch_close_threshold
+        ):
+            candidate_config.pinch_open_threshold = _clamp(
+                candidate_config.pinch_close_threshold + 0.12,
+                0.16,
+                0.95,
+            )
+
+        for target_id, target_samples in grouped.items():
+            if not target_samples:
+                continue
+            distances = [
+                sample.gesture_payload.pinch.distance
+                for sample in target_samples
+                if sample.gesture_payload is not None
+                and sample.gesture_payload.pinch is not None
+            ]
+            smoothed_distances = [
+                sample.gesture_payload.pinch.smoothed_distance
+                for sample in target_samples
+                if sample.gesture_payload is not None
+                and sample.gesture_payload.pinch is not None
+                and sample.gesture_payload.pinch.smoothed_distance is not None
+            ]
+            confidences = [
+                sample.gesture_payload.confidence
+                for sample in target_samples
+                if sample.gesture_payload is not None
+            ]
+            recommendations = []
+            if target_id == "pinch_close":
+                recommendations.append(
+                    CalibrationRecommendation(
+                        parameter="pinch_close_threshold",
+                        current_value=original_close,
+                        recommended_value=candidate_config.pinch_close_threshold,
+                        min_bound=0.04,
+                        max_bound=0.48,
+                        rationale="Close-Schwelle folgt der realen Daumen-Zeigefinger-Kontaktdistanz.",
+                    )
+                )
+            else:
+                recommendations.append(
+                    CalibrationRecommendation(
+                        parameter="pinch_open_threshold",
+                        current_value=original_open,
+                        recommended_value=candidate_config.pinch_open_threshold,
+                        min_bound=0.16,
+                        max_bound=0.95,
+                        rationale="Open-Schwelle bleibt mit Hysterese oberhalb erfolgreicher Close-Distanzen.",
+                    )
+                )
+            analyses.append(
+                CalibrationTargetAnalysis(
+                    target_id=target_id,
+                    sample_count=len(target_samples),
+                    metrics=[
+                        _metric_summary(
+                            "pinch_distance", [float(v) for v in distances]
+                        ),
+                        _metric_summary(
+                            "pinch_smoothed_distance",
+                            [float(v) for v in smoothed_distances],
+                        ),
+                        _metric_summary(
+                            "confidence", [float(value) for value in confidences]
+                        ),
+                    ],
+                    recommendations=recommendations,
+                    artifacts={"family": "pinch"},
                 )
             )
         return analyses

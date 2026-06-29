@@ -8,6 +8,9 @@ import ModuleShop from '@/components/manager/ModuleShop.vue'
 vi.mock('@/components/widgets/ClockWidget.vue', () => ({
   default: defineComponent({ name: 'MockClock', template: '<div class="mock-clock">Clock</div>' }),
 }))
+vi.mock('@/components/widgets/CameraWidget.vue', () => ({
+  default: defineComponent({ name: 'MockCamera', template: '<div class="mock-camera">Camera</div>' }),
+}))
 vi.mock('@/components/widgets/News.vue', () => ({
   default: defineComponent({ name: 'MockNews', template: '<div class="mock-news">News</div>' }),
 }))
@@ -34,12 +37,12 @@ afterEach(() => {
 describe('ModuleShop', () => {
   it('renders the "Widget Shop" title immediately', () => {
     const wrapper = mount(ModuleShop, { props: { availableCells: [] } })
-    expect(wrapper.text()).toContain('Widget Shop')
+    expect(wrapper.text()).toContain('WIDGET SHOP')
   })
 
   it('shows a loading indicator before modules are ready', () => {
     const wrapper = mount(ModuleShop, { props: { availableCells: [] } })
-    expect(wrapper.find('.loading').exists()).toBe(true)
+    expect(wrapper.find('.shop-loading').exists()).toBe(true)
   })
 
   it('renders the carousel after modules are loaded', async () => {
@@ -56,45 +59,42 @@ describe('ModuleShop', () => {
     }
   })
 
-  it('shows available cell buttons when modules are loaded', async () => {
+  it('shows the pinch confirmation hint when modules are loaded', async () => {
     const wrapper = mount(ModuleShop, { props: { availableCells: [1, 2, 5] } })
     await drainModuleLoading()
 
     const vm = wrapper.vm as any
     if (vm.moduleList?.length > 0) {
-      const buttons = wrapper.findAll('.cell-btn')
-      expect(buttons.length).toBe(3)
+      expect(wrapper.find('.shop-confirm-hint').text()).toContain('Widget hinzufügen')
+      expect(wrapper.find('.confirm-gesture-badge').text()).toContain('Pinch')
     } else {
       // Modules did not load via glob – verify component is stable
       expect(wrapper.exists()).toBe(true)
     }
   })
 
-  it('shows "no cells" message when modules loaded but availableCells is empty', async () => {
+  it('keeps placement controlled by the exposed addCurrentWidgetToCell API', async () => {
     const wrapper = mount(ModuleShop, { props: { availableCells: [] } })
     await drainModuleLoading()
 
     const vm = wrapper.vm as any
     if (vm.moduleList?.length > 0) {
-      expect(wrapper.find('.no-cells-msg').exists()).toBe(true)
+      vm.addCurrentWidgetToCell(7)
+      expect(wrapper.emitted('addWidget')).toBeTruthy()
+      const payload = (wrapper.emitted('addWidget') as any)[0][0]
+      expect(payload.cellId).toBe(7)
+      expect(payload.component).toBeDefined()
     } else {
-      expect(wrapper.find('.loading').exists()).toBe(true)
+      expect(wrapper.find('.shop-loading').exists()).toBe(true)
     }
   })
 
-  it('emits addWidget when a cell button is clicked (modules loaded)', async () => {
+  it('does not expose stale cell placement buttons', async () => {
     const wrapper = mount(ModuleShop, { props: { availableCells: [3] } })
     await drainModuleLoading()
 
-    const vm = wrapper.vm as any
-    if (vm.moduleList?.length > 0) {
-      await wrapper.find('.cell-btn').trigger('click')
-      expect(wrapper.emitted('addWidget')).toBeTruthy()
-      // emitted('addWidget') → [[{ cellId, component }], ...]
-      const payload = (wrapper.emitted('addWidget') as any)[0][0]
-      expect(payload.cellId).toBe(3)
-      expect(payload.component).toBeDefined()
-    }
+    expect(wrapper.find('.cell-btn--free').exists()).toBe(false)
+    expect(wrapper.find('.cell-label--full').exists()).toBe(false)
   })
 
   it('nextModule is a no-op when moduleList is empty', () => {

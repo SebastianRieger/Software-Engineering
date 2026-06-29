@@ -7,7 +7,7 @@ BASE_DIR = Path(__file__).resolve().parents[2]
 class Settings(BaseSettings):
     model_config = SettingsConfigDict(
         case_sensitive=True,
-        env_file=".env",
+        env_file=str(BASE_DIR / ".env"),
     )
 
     PROJECT_NAME: str = "Nimrag Smart Mirror"
@@ -27,12 +27,20 @@ class Settings(BaseSettings):
 
     # Database settings
     DATABASE_URL: str = "sqlite:///./nimrag.db"
+    APP_CONFIG_FILE: str = "config/app_config.json"
 
     # External API settings
+    TWELVE_DATA_API_KEY: str = ""
     WEATHER_API_KEY: str = ""
     WEATHER_TIMEOUT_SECONDS: float = 5.0
     WEATHER_CACHE_TTL_SECONDS: int = 600
     FORECAST_CACHE_TTL_SECONDS: int = 1800
+    NEWS_TIMEOUT_SECONDS: float = 5.0
+    NEWS_CACHE_TTL_SECONDS: int = 900
+    DEFAULT_LAT: float = 49.0069
+    DEFAULT_LON: float = 8.4037
+    TWELVE_DATA_API_KEY: str = ""
+    MARKET_CACHE_TTL_SECONDS: int = 900
     DEFAULT_LAT: float = 48.7758
     DEFAULT_LON: float = 9.1829
     GOOGLE_CLIENT_ID: str = ""
@@ -40,7 +48,7 @@ class Settings(BaseSettings):
     GESTURES_DEV_ENDPOINT_ENABLED: bool = False
     GESTURE_SMOOTHING_ALPHA: float = 0.6
     GESTURE_MAX_TRAJECTORY_POINTS: int = 64
-    GESTURE_COOLDOWN_SECONDS: float = 1.0
+    GESTURE_COOLDOWN_SECONDS: float = 0.55
     GESTURE_SWIPE_THRESHOLD: float = 0.1
     GESTURE_DOWN_THRESHOLD: float = 0.12
     GESTURE_UP_THRESHOLD: float = 0.14
@@ -75,6 +83,11 @@ class Settings(BaseSettings):
     GESTURE_ZOOM_START_NEAR_DISTANCE: float = 0.22
     GESTURE_ZOOM_START_FAR_DISTANCE: float = 0.42
     GESTURE_TWO_HAND_MIN_FRAMES: int = 3
+    GESTURE_PINCH_CLOSE_THRESHOLD: float = 0.30
+    GESTURE_PINCH_OPEN_THRESHOLD: float = 0.52
+    GESTURE_PINCH_SMOOTHING_WINDOW: int = 4
+    GESTURE_PINCH_COOLDOWN_SECONDS: float = 0.55
+    GESTURE_PINCH_CONFIDENCE: float = 0.92
     GESTURE_RUNTIME_CIRCLE_POSE_MAX_OPENNESS: float = 0.52
     GESTURE_RUNTIME_SWIPE_BLOCK_MAX_OPENNESS: float = 0.30
     GESTURE_RUNTIME_CIRCLE_HOLD_RADIUS_CV_RATIO: float = 0.95
@@ -194,6 +207,12 @@ class Settings(BaseSettings):
     MUSICAL_AUDIO_MAX_PATTERN_WINDOW_SECONDS: float = 4.0
     MUSICAL_AUDIO_STOP_JOIN_TIMEOUT_SECONDS: float = 2.0
 
+    # Spotify settings
+    SPOTIFY_CLIENT_ID: str = ""
+    SPOTIFY_CLIENT_SECRET: str = ""
+    SPOTIFY_REDIRECT_URI: str = "http://localhost:8000/api/v1/spotify/callback"
+    SPOTIFY_TIMEOUT_SECONDS: float = 5.0
+
     # MQTT settings
     MQTT_BROKER: str = "localhost"
     MQTT_PORT: int = 1883
@@ -212,6 +231,13 @@ class Settings(BaseSettings):
             return path.resolve()
 
         return (BASE_DIR / "nimrag.db").resolve()
+
+    @property
+    def app_config_path(self) -> Path:
+        path = Path(self.APP_CONFIG_FILE)
+        if not path.is_absolute():
+            path = BASE_DIR / path
+        return path.resolve()
 
 
 settings = Settings()

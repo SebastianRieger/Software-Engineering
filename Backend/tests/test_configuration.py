@@ -1,5 +1,8 @@
 import pytest
 
+from core.config import settings
+from repositories.app_config import AppConfigRepository, AppConfigRepositoryError
+
 pytestmark = pytest.mark.usefixtures("override_config_dependency")
 
 
@@ -131,6 +134,93 @@ async def test_save_and_reload_system_config(client):
     assert loaded["config"]["weather_refresh_seconds"] == 300
 
 
+def test_app_config_repository_returns_defaults_for_missing_file(tmp_path):
+    repository = AppConfigRepository(config_path=tmp_path / "missing.json")
+
+    config = repository.get_app_config()
+
+    assert config.system.latitude == settings.DEFAULT_LAT
+    assert config.system.longitude == settings.DEFAULT_LON
+    assert config.widgets.news.regions == [1]
+    assert config.widgets.weather.refresh_seconds == 900
+
+
+def test_app_config_repository_reads_json_file(tmp_path):
+    config_path = tmp_path / "app_config.json"
+    config_path.write_text(
+        """
+                {
+                    "version": 1,
+                    "system": {
+                        "location_name": "Karlsruhe",
+                        "latitude": 49.0069,
+                        "longitude": 8.4037,
+                        "units": "metric",
+                        "theme": "dark",
+                        "weather_refresh_seconds": 600
+                    },
+                    "widgets": {
+                        "weather": { "refresh_seconds": 600 },
+                        "news": { "ressort": "wissen", "regions": [4, 5], "refresh_seconds": 1800 },
+                        "camera": { "preferred_device_id": "camera-1", "preferred_device_label": "USB Camera" }
+                    }
+                }
+                """,
+        encoding="utf-8",
+    )
+
+    config = AppConfigRepository(config_path=config_path).get_app_config()
+
+    assert config.system.location_name == "Karlsruhe"
+    assert config.widgets.news.ressort == "wissen"
+    assert config.widgets.news.regions == [4, 5]
+    assert config.widgets.camera.preferred_device_label == "USB Camera"
+
+
+def test_app_config_repository_rejects_malformed_json(tmp_path):
+    config_path = tmp_path / "app_config.json"
+    config_path.write_text("{ not-json", encoding="utf-8")
+
+    with pytest.raises(AppConfigRepositoryError):
+        AppConfigRepository(config_path=config_path).get_app_config()
+
+
+@pytest.mark.asyncio
+async def test_get_app_config_endpoint(client, tmp_path):
+    config_path = tmp_path / "app_config.json"
+    config_path.write_text(
+        """
+                {
+                    "system": {
+                        "location_name": "Berlin",
+                        "latitude": 52.52,
+                        "longitude": 13.405,
+                        "units": "metric",
+                        "theme": "dark",
+                        "weather_refresh_seconds": 900
+                    },
+                    "widgets": {
+                        "weather": { "refresh_seconds": 900 },
+                        "news": { "ressort": "inland", "regions": [1], "refresh_seconds": 3600 },
+                        "camera": { "preferred_device_id": null, "preferred_device_label": null }
+                    }
+                }
+                """,
+        encoding="utf-8",
+    )
+    old_config_file = settings.APP_CONFIG_FILE
+    settings.APP_CONFIG_FILE = str(config_path)
+    try:
+        response = await client.get("/api/v1/config/app")
+    finally:
+        settings.APP_CONFIG_FILE = old_config_file
+
+    assert response.status_code == 200
+    data = response.json()
+    assert data["config"]["system"]["location_name"] == "Berlin"
+    assert data["config"]["widgets"]["news"]["ressort"] == "inland"
+
+
 @pytest.mark.asyncio
 async def test_get_default_gesture_config(client):
     response = await client.get("/api/v1/config/gestures")
@@ -226,7 +316,7 @@ async def test_get_default_input_action_config(client):
     assert response.status_code == 200
     data = response.json()
     assert any(
-        mapping["raw_input"] == "circle" and mapping["action"] == "toggle_shop"
+        mapping["raw_input"] == "circle" and mapping["action"] == "toggle_edit_mode"
         for mapping in data["config"]["mappings"]
     )
 

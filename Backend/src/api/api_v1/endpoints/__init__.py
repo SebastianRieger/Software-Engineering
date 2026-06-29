@@ -1,3 +1,27 @@
-from . import calendar, led, smart_home, system, weather
+from . import (
+    bullshit,
+    calendar,
+    fact,
+    led,
+    market,
+    meme,
+    news,
+    smart_home,
+    system,
+    trivia,
+    weather,
+)
 
-__all__ = ["calendar", "led", "smart_home", "system", "weather"]
+__all__ = [
+    "bullshit",
+    "calendar",
+    "fact",
+    "led",
+    "market",
+    "meme",
+    "news",
+    "smart_home",
+    "system",
+    "trivia",
+    "weather",
+]

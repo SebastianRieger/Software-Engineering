@@ -78,3 +78,65 @@ class SystemConfig(BaseModel):
 
 class SystemConfigEnvelope(BaseModel):
     config: SystemConfig
+
+
+NewsRessort = Literal[
+    "inland",
+    "ausland",
+    "wirtschaft",
+    "sport",
+    "video",
+    "investigativ",
+    "wissen",
+]
+
+
+class WeatherWidgetConfig(BaseModel):
+    refresh_seconds: int = Field(default=900, ge=60, le=86400)
+
+
+class NewsWidgetConfig(BaseModel):
+    ressort: NewsRessort | None = None
+    regions: list[int] = Field(default_factory=lambda: [1])
+    refresh_seconds: int = Field(default=3600, ge=60, le=86400)
+
+
+class CameraWidgetConfig(BaseModel):
+    preferred_device_id: str | None = None
+    preferred_device_label: str | None = None
+
+
+class MarketWidgetConfig(BaseModel):
+    symbols: list[str] = Field(
+        default_factory=lambda: ["AAPL", "MSFT", "NVDA", "BTC/USD", "ETH/USD"]
+    )
+    refresh_seconds: int = Field(default=900, ge=60, le=86400)
+
+
+class NinaWidgetConfig(BaseModel):
+    ars: str  # Pflichtfeld – kein Standardwert, muss in app_config.json stehen
+    refresh_seconds: int = Field(default=300, ge=60, le=86400)
+
+
+class MemeWidgetConfig(BaseModel):
+    sfw_only: bool = True
+    subreddit: str = "memes"
+
+
+class WidgetDefaultsConfig(BaseModel):
+    weather: WeatherWidgetConfig = Field(default_factory=WeatherWidgetConfig)
+    news: NewsWidgetConfig = Field(default_factory=NewsWidgetConfig)
+    camera: CameraWidgetConfig = Field(default_factory=CameraWidgetConfig)
+    market: MarketWidgetConfig = Field(default_factory=MarketWidgetConfig)
+    nina: NinaWidgetConfig | None = None
+    meme: MemeWidgetConfig = Field(default_factory=MemeWidgetConfig)
+
+
+class AppConfig(BaseModel):
+    version: int = 1
+    system: SystemConfig = Field(default_factory=SystemConfig)
+    widgets: WidgetDefaultsConfig = Field(default_factory=WidgetDefaultsConfig)
+
+
+class AppConfigEnvelope(BaseModel):
+    config: AppConfig

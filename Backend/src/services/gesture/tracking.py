@@ -42,14 +42,25 @@ CameraDeviceInfo = dict[str, object]
 
 HAND_LANDMARK_NAMES = {
     "wrist": 0,
+    "thumb_cmc": 1,
+    "thumb_mcp": 2,
+    "thumb_ip": 3,
     "thumb_tip": 4,
     "index_mcp": 5,
+    "index_pip": 6,
+    "index_dip": 7,
     "index_tip": 8,
     "middle_mcp": 9,
+    "middle_pip": 10,
+    "middle_dip": 11,
     "middle_tip": 12,
     "ring_mcp": 13,
+    "ring_pip": 14,
+    "ring_dip": 15,
     "ring_tip": 16,
     "pinky_mcp": 17,
+    "pinky_pip": 18,
+    "pinky_dip": 19,
     "pinky_tip": 20,
 }
 
@@ -139,6 +150,14 @@ class HandPoseFeatures:
     push_depth: float
     finger_states: dict[FingerName, FingerState]
     tracking_source: str | None = None
+
+
+@dataclass(slots=True)
+class PinchContactMetrics:
+    distance: float
+    anchor: GesturePoint
+    contact_pair: tuple[str, str]
+    tip_distance: float | None = None
 
 
 class GestureAdapterError(Exception):
@@ -256,6 +275,129 @@ def estimate_hand_size(landmarks: GestureLandmarks) -> float | None:
         return None
 
     return math.hypot(wrist[0] - tracking_point[0], wrist[1] - tracking_point[1])
+
+
+def _closest_point_on_segment(
+    point: GesturePoint, start: GesturePoint, end: GesturePoint
+) -> GesturePoint:
+    dx = end[0] - start[0]
+    dy = end[1] - start[1]
+    length_squared = dx * dx + dy * dy
+    if length_squared <= 1e-12:
+        return start
+
+    t = ((point[0] - start[0]) * dx + (point[1] - start[1]) * dy) / length_squared
+    t = max(0.0, min(1.0, t))
+    return (start[0] + t * dx, start[1] + t * dy)
+
+
+def _segment_contact_candidates(
+    *,
+    landmarks: GestureLandmarks,
+    first_start_name: str,
+    first_end_name: str,
+    second_start_name: str,
+    second_end_name: str,
+) -> list[tuple[str, str, GesturePoint, GesturePoint]]:
+    first_start = landmarks.get(first_start_name)
+    first_end = landmarks.get(first_end_name)
+    second_start = landmarks.get(second_start_name)
+    second_end = landmarks.get(second_end_name)
+    if (
+        first_start is None
+        or first_end is None
+        or second_start is None
+        or second_end is None
+    ):
+        return []
+
+    first_on_second = _closest_point_on_segment(first_end, second_start, second_end)
+    second_on_first = _closest_point_on_segment(second_end, first_start, first_end)
+    return [
+        (
+            first_end_name,
+            f"{second_start_name}-{second_end_name}",
+            first_end,
+            first_on_second,
+        ),
+        (
+            f"{first_start_name}-{first_end_name}",
+            second_end_name,
+            second_on_first,
+            second_end,
+        ),
+    ]
+
+
+def compute_pinch_contact_metrics(
+    observation: (
+        GestureObservation | TrackedHandObservation | NormalizedHandObservation
+    ),
+) -> PinchContactMetrics | None:
+    normalized = (
+        observation
+        if isinstance(observation, NormalizedHandObservation)
+        else build_normalized_hand_observation(observation)
+    )
+    landmarks = normalized.landmarks
+    if landmarks is None:
+        return None
+
+    hand_size = (
+        normalized.palm_span or normalized.hand_size or estimate_hand_size(landmarks)
+    )
+    if hand_size is None or hand_size <= 0:
+        return None
+
+    point_pairs: tuple[tuple[str, str], ...] = (
+        ("thumb_tip", "index_tip"),
+        ("thumb_tip", "index_dip"),
+        ("thumb_ip", "index_tip"),
+        ("thumb_ip", "index_dip"),
+    )
+    candidates: list[tuple[str, str, GesturePoint, GesturePoint]] = []
+    for left_name, right_name in point_pairs:
+        left = landmarks.get(left_name)
+        right = landmarks.get(right_name)
+        if left is not None and right is not None:
+            candidates.append((left_name, right_name, left, right))
+
+    candidates.extend(
+        _segment_contact_candidates(
+            landmarks=landmarks,
+            first_start_name="thumb_ip",
+            first_end_name="thumb_tip",
+            second_start_name="index_dip",
+            second_end_name="index_tip",
+        )
+    )
+
+    if not candidates:
+        return None
+
+    tip_distance = None
+    thumb_tip = landmarks.get("thumb_tip")
+    index_tip = landmarks.get("index_tip")
+    if thumb_tip is not None and index_tip is not None:
+        tip_distance = (
+            math.hypot(thumb_tip[0] - index_tip[0], thumb_tip[1] - index_tip[1])
+            / hand_size
+        )
+
+    best_left_name, best_right_name, best_left, best_right = min(
+        candidates,
+        key=lambda item: math.hypot(item[2][0] - item[3][0], item[2][1] - item[3][1]),
+    )
+    distance = math.hypot(best_left[0] - best_right[0], best_left[1] - best_right[1])
+    anchor = ((best_left[0] + best_right[0]) / 2, (best_left[1] + best_right[1]) / 2)
+    return PinchContactMetrics(
+        distance=max(0.0, min(1.0, distance / hand_size)),
+        anchor=anchor,
+        contact_pair=(best_left_name, best_right_name),
+        tip_distance=(
+            max(0.0, min(1.0, tip_distance)) if tip_distance is not None else None
+        ),
+    )
 
 
 def normalize_tracked_hand_observation(
@@ -658,10 +800,19 @@ class MediaPipeHandsAdapter:
 
     @staticmethod
     def _camera_open_attempts(index: int) -> list[tuple[int | str, int | None]]:
-        attempts: list[tuple[int | str, int | None]] = [(index, None)]
+        attempts: list[tuple[int | str, int | None]] = [
+            (index, None)
+        ]  # default (MSMF on Windows)
+
         v4l2_backend = getattr(cv2, "CAP_V4L2", None) if cv2 is not None else None
         if v4l2_backend is not None:
             attempts.append((index, v4l2_backend))
+
+        # DSHOW as fallback on Windows – avoids MSMF "can't grab frame" issues
+        # if the default backend fails to open cleanly.
+        dshow_backend = getattr(cv2, "CAP_DSHOW", None) if cv2 is not None else None
+        if dshow_backend is not None:
+            attempts.append((index, dshow_backend))
 
         device_path = f"/dev/video{index}"
         if os.path.exists(device_path):
@@ -878,10 +1029,12 @@ __all__ = [
     "HandPoseFeatures",
     "MediaPipeHandsAdapter",
     "NormalizedHandObservation",
+    "PinchContactMetrics",
     "TrackedHandObservation",
     "build_hand_landmark_depth_map",
     "build_hand_landmark_map",
     "build_normalized_hand_observation",
+    "compute_pinch_contact_metrics",
     "compute_hand_size_scale",
     "compute_hand_tracking_point",
     "estimate_hand_size",

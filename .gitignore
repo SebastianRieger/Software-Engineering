@@ -76,5 +76,6 @@ Backend/graphify-out/
 Frontend/nimrag-frontend/graphify-out/
 graphify
 sys
+pics/gesture_capture_*/
 # Claude
 .claude/

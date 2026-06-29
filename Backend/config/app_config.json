@@ -1,0 +1,33 @@
+{
+  "version": 1,
+  "system": {
+    "location_name": "Karlsruhe",
+    "latitude": 49.0069,
+    "longitude": 8.4037,
+    "units": "metric",
+    "theme": "dark",
+    "weather_refresh_seconds": 900
+  },
+  "widgets": {
+    "weather": {
+      "refresh_seconds": 900
+    },
+    "news": {
+      "ressort": null,
+      "regions": [1],
+      "refresh_seconds": 3600
+    },
+    "camera": {
+      "preferred_device_id": null,
+      "preferred_device_label": null
+    },
+    "market": {
+      "symbols": ["BTC/USD", "NVDA", "AAPL", "MSFT", "ETH/USD"],
+      "refresh_seconds": 900
+    },
+    "nina": {
+      "ars": "082150000000",
+      "refresh_seconds": 300
+    }
+  }
+}

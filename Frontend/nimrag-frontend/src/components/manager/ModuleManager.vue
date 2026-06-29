@@ -3,37 +3,70 @@ import { ref, computed, onMounted, onBeforeUnmount, watch } from 'vue';
 import type { ComponentPublicInstance } from 'vue';
 import GridBoard from './GridBoard.vue';
 import ModuleShop from './ModuleShop.vue';
+import GestureCursor from './GestureCursor.vue';
+import GestureContextHUD from './GestureContextHUD.vue';
+import HomeScreen from '../HomeScreen.vue';
 import { useWidgetManager } from '../../composables/useWidgetManager';
 import { useWidgetResize } from '../../composables/useWidgetResize';
 import { useEditMode } from '../../composables/useEditMode';
 import { useModuleShop } from '../../composables/useModuleShop';
 import { useClockWidgetMode } from '../../composables/useClockWidgetMode';
 import { useActionDispatcher } from '../../composables/useActionDispatcher';
+import { useHomeScreen } from '../../composables/useHomeScreen';
+import { useHandTracking } from '../../composables/useHandTracking';
 import { realtimeClient } from '../../services/realtime';
+import { checkExternalApiHealth } from '../../services/systemHealth';
+import type { UIActionType } from '../../types/interactions';
 
-// Interface für die Methoden des ModuleShop
 interface ModuleShopExposed {
   addCurrentWidgetToCell: (cellId: number) => void;
   nextModule: () => void;
   prevModule: () => void;
 }
 
-// Composables initialisieren
-const { insertWidgetIntoCell, clearCell, moveWidgets, occupiedCells } = useWidgetManager();
+// View-State
+const currentView = ref<'home' | 'grid'>('home');
+function goToGrid(): void { currentView.value = 'grid'; }
+
+// HomeScreen
+const {
+  cameras,
+  currentIndex,
+  frameUrl,
+  error: cameraError,
+  loading: cameraLoading,
+  slideDirection,
+  initializeCamera,
+  navigateCamera,
+  stopStream,
+} = useHomeScreen();
+
+// Widget management
+const { insertWidgetIntoCell, clearCell, moveWidgets, occupiedCells, widgetMap } = useWidgetManager();
 const { getVisibleCells, resizeCell } = useWidgetResize();
 
 const availableCells = computed(() => {
   const occupied = new Set(occupiedCells.value)
   return getVisibleCells().filter(id => !occupied.has(id))
 });
+
 const { isEditMode, setEditMode, setupKeyboardListener } = useEditMode();
 const { isShopOpen, toggleShop, openShop, closeShop } = useModuleShop();
-const { clockAnalogMode, toggleClockMode } = useClockWidgetMode();
+const { toggleClockMode } = useClockWidgetMode();
+const { indexFingerCursor, pinchCursor } = useHandTracking();
 
 const moduleShopRef = ref<ComponentPublicInstance<{}, ModuleShopExposed> | null>(null);
 let unsubscribeRealtime: (() => void) | null = null;
 
-const { focusedCellId, handleRealtimeEvent, syncFocusedCell } = useActionDispatcher({
+const {
+  focusedCellId,
+  isDragging,
+  dragSourceCell,
+  deleteConfirmCell,
+  handleRealtimeEvent,
+  syncFocusedCell,
+  dispatchAction,
+} = useActionDispatcher({
   isShopOpen,
   openShop,
   closeShop,
@@ -42,60 +75,118 @@ const { focusedCellId, handleRealtimeEvent, syncFocusedCell } = useActionDispatc
   setEditMode,
   visibleCellIds: getVisibleCells,
   isCellAvailable: (cellId: number) => availableCells.value.includes(cellId),
+  isCellOccupied: (cellId: number) => {
+    const occupied = new Set(occupiedCells.value)
+    return getVisibleCells().includes(cellId) && occupied.has(cellId)
+  },
   resizeCell,
   moduleShopRef,
+  currentView,
+  navigateCamera,
+  goToGrid,
+  onWidgetMoved: (sourceCellId: number, targetCellId: number) => {
+    moveWidgets({ sourceCellId, targetCellId });
+    syncFocusedCell();
+  },
+  onWidgetDeleted: (cellId: number) => {
+    clearCell(cellId);
+    syncFocusedCell();
+  },
 });
 
-/**
- * Verarbeitet das Hinzufügen eines Widgets aus dem Shop
- */
+const activeGestureCursor = computed(() =>
+  isDragging.value ? (pinchCursor.value ?? indexFingerCursor.value) : indexFingerCursor.value
+);
+
+// Cursor → focusedCellId: always tracks the cell under the index finger in edit mode.
+// This makes pinch gestures always act on whatever the cursor is pointing at.
+watch(activeGestureCursor, (pos) => {
+  if (!pos || !isEditMode.value) return;
+  const x = (pos.x / 100) * window.innerWidth;
+  const y = (pos.y / 100) * window.innerHeight;
+  const el = document.elementFromPoint(x, y);
+  const cellEl = el?.closest('[data-cell-id]') as HTMLElement | null;
+  if (!cellEl) return;
+  const cellId = Number(cellEl.dataset['cellId']);
+  if (!isNaN(cellId) && cellId !== focusedCellId.value) {
+    focusedCellId.value = cellId;
+  }
+});
+
+// Drag widget name for cursor label (reads __name from the Vue SFC component)
+const dragWidgetName = computed<string | null>(() => {
+  if (!isDragging.value || dragSourceCell.value === null) return null;
+  const component = widgetMap.value[dragSourceCell.value] as any;
+  return component?.__name ?? 'Widget';
+});
+
+// HUD: is the focused cell empty?
+const focusedCellIsEmpty = computed(() =>
+  availableCells.value.includes(focusedCellId.value)
+);
+
 const handleAddWidget = ({ cellId, component }: { cellId: number; component: any }) => {
   insertWidgetIntoCell(cellId, component);
   syncFocusedCell();
-  console.log('Widget zu Zelle hinzugefügt:', cellId);
 };
 
-/**
- * Verarbeitet das Verschieben von Widgets
- */
 const handleWidgetsMoved = ({ sourceCellId, targetCellId }: { sourceCellId: number; targetCellId: number }) => {
   moveWidgets({ sourceCellId, targetCellId });
   syncFocusedCell();
 };
 
-/**
- * Verarbeitet das Löschen eines Widgets
- */
 const handleDeleteWidget = (cellId: number) => {
   clearCell(cellId);
   syncFocusedCell();
 };
 
-/**
- * Keyboard-Event Handler mit Shop-Navigation
- */
+const handleConfirmDelete = (cellId: number) => {
+  deleteConfirmCell.value = null;
+  clearCell(cellId);
+  syncFocusedCell();
+};
+
+const handleCancelDelete = () => {
+  deleteConfirmCell.value = null;
+};
+
+const handleRequestAdd = () => {
+  moduleShopRef.value?.addCurrentWidgetToCell(focusedCellId.value);
+  closeShop();
+};
+
+const handleHudAction = (action: UIActionType): void => {
+  dispatchAction({
+    action,
+    timestamp: new Date().toISOString(),
+    input_source: 'dev',
+    raw_input: action,
+    action_args: {},
+    metadata: {},
+  });
+};
+
+// Keyboard shop navigation (mouse/keyboard fallback)
 const handleShopNavigation = (key: string) => {
   if (isShopOpen.value && moduleShopRef.value) {
-    if (key === 'ArrowRight') {
-      moduleShopRef.value.nextModule();
-    } else if (key === 'ArrowLeft') {
-      moduleShopRef.value.prevModule();
-    }
+    if (key === 'ArrowRight') moduleShopRef.value.nextModule();
+    else if (key === 'ArrowLeft') moduleShopRef.value.prevModule();
   }
 };
 
-// Keyboard-Listener Setup
 setupKeyboardListener({
   onShopToggle: toggleShop,
   onShopNavigate: handleShopNavigation,
   onClockToggle: toggleClockMode,
 });
 
-watch(availableCells, () => {
-  syncFocusedCell();
-});
+watch(availableCells, () => { syncFocusedCell(); });
 
 onMounted(() => {
+  void checkExternalApiHealth().catch((error) => {
+    console.warn('External API health check failed', error);
+  });
+  void initializeCamera();
   syncFocusedCell();
   unsubscribeRealtime = realtimeClient.subscribe((event) => {
     handleRealtimeEvent(event);
@@ -105,136 +196,114 @@ onMounted(() => {
 onBeforeUnmount(() => {
   unsubscribeRealtime?.();
   unsubscribeRealtime = null;
+  stopStream();
 });
-
 </script>
 
 <template>
-  <div>
-    <!-- Edit Mode Banner -->
-    <Transition name="slide-down">
-      <div v-if="isEditMode" class="edit-mode-banner">
-        <div class="edit-mode-content">
-          <span class="edit-mode-text">Editor Modus aktiv</span>
-          <div class="edit-mode-shortcuts">
-            <span class="shortcut">E – Shop</span>
-            <span class="shortcut">F – Beenden</span>
-            <span class="shortcut">Klick ⤡ – Größe ändern</span>
-            <button
-              class="shortcut shortcut-btn"
-              @click="toggleClockMode"
-              :title="clockAnalogMode ? 'Digitale Uhr' : 'Analoge Uhr'"
-            >
-              {{ clockAnalogMode ? '🔢 Digital' : '🕐 Analog' }} – A
-            </button>
+  <div class="app-root">
+
+    <!-- Finger cursor overlay (edit mode only) -->
+    <GestureCursor
+      v-if="isEditMode || isShopOpen"
+      :cursor="activeGestureCursor"
+      :is-dragging="isDragging"
+      :drag-widget-name="dragWidgetName"
+    />
+
+    <!-- Gesture context HUD -->
+    <GestureContextHUD
+      :is-edit-mode="isEditMode"
+      :is-shop-open="isShopOpen"
+      :is-dragging="isDragging"
+      :delete-confirm-pending="deleteConfirmCell !== null"
+      :focused-cell-is-empty="focusedCellIsEmpty"
+      @action-clicked="handleHudAction"
+    />
+
+    <!-- HomeScreen (Kamera-Startseite) -->
+    <Transition name="view-to-grid">
+      <HomeScreen
+        v-if="currentView === 'home'"
+        :cameras="cameras"
+        :current-index="currentIndex"
+        :frame-url="frameUrl"
+        :error="cameraError"
+        :loading="cameraLoading"
+        :slide-direction="slideDirection"
+        @goto-grid="goToGrid"
+        @navigate-camera="navigateCamera"
+      />
+    </Transition>
+
+    <!-- Grid-Ansicht -->
+    <Transition name="view-from-right">
+      <div v-if="currentView === 'grid'" class="grid-view">
+
+        <!-- Module Shop Popup -->
+        <Transition name="shop-rise">
+          <div v-if="isShopOpen" class="shop-overlay" @click.self="closeShop">
+            <div class="shop-modal">
+              <button class="close-btn" @click="closeShop" aria-label="Shop schließen">×</button>
+              <ModuleShop
+                ref="moduleShopRef"
+                :gesture-cursor="indexFingerCursor"
+                @addWidget="handleAddWidget"
+                @requestAdd="handleRequestAdd"
+              />
+            </div>
           </div>
-        </div>
+        </Transition>
+
+        <GridBoard
+          :is-edit-mode="isEditMode"
+          :focused-cell-id="focusedCellId"
+          :is-dragging="isDragging"
+          :drag-source-cell="dragSourceCell"
+          :delete-confirm-cell="deleteConfirmCell"
+          :gesture-cursor="indexFingerCursor"
+          @widgets-moved="handleWidgetsMoved"
+          @delete-widget="handleDeleteWidget"
+          @confirm-delete="handleConfirmDelete"
+          @cancel-delete="handleCancelDelete"
+        />
       </div>
     </Transition>
 
-    <!-- Module Shop Popup -->
-    <div v-if="isShopOpen" class="shop-overlay" @click.self="closeShop">
-      <div class="shop-modal">
-        <button class="close-btn" @click="closeShop">×</button>
-        <ModuleShop ref="moduleShopRef" :available-cells="availableCells" @addWidget="handleAddWidget" />
-      </div>
-    </div>
-
-    <!-- GridBoard mit Event-Listener für widgetsMoved -->
-    <GridBoard
-        :is-edit-mode="isEditMode"
-      :focused-cell-id="focusedCellId"
-        @widgets-moved="handleWidgetsMoved"
-        @delete-widget="handleDeleteWidget"
-    />
   </div>
 </template>
 
 <style scoped>
-.edit-mode-banner {
+.app-root {
   position: fixed;
-  bottom: 20px;
-  left: 50%;
-  transform: translateX(-50%);
-  background: linear-gradient(135deg, #6366f1 0%, #8b5cf6 100%);
-  color: white;
-  padding: 16px 24px;
-  border-radius: 12px;
-  box-shadow: 0 4px 16px rgba(99, 102, 241, 0.4);
-  z-index: 999;
-  display: flex;
-  align-items: center;
-  gap: 16px;
-  font-weight: 600;
+  inset: 0;
+  overflow: hidden;
 }
 
-.edit-mode-content {
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
+.grid-view {
+  position: absolute;
+  inset: 0;
 }
 
-.shortcut {
-  opacity: 0.9;
-  background: rgba(255, 255, 255, 0.2);
-  padding: 4px 10px;
-  border-radius: 6px;
-  white-space: nowrap;
+/* View-Transition: HomeScreen → Grid */
+.view-to-grid-leave-active,
+.view-from-right-enter-active {
+  transition: transform 0.4s cubic-bezier(0.4, 0, 0.2, 1);
 }
 
-.shortcut-btn {
-  border: none;
-  color: white;
-  cursor: pointer;
-  font-size: 12px;
-  font-weight: 600;
-  transition: all 0.2s ease;
-  display: inline-block;
+.view-to-grid-leave-to {
+  transform: translateX(-100%);
 }
 
-.shortcut-btn:hover {
-  background: rgba(255, 255, 255, 0.3) !important;
-  transform: scale(1.05);
+.view-from-right-enter-from {
+  transform: translateX(100%);
 }
 
-.shortcut-btn:active {
-  transform: scale(0.95);
-}
-
-.edit-mode-text {
-  font-size: 16px;
-  font-weight: 700;
-}
-
-.edit-mode-shortcuts {
-  display: flex;
-  gap: 12px;
-  font-size: 12px;
-  flex-wrap: wrap;
-}
-
-.slide-down-enter-active,
-.slide-down-leave-active {
-  transition: all 0.3s ease;
-}
-
-.slide-down-enter-from {
-  transform: translateX(-50%) translateY(-100%);
-  opacity: 0;
-}
-
-.slide-down-leave-to {
-  transform: translateX(-50%) translateY(-100%);
-  opacity: 0;
-}
-
+/* Shop modal */
 .shop-overlay {
   position: fixed;
-  top: 0;
-  left: 0;
-  right: 0;
-  bottom: 0;
-  background: rgba(0, 0, 0, 0.7);
+  inset: 0;
+  background: rgba(0, 0, 0, 0.72);
   display: flex;
   justify-content: center;
   align-items: center;
@@ -243,32 +312,70 @@ onBeforeUnmount(() => {
 
 .shop-modal {
   position: relative;
-  background: #222;
-  border-radius: 8px;
+  background: #111111;
+  border-radius: 16px;
   padding: 20px;
-  width: 95vw;
-  height: 95vh;
-  max-width: 1200px;
-  max-height: 800px;
-  overflow: auto;
+  width: 92vw;
+  max-width: 680px;
+  height: 72vh;
+  max-height: 560px;
+  overflow: hidden;
   display: flex;
   flex-direction: column;
+  border: 1px solid rgba(255, 255, 255, 0.06);
+  box-shadow: 0 24px 80px rgba(0, 0, 0, 0.75);
 }
 
 .close-btn {
   position: absolute;
-  top: 10px;
-  right: 10px;
-  background: none;
-  border: none;
-  color: white;
-  font-size: 24px;
+  top: 12px;
+  right: 12px;
+  background: rgba(255, 255, 255, 0.06);
+  border: 1px solid rgba(255, 255, 255, 0.10);
+  border-radius: 50%;
+  color: rgba(255, 255, 255, 0.55);
+  font-size: 22px;
+  width: 32px;
+  height: 32px;
   cursor: pointer;
-  transition: all 0.2s;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: background 180ms ease, color 180ms ease;
+  z-index: 10;
 }
 
 .close-btn:hover {
-  transform: scale(1.2);
-  color: #ef4444;
+  background: rgba(255, 255, 255, 0.12);
+  color: #ffffff;
+}
+
+/* Shop entrance animation */
+.shop-rise-enter-active,
+.shop-rise-leave-active {
+  transition: opacity 220ms ease;
+}
+
+.shop-rise-enter-active .shop-modal,
+.shop-rise-leave-active .shop-modal {
+  transition: transform 220ms cubic-bezier(0.4, 0, 0.2, 1), opacity 220ms ease;
+}
+
+.shop-rise-enter-from {
+  opacity: 0;
+}
+
+.shop-rise-enter-from .shop-modal {
+  transform: translateY(24px);
+  opacity: 0;
+}
+
+.shop-rise-leave-to {
+  opacity: 0;
+}
+
+.shop-rise-leave-to .shop-modal {
+  transform: translateY(16px);
+  opacity: 0;
 }
 </style>

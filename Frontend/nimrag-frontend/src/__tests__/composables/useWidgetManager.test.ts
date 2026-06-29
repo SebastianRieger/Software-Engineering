@@ -123,6 +123,15 @@ describe('useWidgetManager', () => {
       expect(widgetMap.value[3]).toBeDefined()
     })
 
+    it('defaults the first cell to the camera widget when no saved layout exists', async () => {
+      localStorage.removeItem('nimrag-widget-map')
+      vi.resetModules()
+      const { useWidgetManager: freshUseWidgetManager } = await import('@/composables/useWidgetManager')
+      const { widgetMap } = freshUseWidgetManager()
+
+      expect(widgetMap.value[1]).toBeDefined()
+    })
+
     it('silently skips unknown widget names from localStorage', async () => {
       localStorage.setItem('nimrag-widget-map', JSON.stringify({ '4': 'UnknownWidgetXYZ' }))
 

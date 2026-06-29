@@ -38,6 +38,7 @@ from services.gesture.push_runtime import (
 )
 from services.gesture.runtime import GestureService, GestureServiceError
 from services.gesture.tracking import (
+    HAND_LANDMARK_NAMES,
     HandPoseFeatures,
     GestureAdapterError,
     GestureObservation,
@@ -45,6 +46,7 @@ from services.gesture.tracking import (
     build_hand_landmark_map,
     compute_hand_size_scale,
     compute_hand_tracking_point,
+    compute_pinch_contact_metrics,
     estimate_hand_size,
     extract_hand_pose_features,
 )
@@ -1042,6 +1044,71 @@ def test_estimate_hand_size_uses_palm_width():
     assert hand_size == pytest.approx(0.1581, rel=1e-3)
 
 
+def test_hand_landmark_map_includes_full_thumb_and_finger_chains():
+    landmarks = build_hand_landmark_map(FakeHandLandmarks())
+
+    assert {"thumb_cmc", "thumb_mcp", "thumb_ip", "thumb_tip"}.issubset(
+        HAND_LANDMARK_NAMES
+    )
+    assert {"index_pip", "index_dip", "middle_pip", "pinky_dip"}.issubset(
+        HAND_LANDMARK_NAMES
+    )
+    assert "thumb_ip" in landmarks
+    assert "index_dip" in landmarks
+
+
+def test_compute_pinch_contact_metrics_prefers_thumb_index_contact_distance():
+    landmarks = {
+        "wrist": (0.50, 0.70),
+        "thumb_cmc": (0.45, 0.62),
+        "thumb_mcp": (0.42, 0.55),
+        "thumb_ip": (0.40, 0.49),
+        "thumb_tip": (0.42, 0.43),
+        "index_mcp": (0.50, 0.52),
+        "index_pip": (0.49, 0.45),
+        "index_dip": (0.46, 0.42),
+        "index_tip": (0.43, 0.43),
+        "middle_mcp": (0.56, 0.54),
+        "ring_mcp": (0.61, 0.56),
+        "pinky_mcp": (0.66, 0.58),
+    }
+    metrics = compute_pinch_contact_metrics(
+        GestureObservation(
+            point=(0.5, 0.5),
+            landmarks=landmarks,
+            hand_size=0.16,
+        )
+    )
+
+    assert metrics is not None
+    assert metrics.distance == pytest.approx(0.0625, rel=1e-2)
+    assert metrics.anchor == pytest.approx((0.425, 0.43), rel=1e-3)
+
+
+def test_compute_pinch_contact_metrics_handles_short_tip_skeleton_with_segment_fallback():
+    landmarks = {
+        "wrist": (0.50, 0.70),
+        "thumb_cmc": (0.45, 0.62),
+        "thumb_mcp": (0.42, 0.55),
+        "thumb_ip": (0.39, 0.48),
+        "thumb_tip": (0.50, 0.41),
+        "index_mcp": (0.50, 0.52),
+        "index_pip": (0.50, 0.47),
+        "index_dip": (0.48, 0.44),
+        "index_tip": (0.44, 0.42),
+        "middle_mcp": (0.56, 0.54),
+        "ring_mcp": (0.61, 0.56),
+        "pinky_mcp": (0.66, 0.58),
+    }
+    metrics = compute_pinch_contact_metrics(
+        GestureObservation(point=(0.5, 0.5), landmarks=landmarks, hand_size=0.16)
+    )
+
+    assert metrics is not None
+    assert metrics.contact_pair != ("thumb_tip", "index_tip")
+    assert metrics.distance < (metrics.tip_distance or 1.0)
+
+
 def test_detect_noise_returns_none():
     gesture = detect_gesture_from_trajectory(
         trajectory=[
@@ -1170,6 +1237,97 @@ def test_advance_pending_gesture_respects_configured_finalize_delay():
 
     assert finalized is not None
     assert finalized.gesture == "swipe_left"
+
+
+def test_advance_pending_gesture_fires_pinch_edges_immediately():
+    service = GestureService(
+        adapter_factory=lambda: SequenceAdapter(observations=[]),
+        realtime=CapturingRealtimeHub(),
+        config_repository_factory=lambda: StaticGestureConfigRepository(),
+    )
+    service.reload_config()
+    advance_pending_gesture = getattr(service, "_advance_pending_gesture")
+    detection = GestureDetectionResult(
+        gesture="pinch_close",
+        confidence=0.92,
+        tracking_source="pinch_state",
+    )
+    analysis = SimpleNamespace(detection=detection, active_phase="holding")
+
+    finalized = advance_pending_gesture(analysis=analysis, observed_at=1.0)
+
+    assert finalized is detection
+    assert getattr(service, "_pending_gesture") is None
+
+
+def test_dev_capture_metadata_distinguishes_pending_and_published_detections():
+    build_metadata = getattr(GestureService, "_build_dev_capture_metadata")
+    pending_detection = GestureDetectionResult(
+        gesture="pinch_close",
+        confidence=0.92,
+        tracking_source="pinch_state",
+    )
+    analysis = SimpleNamespace(
+        active_phase="holding",
+        tracking_quality=0.8,
+        candidate_scores={"pinch_close": 0.92},
+        primitive_hits={},
+        reject_reason=None,
+        dominant_hand_pose="pinching",
+        detection=pending_detection,
+    )
+
+    suppressed = build_metadata(
+        active_capture=SimpleNamespace(started_at=1.0),
+        frame_index=1,
+        observation=GestureObservation(
+            point=(0.5, 0.5),
+            hand="right",
+            hand_size=0.16,
+            tracking_source="pinch_state",
+            captured_at=1.1,
+        ),
+        pose_features=None,
+        analysis=analysis,
+        detection=pending_detection,
+        published_detection=None,
+        publish_suppressed_reason="cooldown",
+        observed_at=1.1,
+        pinch_state=None,
+        image_file=None,
+        raw_image_file=None,
+    )
+
+    assert suppressed["analysis_detection"]["gesture"] == "pinch_close"
+    assert suppressed["pending_detection"]["gesture"] == "pinch_close"
+    assert suppressed["published_detection"] is None
+    assert suppressed["fired_detection"] is None
+    assert suppressed["publish_suppressed_reason"] == "cooldown"
+
+    published = build_metadata(
+        active_capture=SimpleNamespace(started_at=1.0),
+        frame_index=2,
+        observation=GestureObservation(
+            point=(0.5, 0.5),
+            hand="right",
+            hand_size=0.16,
+            tracking_source="pinch_state",
+            captured_at=1.2,
+        ),
+        pose_features=None,
+        analysis=analysis,
+        detection=pending_detection,
+        published_detection=pending_detection,
+        publish_suppressed_reason=None,
+        observed_at=1.2,
+        pinch_state=None,
+        image_file=None,
+        raw_image_file=None,
+    )
+
+    assert published["published_detection"]["gesture"] == "pinch_close"
+    assert published["fired_detection"]["gesture"] == "pinch_close"
+    assert published["publish_suppressed_reason"] is None
 
 
 def test_append_active_calibration_capture_frame_accepts_normalized_landmark_dicts():
@@ -1338,11 +1496,16 @@ def test_service_retries_transient_adapter_failure_and_recovers():
     )
 
     service.start()
-    assert wait_until(lambda: len(hub.messages) >= 1)
+    assert wait_until(
+        lambda: len(filter_messages(hub.messages, "GestureDetected")) >= 1
+    )
     service.stop()
 
     assert adapter.failures_seen == 1
-    assert hub.messages[0]["payload"]["gesture"] == "swipe_left"
+    assert (
+        filter_messages(hub.messages, "GestureDetected")[0]["payload"]["gesture"]
+        == "swipe_left"
+    )
 
 
 def test_stop_sets_error_when_thread_does_not_finish_in_time():
@@ -1446,7 +1609,9 @@ def test_reload_config_safe_during_detection():
     )
     service.reload_config()
 
-    assert wait_until(lambda: len(hub.messages) >= 1)
+    assert wait_until(
+        lambda: len(filter_messages(hub.messages, "GestureDetected")) >= 1
+    )
     status = service.get_status()
     service.stop()
 
@@ -1505,7 +1670,9 @@ def test_service_detects_and_exposes_confidence_metadata():
     )
 
     service.start()
-    assert wait_until(lambda: len(hub.messages) >= 1)
+    assert wait_until(
+        lambda: len(filter_messages(hub.messages, "GestureDetected")) >= 1
+    )
     status = service.get_status()
     service.stop()
 
@@ -1598,7 +1765,9 @@ def test_cooldown_prevents_spam_and_emits_event():
     )
 
     service.start()
-    assert wait_until(lambda: len(hub.messages) >= 1)
+    assert wait_until(
+        lambda: len(filter_messages(hub.messages, "GestureDetected")) >= 1
+    )
     service.stop()
 
     gesture_messages = filter_messages(hub.messages, "GestureDetected")
@@ -1861,7 +2030,7 @@ def test_service_detects_short_push_click():
     gesture_message = filter_messages(hub.messages, "GestureDetected")[0]
     action_message = filter_messages(hub.messages, "UIActionRequested")[0]
     assert gesture_message["payload"]["gesture"] == "push_click_short"
-    assert action_message["payload"]["action"] == "primary_click"
+    assert action_message["payload"]["action"] == "resize_expand"
 
 
 def test_service_detects_long_push_click():
@@ -1886,7 +2055,7 @@ def test_service_detects_long_push_click():
     gesture_message = filter_messages(hub.messages, "GestureDetected")[0]
     action_message = filter_messages(hub.messages, "UIActionRequested")[0]
     assert gesture_message["payload"]["gesture"] == "push_click_long"
-    assert action_message["payload"]["action"] == "secondary_select"
+    assert action_message["payload"]["action"] == "delete_widget"
 
 
 def test_service_detects_long_push_click_when_release_crosses_threshold():
@@ -2582,6 +2751,19 @@ async def test_get_preview_frame_includes_freshness_metadata(
     assert payload["image"] == "data:image/jpeg;base64,dGVzdA=="
     assert payload["captured_at"] is None
     assert payload["frame_age_ms"] is None
+
+
+@pytest.mark.asyncio
+async def test_dev_capture_endpoint_starts_capture(client, override_gesture_dependency):
+    _ = override_gesture_dependency
+    response = await client.post("/api/v1/gestures/dev/capture")
+
+    assert response.status_code == 200
+    data = response.json()
+    assert data["status"] == "started"
+    assert data["frames_target"] == 72
+    assert data["target_fps"] == 24.0
+    assert data["output_dir"] == "/tmp/mock-gesture-capture"
 
 
 @pytest.mark.asyncio

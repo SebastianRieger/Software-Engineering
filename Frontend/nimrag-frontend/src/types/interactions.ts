@@ -21,6 +21,10 @@ export type UIActionType =
   | 'resize_shrink'
   | 'move_selected_widget'
   | 'cancel_selection'
+  | 'toggle_edit_mode'
+  | 'delete_widget'
+  | 'begin_drag'
+  | 'drop_widget'
 
 export interface UIActionArguments {
   cell_index?: number | null

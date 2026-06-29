@@ -1,8 +1,13 @@
 <script setup lang="ts">
-import { ref, onMounted, computed } from 'vue'
+import { ref, watch, onMounted, computed, markRaw } from 'vue'
+import { useHoverTrigger } from '../../composables/useHoverTrigger'
+import type { CursorPosition } from '../../composables/useHandTracking'
 
-const props = defineProps<{ availableCells: number[] }>()
-const emit = defineEmits(['addWidget'])
+const props = defineProps<{
+  gestureCursor?: CursorPosition | null
+}>()
+
+const emit = defineEmits(['addWidget', 'requestAdd'])
 const modules = import.meta.glob("../widgets/*.vue")
 
 type ModuleItem = {
@@ -19,13 +24,11 @@ type DisplayItem = ModuleItem & {
 const moduleList = ref<ModuleItem[]>([])
 const currentIndex = ref(0)
 
-// Widget in Zelle einfügen
 const addCurrentWidgetToCell = (cellId: number) => {
   if (!moduleList.value.length) return
   emit('addWidget', { cellId, component: moduleList.value[currentIndex.value]!.component })
 }
 
-// Navigation
 const nextModule = () => {
   if (!moduleList.value.length) return
   currentIndex.value = (currentIndex.value + 1) % moduleList.value.length
@@ -33,60 +36,33 @@ const nextModule = () => {
 
 const prevModule = () => {
   if (!moduleList.value.length) return
-  currentIndex.value =
-      (currentIndex.value - 1 + moduleList.value.length) % moduleList.value.length
+  currentIndex.value = (currentIndex.value - 1 + moduleList.value.length) % moduleList.value.length
 }
 
-// Drei sichtbare Karten: links – center – rechts
 const displayedModules = computed<DisplayItem[]>(() => {
   const result: DisplayItem[] = []
   const len = moduleList.value.length
   if (!len) return result
 
-  // Spezialfall: nur ein Modul -> nur Center anzeigen
   if (len === 1) {
     const base = moduleList.value[0]!
-    result.push({
-      name: base.name,
-      path: base.path,
-      component: base.component,
-      position: 'center',
-      index: 0
-    })
+    result.push({ name: base.name, path: base.path, component: base.component, position: 'center', index: 0 })
     return result
   }
 
   const center = currentIndex.value
-  const left = (center - 1 + len) % len
   const right = (center + 1) % len
+  if (len === 2) {
+    result.push({ ...moduleList.value[center]!, position: 'center', index: center })
+    result.push({ ...moduleList.value[right]!, position: 'right', index: right })
+    return result
+  }
 
-  const leftBase = moduleList.value[left]!
-  const centerBase = moduleList.value[center]!
-  const rightBase = moduleList.value[right]!
+  const left  = (center - 1 + len) % len
 
-  result.push({
-    name: leftBase.name,
-    path: leftBase.path,
-    component: leftBase.component,
-    position: 'left',
-    index: left
-  })
-
-  result.push({
-    name: centerBase.name,
-    path: centerBase.path,
-    component: centerBase.component,
-    position: 'center',
-    index: center
-  })
-
-  result.push({
-    name: rightBase.name,
-    path: rightBase.path,
-    component: rightBase.component,
-    position: 'right',
-    index: right
-  })
+  result.push({ ...moduleList.value[left]!,   position: 'left',   index: left })
+  result.push({ ...moduleList.value[center]!, position: 'center', index: center })
+  result.push({ ...moduleList.value[right]!,  position: 'right',  index: right })
 
   return result
 })
@@ -96,368 +72,357 @@ onMounted(async () => {
     const fileName = path.split('/').pop()?.replace('.vue', '') || ''
     const moduleLoader = modules[path]
     if (!moduleLoader) continue
-
     const module = (await moduleLoader()) as any
-    moduleList.value.push({
-      name: fileName,
-      path,
-      component: module.default
-    })
+    moduleList.value.push({ name: fileName, path, component: markRaw(module.default) })
   }
 })
+
 const setCurrentModule = (index: number) => {
   if (!moduleList.value.length) return
   currentIndex.value = index
 }
 
-defineExpose({
-  addCurrentWidgetToCell,
-  nextModule,
-  prevModule,
-  setCurrentModule
+defineExpose({ addCurrentWidgetToCell, nextModule, prevModule, setCurrentModule })
+
+const { active: ringActive, x: ringX, y: ringY, start: hoverStart, cancel: hoverCancel, move: hoverMove } = useHoverTrigger()
+
+// Gesture-cursor dwell for the add button
+const gestureOverAdd = ref(false)
+
+watch(() => props.gestureCursor, (pos) => {
+  if (!pos) {
+    if (gestureOverAdd.value) {
+      gestureOverAdd.value = false
+      hoverCancel()
+    }
+    return
+  }
+
+  const px = (pos.x / 100) * window.innerWidth
+  const py = (pos.y / 100) * window.innerHeight
+  const fakeEvent = { clientX: px, clientY: py } as MouseEvent
+
+  const el = document.elementFromPoint(px, py)
+  const btn = el?.closest('.add-widget-btn')
+
+  if (!btn) {
+    if (gestureOverAdd.value) {
+      gestureOverAdd.value = false
+      hoverCancel()
+    }
+    return
+  }
+
+  if (gestureOverAdd.value) {
+    hoverMove(fakeEvent)
+  } else {
+    gestureOverAdd.value = true
+    hoverStart(fakeEvent, () => emit('requestAdd'))
+  }
 })
 </script>
 
 <template>
   <div class="module-shop">
-    <h3 class="title">Widget Shop</h3>
 
+    <!-- Header -->
+    <div class="shop-header">
+      <h2 class="shop-title">WIDGET SHOP</h2>
+      <div v-if="moduleList.length" class="shop-counter">
+        <span class="counter-text">{{ currentIndex + 1 }} / {{ moduleList.length }}</span>
+        <div class="counter-pips">
+          <span
+            v-for="i in moduleList.length"
+            :key="i"
+            class="pip"
+            :class="{ 'pip--active': i - 1 === currentIndex }"
+          />
+        </div>
+      </div>
+    </div>
+
+    <!-- Carousel -->
     <div v-if="moduleList.length > 0" class="carousel">
-      <!-- Navigation -->
-      <button @click="prevModule" class="nav-btn nav-btn-left">‹</button>
+      <button @click="prevModule" class="nav-btn" aria-label="Vorheriges Widget">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+          <polyline points="15,18 9,12 15,6" />
+        </svg>
+      </button>
 
-      <!-- Track mit 3 Karten -->
-      <div class="carousel-track">
+      <div class="carousel-stage">
         <div
-            v-for="item in displayedModules"
-            :key="item.index"
-            class="module-card"
-            :class="[
-      `pos-${item.position}`,
-      { 'is-active': item.index === currentIndex }
-    ]"
+          v-for="item in displayedModules"
+          :key="item.index"
+          class="module-card"
+          :class="[`pos-${item.position}`, { 'is-active': item.index === currentIndex }]"
+          @click="item.position === 'left' ? prevModule() : item.position === 'right' ? nextModule() : undefined"
         >
-          <h4 class="module-name">{{ item.name }}</h4>
-
-          <div class="preview-container">
-            <component
-                v-if="item.position === 'center'"
-                :is="item.component"
-            />
-            <div v-else class="preview-placeholder">
-              Vorschau
+          <div class="card-top">
+            <span class="card-index">{{ String(item.index + 1).padStart(2, '0') }}</span>
+            <h4 class="module-name">{{ item.name }}</h4>
+          </div>
+          <div class="preview-wrap">
+            <component v-if="item.position === 'center'" :is="item.component" />
+            <div v-else class="preview-skeleton">
+              <div class="skel-line" style="width:72%" />
+              <div class="skel-line" style="width:52%" />
+              <div class="skel-line" style="width:36%" />
             </div>
           </div>
         </div>
       </div>
 
-      <button @click="nextModule" class="nav-btn nav-btn-right">›</button>
+      <button @click="nextModule" class="nav-btn" aria-label="Nächstes Widget">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+          <polyline points="9,18 15,12 9,6" />
+        </svg>
+      </button>
     </div>
 
-    <div v-else class="loading">
-      Loading modules...
+    <!-- Loading -->
+    <div v-else class="shop-loading">
+      <div class="loading-ring" />
     </div>
 
-    <!-- Cell-Auswahl bleibt unten drunter -->
-    <div
-        v-if="moduleList.length > 0"
-        class="cell-selection"
+    <!-- Gesture hint: confirm with pinch close -->
+    <div v-if="moduleList.length > 0" class="shop-confirm-hint">
+      <span class="confirm-gesture-badge">Pinch</span>
+      <span class="confirm-hint-text">Widget hinzufügen</span>
+    </div>
+    <!-- Add widget button: hover 1s to confirm -->
+    <button
+      v-if="moduleList.length > 0"
+      class="add-widget-btn"
+      @click.stop
+      @mouseenter="(e) => hoverStart(e, () => emit('requestAdd'))"
+      @mouseleave="hoverCancel"
+      @mousemove="hoverMove"
     >
-      <p v-if="props.availableCells.length > 0">In Zelle einfügen:</p>
-      <p v-else class="no-cells-msg">Alle Zellen belegt – Widget löschen, um Platz zu schaffen.</p>
-      <div class="cell-buttons">
-        <button
-            v-for="cellId in props.availableCells"
-            :key="cellId"
-            @click="addCurrentWidgetToCell(cellId)"
-            class="cell-btn"
-        >
-          {{ cellId }}
-        </button>
-      </div>
-    </div>
+      Widget hinzufügen
+    </button>
+
   </div>
+
+  <!-- Hover ring -->
+  <Teleport to="body">
+    <div
+      v-if="ringActive"
+      class="hover-ring"
+      :style="{ left: ringX + 'px', top: ringY + 'px' }"
+    >
+      <svg width="40" height="40" viewBox="0 0 40 40">
+        <circle cx="20" cy="20" r="16" fill="none" stroke="rgba(255,255,255,0.12)" stroke-width="1.5" />
+        <circle cx="20" cy="20" r="16" fill="none" stroke="rgba(255,255,255,0.9)" stroke-width="2"
+          stroke-linecap="round" stroke-dasharray="100.53" class="ring-arc" />
+      </svg>
+    </div>
+  </Teleport>
 </template>
 
 <style scoped>
+/* ── Shell ── */
 .module-shop {
-  background: radial-gradient(circle at top, #333 0, #181818 40%, #050505 100%);
-  color: #eee;
-  padding: 15px 24px 15px;
+  background: radial-gradient(ellipse at 50% 0%, #252525 0%, #111111 50%, #050505 100%);
+  color: #eeeeee;
+  padding: 22px 24px 20px;
   border-radius: 16px;
-  width: min(900px, 100vw - 48px);
-  max-height: 85vh;
+  height: 100%;
   box-sizing: border-box;
+  border: 1px solid rgba(255, 255, 255, 0.06);
   box-shadow: 0 18px 60px rgba(0, 0, 0, 0.65);
-  border: 1px solid rgba(255, 255, 255, 0.04);
-  overflow: hidden;
   display: flex;
   flex-direction: column;
+  gap: 18px;
+  overflow: hidden;
 }
 
-.title {
-  text-align: center;
-  margin-bottom: 24px;
-  font-size: 1.6rem;
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
-  color: #f5f5f5;
-  text-shadow: 0 2px 8px rgba(0, 0, 0, 0.5);
-}
-
-.carousel {
-  position: relative;
+/* ── Header ── */
+.shop-header {
   display: flex;
   align-items: center;
-  justify-content: center;
-  padding-inline: 60px;
-  margin-bottom: 20px;
-  max-width: 100%;
-  box-sizing: border-box;
-  overflow: visible;
-  min-height: 280px;
+  justify-content: space-between;
   flex-shrink: 0;
 }
 
-.carousel-track {
+.shop-title {
+  margin: 0;
+  font-size: 1.4rem;
+  font-weight: 800;
+  letter-spacing: 0.12em;
+  color: #ffffff;
+}
+
+.shop-counter {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 6px;
+}
+
+.counter-text {
+  font-size: 0.68rem;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  color: rgba(255, 255, 255, 0.35);
+}
+
+.counter-pips {
+  display: flex;
+  gap: 5px;
+}
+
+.pip {
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.2);
+  transition: background 0.25s ease, transform 0.25s ease;
+}
+
+.pip--active {
+  background: #ffffff;
+  transform: scale(1.35);
+}
+
+/* ── Carousel ── */
+.carousel {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.carousel-stage {
+  flex: 1;
   position: relative;
   display: flex;
   align-items: center;
   justify-content: center;
-  gap: 0;
-  width: 100%;
-  max-width: 320px;
-  perspective: 1400px;
-  perspective-origin: center center;
+  perspective: 1200px;
+  min-height: 250px;
 }
 
-/*animation*/
-@keyframes slideInFromLeft {
-  0% {
-    opacity: 0;
-    transform: translateX(-180px) translateY(60px) scale(0.5) rotateY(35deg) rotateZ(-8deg);
-    filter: blur(4px) brightness(0.6);
-  }
-  60% {
-    opacity: 0.3;
-    transform: translateX(-240px) translateY(28px) scale(0.72) rotateY(12deg) rotateZ(-2deg);
-    filter: blur(1px) brightness(0.85);
-  }
-  100% {
-    opacity: 0.25;
-    transform: translateX(-240px) translateY(25px) scale(0.75) rotateY(10deg) rotateZ(0deg);
-    filter: blur(0.75px) brightness(0.9);
-  }
-}
-
-@keyframes slideInFromRight {
-  0% {
-    opacity: 0;
-    transform: translateX(180px) translateY(60px) scale(0.5) rotateY(-35deg) rotateZ(8deg);
-    filter: blur(4px) brightness(0.6);
-  }
-  60% {
-    opacity: 0.3;
-    transform: translateX(240px) translateY(28px) scale(0.72) rotateY(-12deg) rotateZ(2deg);
-    filter: blur(1px) brightness(0.85);
-  }
-  100% {
-    opacity: 0.25;
-    transform: translateX(240px) translateY(25px) scale(0.75) rotateY(-10deg) rotateZ(0deg);
-    filter: blur(0.75px) brightness(0.9);
-  }
-}
-
-@keyframes slideToCenter {
-  0% {
-    opacity: 0.25;
-    transform: scale(0.75) translateY(25px) rotateY(0deg);
-    filter: blur(0.75px) brightness(0.9);
-  }
-  40% {
-    opacity: 0.6;
-    transform: scale(0.95) translateY(5px) rotateY(0deg);
-    filter: blur(0.3px) brightness(0.95);
-  }
-  100% {
-    opacity: 1;
-    transform: scale(1.2) translateY(-8px) rotateY(0deg);
-    filter: none;
-  }
-}
-
-/*
-@keyframes pulseGlow {
-
-  0%, 100% {
-    box-shadow:
-        0 20px 60px rgba(0, 0, 0, 0.9),
-        0 0 40px rgba(80, 160, 255, 0.3),
-        inset 0 0 20px rgba(80, 160, 255, 0.1);
-  }
-  50% {
-    box-shadow:
-        0 28px 80px rgba(0, 0, 0, 0.95),
-        0 0 70px rgba(80, 160, 255, 0.6),
-        inset 0 0 35px rgba(80, 160, 255, 0.2);
-  }
-}
-*/
-
-@keyframes shimmer {
-  0% {
-    background-position: -200% center;
-  }
-  100% {
-    background-position: 200% center;
-  }
-}
+/* ── Module Card ── */
 .module-card {
   position: absolute;
-  width: 320px;
-  min-width: 0;
-  background: linear-gradient(145deg, #2a2a2a, #0f0f0f);
+  width: 300px;
+  left: 50%;
+  margin-left: -150px;
+  background: linear-gradient(145deg, #282828, #101010);
   border-radius: 16px;
   padding: 14px;
-  overflow: hidden;
-  opacity: 0.8;
-  transform: scale(0.8) translateY(25px);
-  filter: blur(0.75px) brightness(0.9);
+  border: 1px solid rgba(255, 255, 255, 0.08);
   box-shadow: 0 10px 30px rgba(0, 0, 0, 0.8);
-  border: 1px solid rgba(255, 255, 255, 0.12);
   transition:
-      transform 350ms cubic-bezier(0.34, 1.56, 0.64, 1),
-      opacity 350ms ease,
-      filter 350ms ease,
-      box-shadow 350ms ease,
-      border-color 350ms ease,
-      background 350ms ease;
-  cursor: pointer;
+    transform 320ms cubic-bezier(0.4, 0, 0.2, 1),
+    opacity 320ms ease,
+    filter 320ms ease,
+    border-color 320ms ease,
+    background 320ms ease,
+    box-shadow 320ms ease;
+}
+
+.module-card.pos-left {
+  transform: translateX(-220px) translateY(18px) scale(0.75) rotateY(10deg);
+  opacity: 0.28;
+  filter: blur(0.5px);
   z-index: 1;
-  left: 50%;
-  transform-origin: center center;
-  margin-left: -160px;
+  cursor: pointer;
+  transform-origin: right center;
 }
 
-/* glow Effect for active card */
-.module-card::before {
-  content: '';
-  position: absolute;
-  top: -2px;
-  left: -2px;
-  right: -2px;
-  bottom: -2px;
-  background: linear-gradient(
-      135deg,
-      rgba(80, 160, 255, 0.4) 0%,
-      rgba(120, 80, 255, 0.2) 50%,
-      rgba(80, 160, 255, 0.4) 100%
-  );
-  border-radius: 17px;
-  opacity: 0;
-  z-index: -1;
-  transition: opacity 350ms ease;
-  filter: blur(8px);
+.module-card.pos-right {
+  transform: translateX(220px) translateY(18px) scale(0.75) rotateY(-10deg);
+  opacity: 0.28;
+  filter: blur(0.5px);
+  z-index: 1;
+  cursor: pointer;
+  transform-origin: left center;
 }
 
-/* Titel */
+.module-card.pos-center {
+  transform: none;
+  opacity: 1;
+  filter: none;
+  z-index: 5;
+}
+
+.module-card.is-active {
+  border-color: rgba(255, 255, 255, 0.55);
+  background: linear-gradient(145deg, #2c2c2c, #131313);
+  box-shadow:
+    0 10px 40px rgba(0, 0, 0, 0.9),
+    inset 0 1px 0 rgba(255, 255, 255, 0.07);
+}
+
+.card-top {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  margin-bottom: 10px;
+}
+
+.card-index {
+  font-size: 0.62rem;
+  font-weight: 700;
+  letter-spacing: 0.15em;
+  color: rgba(255, 255, 255, 0.2);
+  flex-shrink: 0;
+}
+
 .module-name {
-  font-size: 1rem;
+  margin: 0;
+  font-size: 0.92rem;
   font-weight: 600;
-  margin-bottom: 8px;
+  letter-spacing: 0.02em;
+  color: rgba(255, 255, 255, 0.5);
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
-  text-align: center;
-  letter-spacing: 0.02em;
-  transition: color 350ms ease;
+  transition: color 320ms ease;
 }
 
-/* Preview */
-.preview-container {
-  background: linear-gradient(135deg, #0a0a0a 0%, #050505 100%);
-  border-radius: 12px;
-  padding: 12px;
+.module-card.is-active .module-name {
+  color: #ffffff;
+}
+
+.preview-wrap {
+  background: #050505;
+  border-radius: 10px;
+  padding: 10px;
   min-height: 140px;
   max-height: 180px;
   overflow: hidden;
   display: flex;
   align-items: center;
   justify-content: center;
-  border: 1px solid rgba(255, 255, 255, 0.03);
-  transition: border-color 350ms ease;
+  border: 1px solid rgba(255, 255, 255, 0.04);
 }
 
-.preview-placeholder {
+.preview-skeleton {
   width: 100%;
-  height: 140px;
-  border-radius: 10px;
-  border: 2px dashed rgba(255, 255, 255, 0.12);
+  padding: 8px 4px;
   display: flex;
-  align-items: center;
-  justify-content: center;
-  font-size: 0.85rem;
-  opacity: 0.5;
-  transition: all 350ms ease;
-  letter-spacing: 0.05em;
+  flex-direction: column;
+  gap: 10px;
 }
 
-/* active card*/
-.module-card.is-active {
-  opacity: 1;
-  transform: scale(1.2) translateY(-8px);
-  filter: none;
-  animation: pulseGlow 3s ease-in-out infinite;
-  border-color: rgba(80, 160, 255, 0.6);
-  background: linear-gradient(145deg, #2d2d2d, #121212);
-  z-index: 10;
+.skel-line {
+  height: 9px;
+  border-radius: 5px;
+  background: rgba(255, 255, 255, 0.07);
 }
 
-.module-card.is-active::before {
-  opacity: 1;
-}
-
-.module-card.is-active .module-name {
-  color: #90c8ff;
-  text-shadow: 0 0 10px rgba(80, 160, 255, 0.5);
-}
-
-.module-card.is-active .preview-container {
-  border-color: rgba(80, 160, 255, 0.3);
-}
-
-.module-card.is-active .preview-placeholder {
-  border-color: rgba(80, 160, 255, 0.4);
-  opacity: 0.8;
-}
-
-/* left card */
-.module-card.pos-left {
-  transform: translateX(-240px) translateY(25px) scale(0.75) rotateY(10deg);
-  transform-origin: right center;
-  z-index: 1;
-}
-
-/* right card */
-.module-card.pos-right {
-  transform: translateX(240px) translateY(25px) scale(0.75) rotateY(-10deg);
-  transform-origin: left center;
-  z-index: 1;
-}
-
-/* navigation buttons */
+/* ── Nav Buttons ── */
 .nav-btn {
-  position: absolute;
-  top: 50%;
-  transform: translateY(-50%);
-  background: linear-gradient(135deg, rgba(20, 20, 20, 0.95), rgba(10, 10, 10, 0.98));
-  color: #d0d0d0;
-  border: 1px solid rgba(255, 255, 255, 0.12);
-  border-radius: 50%;
+  flex-shrink: 0;
   width: 44px;
   height: 44px;
-  font-size: 30px;
-  font-weight: 300;
+  background: rgba(12, 12, 12, 0.95);
+  color: #b0b0b0;
+  border: 1px solid rgba(255, 255, 255, 0.10);
+  border-radius: 50%;
   cursor: pointer;
   display: flex;
   align-items: center;
@@ -465,126 +430,102 @@ defineExpose({
   backdrop-filter: blur(10px);
   box-shadow: 0 4px 20px rgba(0, 0, 0, 0.6);
   transition:
-      background 250ms ease,
-      transform 250ms cubic-bezier(0.34, 1.56, 0.64, 1),
-      box-shadow 250ms ease,
-      border-color 250ms ease,
-      color 250ms ease;
+    transform 200ms cubic-bezier(0.4, 0, 0.2, 1),
+    border-color 200ms ease,
+    color 200ms ease,
+    box-shadow 200ms ease;
   z-index: 20;
 }
 
-.nav-btn-left {
-  left: 8px;
-}
-
-.nav-btn-right {
-  right: 8px;
-}
+.nav-btn svg { width: 20px; height: 20px; }
 
 .nav-btn:hover {
-  background: linear-gradient(135deg, rgba(40, 40, 40, 0.98), rgba(20, 20, 20, 1));
-  transform: translateY(-50%) scale(1.1);
-  box-shadow:
-      0 6px 30px rgba(0, 0, 0, 0.8),
-      0 0 30px rgba(80, 160, 255, 0.4);
-  border-color: rgba(80, 160, 255, 0.6);
-  color: #90c8ff;
+  transform: scale(1.1);
+  border-color: rgba(255, 255, 255, 0.50);
+  color: #ffffff;
+  box-shadow: 0 6px 28px rgba(0, 0, 0, 0.8);
 }
 
 .nav-btn:active {
-  transform: translateY(-50%) scale(0.95);
-  box-shadow:
-      0 2px 15px rgba(0, 0, 0, 0.9),
-      0 0 20px rgba(80, 160, 255, 0.3);
+  transform: scale(0.92);
+  box-shadow: 0 2px 10px rgba(0, 0, 0, 0.7);
 }
 
-/* Cell Selection */
-.cell-selection {
-  margin-top: 16px;
-  text-align: center;
-  padding-top: 16px;
-  border-top: 1px solid rgba(255, 255, 255, 0.06);
-}
-
-.cell-selection p {
-  margin-bottom: 10px;
-  font-size: 0.95rem;
-  letter-spacing: 0.05em;
-  color: #b0b0b0;
-}
-
-.no-cells-msg {
-  color: #888;
-  font-size: 0.85rem;
-  font-style: italic;
-}
-
-.cell-buttons {
+/* ── Loading ── */
+.shop-loading {
+  flex: 1;
   display: flex;
-  flex-wrap: wrap;
+  align-items: center;
   justify-content: center;
-  gap: 10px;
-  margin-top: 8px;
 }
 
-.cell-btn {
-  background: linear-gradient(135deg, #2a2a2a, #1a1a1a);
-  color: #d0d0d0;
-  border: 1px solid rgba(255, 255, 255, 0.08);
-  border-radius: 8px;
-  width: 36px;
+.loading-ring {
+  width: 34px;
   height: 34px;
+  border-radius: 50%;
+  border: 2px solid rgba(255, 255, 255, 0.12);
+  border-top-color: rgba(255, 255, 255, 0.65);
+  animation: spin 0.85s linear infinite;
+}
+
+@keyframes spin { to { transform: rotate(360deg); } }
+
+/* ── Add widget button ── */
+.add-widget-btn {
+  flex-shrink: 0;
+  width: 100%;
+  padding: 13px 0;
+  margin-top: 6px;
+  background: rgba(255, 255, 255, 0.08);
+  color: rgba(255, 255, 255, 0.85);
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  border-radius: 10px;
+  font-size: 0.78rem;
+  font-weight: 700;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
   cursor: pointer;
-  font-size: 0.9rem;
-  font-weight: 600;
-  transition:
-      background 200ms ease,
-      transform 200ms cubic-bezier(0.34, 1.56, 0.64, 1),
-      box-shadow 200ms ease,
-      border-color 200ms ease,
-      color 200ms ease;
+  transition: background 180ms ease, border-color 180ms ease, color 180ms ease, transform 180ms ease;
 }
 
-.cell-btn:hover {
-  background: linear-gradient(135deg, #3a3a3a, #2a2a2a);
-  transform: translateY(-2px);
-  box-shadow:
-      0 6px 20px rgba(0, 0, 0, 0.6),
-      0 0 15px rgba(80, 160, 255, 0.2);
-  border-color: rgba(80, 160, 255, 0.4);
-  color: #90c8ff;
+.add-widget-btn:hover {
+  background: rgba(255, 255, 255, 0.14);
+  border-color: rgba(255, 255, 255, 0.36);
+  color: #ffffff;
+  transform: translateY(-1px);
 }
 
-.cell-btn:active {
-  transform: translateY(0px);
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.5);
-}
+/* ── Responsive ── */
+@media (max-width: 700px) {
+  .module-shop { padding: 16px 16px 14px; gap: 14px; }
 
-.loading {
-  text-align: center;
-  color: #888;
-  font-size: 0.95rem;
-  letter-spacing: 0.05em;
-}
+  .shop-title { font-size: 1.1rem; letter-spacing: 0.1em; }
 
-/* Responsive Adjustments */
-@media (max-width: 640px) {
-  .carousel {
-    padding-inline: 40px;
-  }
-
-  .carousel-track {
-    max-width: 100%;
-  }
+  .carousel-stage { min-height: 200px; }
 
   .module-card {
-    flex: 0 0 35%;
+    width: 220px;
+    margin-left: -110px;
   }
+  .module-card.pos-left  { transform: translateX(-155px) translateY(14px) scale(0.73) rotateY(10deg); }
+  .module-card.pos-right { transform: translateX(155px)  translateY(14px) scale(0.73) rotateY(-10deg); }
 
-  .nav-btn {
-    width: 38px;
-    height: 38px;
-    font-size: 20px;
-  }
+  .preview-wrap { min-height: 110px; max-height: 140px; }
+
+  .nav-btn { width: 38px; height: 38px; }
+  .nav-btn svg { width: 16px; height: 16px; }
+}
+
+@media (max-width: 480px) {
+  .module-shop { padding: 14px 12px 12px; }
+  .module-card { width: 190px; margin-left: -95px; }
+  .module-card.pos-left  { transform: translateX(-130px) translateY(12px) scale(0.70) rotateY(8deg); }
+  .module-card.pos-right { transform: translateX(130px)  translateY(12px) scale(0.70) rotateY(-8deg); }
+}
+
+/* ── Reduced motion ── */
+@media (prefers-reduced-motion: reduce) {
+  .module-card, .nav-btn, .add-widget-btn, .pip { transition: none; }
+  .loading-ring { animation: none; border-top-color: rgba(255,255,255,0.4); }
 }
 </style>

@@ -1,4 +1,5 @@
 import base64
+import json
 import logging
 import math
 import sqlite3
@@ -12,7 +13,7 @@ from pathlib import Path
 from statistics import mean
 from typing import Any, cast
 
-from core.config import settings
+from core.config import BASE_DIR, settings
 from core.realtime import RealtimeHub, realtime_hub
 from repositories.config import ConfigRepository
 from schemas.calibration import (
@@ -20,6 +21,7 @@ from schemas.calibration import (
     CalibrationCollectedSample,
     GestureCalibrationSamplePayload,
     GestureFingerStateSnapshot,
+    GesturePinchSampleMetrics,
     GesturePoseSnapshot,
     GesturePushSampleMetrics,
     GestureSequenceArtifact,
@@ -45,6 +47,7 @@ from services.gesture.detection import (
     extract_temporal_gesture_window,
     select_best_gesture_candidate,
 )
+from services.gesture.pinch_runtime import PinchGestureState, detect_pinch_gesture
 from services.gesture.push_runtime import (
     PushGestureState,
     detect_push_gesture,
@@ -61,6 +64,7 @@ from services.gesture.tracking import (
     MediaPipeHandsAdapter,
     TrackedHandObservation,
     build_hand_landmark_map,
+    compute_pinch_contact_metrics,
     compute_hand_size_scale,
     compute_hand_tracking_point,
     estimate_hand_size,
@@ -70,6 +74,43 @@ from services.gesture.tracking import (
 from services.input.orchestrator import InputOrchestrator, input_orchestrator
 
 logger = logging.getLogger(__name__)
+
+try:
+    import cv2
+    import numpy as np
+except ImportError:
+    cv2 = None
+    np = None
+
+DEV_CAPTURE_CONNECTIONS: tuple[tuple[str, str], ...] = (
+    ("wrist", "thumb_cmc"),
+    ("thumb_cmc", "thumb_mcp"),
+    ("thumb_mcp", "thumb_ip"),
+    ("thumb_ip", "thumb_tip"),
+    ("index_mcp", "middle_mcp"),
+    ("middle_mcp", "ring_mcp"),
+    ("ring_mcp", "pinky_mcp"),
+    ("index_mcp", "index_pip"),
+    ("index_pip", "index_dip"),
+    ("index_dip", "index_tip"),
+    ("middle_mcp", "middle_pip"),
+    ("middle_pip", "middle_dip"),
+    ("middle_dip", "middle_tip"),
+    ("ring_mcp", "ring_pip"),
+    ("ring_pip", "ring_dip"),
+    ("ring_dip", "ring_tip"),
+    ("pinky_mcp", "pinky_pip"),
+    ("pinky_pip", "pinky_dip"),
+    ("pinky_dip", "pinky_tip"),
+)
+
+DEV_CAPTURE_PALM_POINTS = {
+    "wrist",
+    "index_mcp",
+    "middle_mcp",
+    "ring_mcp",
+    "pinky_mcp",
+}
 
 
 class GestureServiceError(Exception):
@@ -102,6 +143,11 @@ class CalibrationCaptureFrame:
     dominant_hand_pose: str | None
     finger_states: dict[str, GestureFingerStateSnapshot] = field(default_factory=dict)
     distance_value: float | None = None
+    pinch_distance: float | None = None
+    pinch_smoothed_distance: float | None = None
+    pinch_tip_distance: float | None = None
+    pinch_anchor: tuple[float, float] | None = None
+    pinch_contact_pair: tuple[str, str] | None = None
     recognition: GestureDetectionResult | None = None
 
 
@@ -112,6 +158,23 @@ class ActiveCalibrationCapture:
     target_id: str
     trimmed_tail_ms: int = 750
     frames: list[CalibrationCaptureFrame] = field(default_factory=list)
+
+
+@dataclass(slots=True)
+class ActiveDevFrameCapture:
+    output_dir: Path
+    started_at: float
+    started_wall: datetime
+    duration_seconds: float
+    target_fps: float
+    frames_target: int
+    next_frame_at: float
+    frames_saved: int = 0
+    completed: bool = False
+
+    @property
+    def ends_at(self) -> float:
+        return self.started_at + self.duration_seconds
 
 
 @dataclass(slots=True)
@@ -343,6 +406,7 @@ class GestureService:
         self.latest_frame_data_url: str | None = None
         self.latest_frame_captured_at: datetime | None = None
         self._push_state: PushGestureState | None = None
+        self._pinch_state: PinchGestureState | None = None
         self._pending_gesture: PendingGestureDetection | None = None
         self._last_detectable_observation: GestureObservation | None = None
         self.last_gesture: GestureName | None = None
@@ -364,6 +428,8 @@ class GestureService:
         self.last_primitive_hits: dict[str, float] = {}
         self.last_error: str | None = None
         self._active_calibration_capture: ActiveCalibrationCapture | None = None
+        self._active_dev_capture: ActiveDevFrameCapture | None = None
+        self._last_landmark_broadcast: float = 0.0
 
     @property
     def smoothed_point(self) -> tuple[float, float] | None:
@@ -518,6 +584,7 @@ class GestureService:
             self.camera_index = None
             self.camera_name = None
             self._active_calibration_capture = None
+            self._active_dev_capture = None
 
         return self.get_status()
 
@@ -600,6 +667,59 @@ class GestureService:
                 "frame_age_ms": frame_age_ms,
             }
 
+    def begin_dev_capture(
+        self, *, duration_seconds: float = 3.0, target_fps: float = 24.0
+    ) -> dict[str, object]:
+        if duration_seconds <= 0 or target_fps <= 0:
+            raise GestureServiceError("Ungueltige Capture-Parameter.", status_code=422)
+
+        frames_target = int(round(duration_seconds * target_fps))
+        started_at = time.monotonic()
+        started_wall = datetime.now(timezone.utc)
+        output_root = BASE_DIR.parent / "pics"
+        folder_name = f"gesture_capture_{started_wall.strftime('%Y%m%d_%H%M%S_%f')}"
+        output_dir = output_root / folder_name
+
+        with self._lock:
+            if not self.running:
+                raise GestureServiceError(
+                    "Gestenerkennung muss fuer den Dev-Capture laufen.",
+                    status_code=409,
+                )
+            if self._active_dev_capture is not None:
+                raise GestureServiceError(
+                    "Ein Dev-Capture laeuft bereits.", status_code=409
+                )
+
+            output_dir.mkdir(parents=True, exist_ok=False)
+            (output_dir / "raw").mkdir(exist_ok=True)
+            self._active_dev_capture = ActiveDevFrameCapture(
+                output_dir=output_dir,
+                started_at=started_at,
+                started_wall=started_wall,
+                duration_seconds=duration_seconds,
+                target_fps=target_fps,
+                frames_target=frames_target,
+                next_frame_at=started_at,
+            )
+
+        self._write_dev_capture_manifest(
+            output_dir=output_dir,
+            status="running",
+            started_wall=started_wall,
+            duration_seconds=duration_seconds,
+            target_fps=target_fps,
+            frames_target=frames_target,
+            frames_saved=0,
+        )
+        return {
+            "status": "started",
+            "output_dir": str(output_dir),
+            "duration_seconds": duration_seconds,
+            "target_fps": target_fps,
+            "frames_target": frames_target,
+        }
+
     def begin_calibration_take_capture(
         self,
         *,
@@ -677,6 +797,9 @@ class GestureService:
             return
 
         pose_features = extract_hand_pose_features(observation)
+        pinch_metrics = compute_pinch_contact_metrics(observation)
+        with self._lock:
+            pinch_state = self._pinch_state
         distance_value = self._lifecycle.latest_two_hand_distance()
         finger_states: dict[str, GestureFingerStateSnapshot] = {}
         if observation.landmarks is not None and pose_features is not None:
@@ -740,9 +863,367 @@ class GestureService:
                     dominant_hand_pose=analysis.dominant_hand_pose,
                     finger_states=finger_states,
                     distance_value=distance_value,
+                    pinch_distance=(
+                        pinch_metrics.distance if pinch_metrics is not None else None
+                    ),
+                    pinch_smoothed_distance=(
+                        pinch_state.smoothed_distance
+                        if pinch_state is not None
+                        else None
+                    ),
+                    pinch_tip_distance=(
+                        pinch_metrics.tip_distance
+                        if pinch_metrics is not None
+                        else None
+                    ),
+                    pinch_anchor=(
+                        pinch_metrics.anchor if pinch_metrics is not None else None
+                    ),
+                    pinch_contact_pair=(
+                        pinch_metrics.contact_pair
+                        if pinch_metrics is not None
+                        else None
+                    ),
                     recognition=detection or analysis.detection,
                 )
             )
+
+    def _append_active_dev_capture_frame(
+        self,
+        *,
+        observation: GestureObservation,
+        pose_features: HandPoseFeatures | None,
+        analysis: GestureRuntimeAnalysis | None,
+        detection: GestureDetectionResult | None,
+        published_detection: GestureDetectionResult | None,
+        publish_suppressed_reason: str | None,
+        observed_at: float,
+    ) -> None:
+        with self._lock:
+            active_capture = self._active_dev_capture
+            pinch_state = self._pinch_state
+
+        if active_capture is None or active_capture.completed:
+            return
+
+        if observed_at < active_capture.next_frame_at:
+            return
+
+        if (
+            active_capture.frames_saved >= active_capture.frames_target
+            or observed_at > active_capture.ends_at
+        ):
+            self._finish_active_dev_capture(active_capture)
+            return
+
+        frame_index = active_capture.frames_saved + 1
+        preview_bytes = observation.preview_bytes
+        overlay_bytes = self._build_dev_capture_overlay(preview_bytes, observation)
+        frame_name = f"frame_{frame_index:04d}.jpg"
+        metadata_name = f"frame_{frame_index:04d}.json"
+
+        if preview_bytes is not None:
+            (active_capture.output_dir / "raw" / frame_name).write_bytes(preview_bytes)
+            (active_capture.output_dir / frame_name).write_bytes(
+                overlay_bytes or preview_bytes
+            )
+
+        metadata = self._build_dev_capture_metadata(
+            active_capture=active_capture,
+            frame_index=frame_index,
+            observation=observation,
+            pose_features=pose_features,
+            analysis=analysis,
+            detection=detection,
+            published_detection=published_detection,
+            publish_suppressed_reason=publish_suppressed_reason,
+            observed_at=observed_at,
+            pinch_state=pinch_state,
+            image_file=frame_name if preview_bytes is not None else None,
+            raw_image_file=(f"raw/{frame_name}" if preview_bytes is not None else None),
+        )
+        metadata_payload = json.dumps(metadata, ensure_ascii=True, sort_keys=True)
+        (active_capture.output_dir / metadata_name).write_text(
+            metadata_payload + "\n", encoding="utf-8"
+        )
+        with (active_capture.output_dir / "frames.jsonl").open(
+            "a", encoding="utf-8"
+        ) as index_file:
+            index_file.write(metadata_payload + "\n")
+
+        active_capture.frames_saved = frame_index
+        active_capture.next_frame_at = (
+            active_capture.started_at
+            + active_capture.frames_saved / active_capture.target_fps
+        )
+
+        if (
+            active_capture.frames_saved >= active_capture.frames_target
+            or observed_at >= active_capture.ends_at
+        ):
+            self._finish_active_dev_capture(active_capture)
+
+    def _finish_active_dev_capture(self, active_capture: ActiveDevFrameCapture) -> None:
+        with self._lock:
+            if self._active_dev_capture is not active_capture:
+                return
+            active_capture.completed = True
+            self._active_dev_capture = None
+
+        self._write_dev_capture_manifest(
+            output_dir=active_capture.output_dir,
+            status="complete",
+            started_wall=active_capture.started_wall,
+            duration_seconds=active_capture.duration_seconds,
+            target_fps=active_capture.target_fps,
+            frames_target=active_capture.frames_target,
+            frames_saved=active_capture.frames_saved,
+            completed_wall=datetime.now(timezone.utc),
+        )
+
+    @staticmethod
+    def _write_dev_capture_manifest(
+        *,
+        output_dir: Path,
+        status: str,
+        started_wall: datetime,
+        duration_seconds: float,
+        target_fps: float,
+        frames_target: int,
+        frames_saved: int,
+        completed_wall: datetime | None = None,
+    ) -> None:
+        manifest: dict[str, object] = {
+            "status": status,
+            "started_at": started_wall.isoformat(),
+            "duration_seconds": duration_seconds,
+            "target_fps": target_fps,
+            "frames_target": frames_target,
+            "frames_saved": frames_saved,
+        }
+        if completed_wall is not None:
+            manifest["completed_at"] = completed_wall.isoformat()
+        (output_dir / "capture.json").write_text(
+            json.dumps(manifest, ensure_ascii=True, indent=2, sort_keys=True) + "\n",
+            encoding="utf-8",
+        )
+
+    @staticmethod
+    def _serialize_dev_capture_detection(
+        detection: GestureDetectionResult | None,
+    ) -> dict[str, object] | None:
+        if detection is None:
+            return None
+        return {
+            "gesture": detection.gesture,
+            "confidence": detection.confidence,
+            "tracking_source": detection.tracking_source,
+        }
+
+    @staticmethod
+    def _build_dev_capture_metadata(
+        *,
+        active_capture: ActiveDevFrameCapture,
+        frame_index: int,
+        observation: GestureObservation,
+        pose_features: HandPoseFeatures | None,
+        analysis: GestureRuntimeAnalysis | None,
+        detection: GestureDetectionResult | None,
+        published_detection: GestureDetectionResult | None,
+        publish_suppressed_reason: str | None,
+        observed_at: float,
+        pinch_state: PinchGestureState | None,
+        image_file: str | None,
+        raw_image_file: str | None,
+    ) -> dict[str, object]:
+        hands = observation.hands or [
+            TrackedHandObservation(
+                point=observation.point,
+                hand=observation.hand,
+                landmarks=observation.landmarks,
+                landmark_depths=observation.landmark_depths,
+                hand_size=observation.hand_size,
+                tracking_source=observation.tracking_source,
+            )
+        ]
+        thumb_state = (
+            pose_features.finger_states.get("thumb")
+            if pose_features is not None
+            else None
+        )
+        contact_metrics = compute_pinch_contact_metrics(observation)
+        spread_window = list(pinch_state.spread_window) if pinch_state else []
+        analysis_detection = analysis.detection if analysis is not None else None
+        return {
+            "frame_index": frame_index,
+            "elapsed_ms": int(max(0.0, observed_at - active_capture.started_at) * 1000),
+            "observed_at_monotonic": observed_at,
+            "image_file": image_file,
+            "raw_image_file": raw_image_file,
+            "hand": observation.hand,
+            "point": list(observation.point) if observation.point is not None else None,
+            "hand_size": observation.hand_size,
+            "tracking_source": observation.tracking_source,
+            "hands": [
+                {
+                    "hand": hand.hand,
+                    "point": list(hand.point) if hand.point is not None else None,
+                    "hand_size": hand.hand_size,
+                    "tracking_source": hand.tracking_source,
+                    "landmarks": {
+                        name: list(point)
+                        for name, point in (hand.landmarks or {}).items()
+                    },
+                    "landmark_depths": dict(hand.landmark_depths or {}),
+                }
+                for hand in hands
+            ],
+            "pose": (
+                {
+                    "center_distance": pose_features.center_distance,
+                    "hand_openness": pose_features.hand_openness,
+                    "index_extension_ratio": pose_features.index_extension_ratio,
+                    "push_depth": pose_features.push_depth,
+                    "finger_states": {
+                        name: {
+                            "extended_score": state.extended_score,
+                            "curled_score": state.curled_score,
+                            "spread_score": state.spread_score,
+                            "tip_depth_relative": state.tip_depth_relative,
+                            "tip_to_palm_distance": state.tip_to_palm_distance,
+                            "label": state.label,
+                        }
+                        for name, state in pose_features.finger_states.items()
+                    },
+                }
+                if pose_features is not None
+                else None
+            ),
+            "pinch": {
+                "thumb_index_spread": (
+                    thumb_state.spread_score if thumb_state is not None else None
+                ),
+                "contact_distance": (
+                    contact_metrics.distance if contact_metrics is not None else None
+                ),
+                "contact_pair": (
+                    list(contact_metrics.contact_pair)
+                    if contact_metrics is not None
+                    else None
+                ),
+                "anchor": (
+                    list(contact_metrics.anchor)
+                    if contact_metrics is not None
+                    else None
+                ),
+                "tip_distance": (
+                    contact_metrics.tip_distance
+                    if contact_metrics is not None
+                    else None
+                ),
+                "smoothed_spread": mean(spread_window) if spread_window else None,
+                "spread_window": spread_window,
+                "closed": pinch_state.pinch_closed if pinch_state is not None else None,
+                "last_fire_at": (
+                    pinch_state.last_fire_at if pinch_state is not None else None
+                ),
+            },
+            "runtime": (
+                {
+                    "active_phase": analysis.active_phase,
+                    "tracking_quality": analysis.tracking_quality,
+                    "candidate_scores": dict(analysis.candidate_scores),
+                    "primitive_hits": dict(analysis.primitive_hits),
+                    "reject_reason": analysis.reject_reason,
+                    "dominant_hand_pose": analysis.dominant_hand_pose,
+                    "detection": GestureService._serialize_dev_capture_detection(
+                        analysis_detection
+                    ),
+                }
+                if analysis is not None
+                else None
+            ),
+            "analysis_detection": GestureService._serialize_dev_capture_detection(
+                analysis_detection
+            ),
+            "pending_detection": GestureService._serialize_dev_capture_detection(
+                detection
+            ),
+            "published_detection": GestureService._serialize_dev_capture_detection(
+                published_detection
+            ),
+            "publish_suppressed_reason": publish_suppressed_reason,
+            "fired_detection": GestureService._serialize_dev_capture_detection(
+                published_detection
+            ),
+        }
+
+    @staticmethod
+    def _build_dev_capture_overlay(
+        preview_bytes: bytes | None, observation: GestureObservation
+    ) -> bytes | None:
+        if preview_bytes is None or cv2 is None or np is None:
+            return None
+
+        try:
+            buffer = np.frombuffer(preview_bytes, dtype=np.uint8)
+            image = cv2.imdecode(buffer, cv2.IMREAD_COLOR)
+            if image is None:
+                return None
+            height, width = image.shape[:2]
+            hands = observation.hands or [
+                TrackedHandObservation(
+                    point=observation.point,
+                    hand=observation.hand,
+                    landmarks=observation.landmarks,
+                )
+            ]
+            for hand in hands:
+                landmarks = hand.landmarks or {}
+                for start_name, end_name in DEV_CAPTURE_CONNECTIONS:
+                    start = landmarks.get(start_name)
+                    end = landmarks.get(end_name)
+                    if start is None or end is None:
+                        continue
+                    cv2.line(
+                        image,
+                        (int(start[0] * width), int(start[1] * height)),
+                        (int(end[0] * width), int(end[1] * height)),
+                        (250, 170, 70),
+                        2,
+                        lineType=cv2.LINE_AA,
+                    )
+
+                for name, point in landmarks.items():
+                    radius = 5 if name in DEV_CAPTURE_PALM_POINTS else 4
+                    center = (int(point[0] * width), int(point[1] * height))
+                    cv2.circle(
+                        image,
+                        center,
+                        radius + 1,
+                        (20, 20, 20),
+                        -1,
+                        lineType=cv2.LINE_AA,
+                    )
+                    cv2.circle(
+                        image,
+                        center,
+                        radius,
+                        (
+                            (255, 255, 255)
+                            if name in DEV_CAPTURE_PALM_POINTS
+                            else (255, 170, 70)
+                        ),
+                        -1,
+                        lineType=cv2.LINE_AA,
+                    )
+
+            ok, encoded = cv2.imencode(".jpg", image)
+            if not ok:
+                return None
+            return encoded.tobytes()
+        except (AttributeError, RuntimeError, TypeError, ValueError):
+            return None
 
     @staticmethod
     def _trim_calibration_frames(
@@ -848,6 +1329,32 @@ class GestureService:
                 frame_count=len(distance_values),
             )
 
+        pinch_distances = [
+            frame.pinch_distance for frame in frames if frame.pinch_distance is not None
+        ]
+        pinch_metrics = None
+        if target_id in {"pinch_close", "pinch_open"} and pinch_distances:
+            selected = (
+                min(
+                    (frame for frame in frames if frame.pinch_distance is not None),
+                    key=lambda frame: frame.pinch_distance or 1.0,
+                )
+                if target_id == "pinch_close"
+                else max(
+                    (frame for frame in frames if frame.pinch_distance is not None),
+                    key=lambda frame: frame.pinch_distance or 0.0,
+                )
+            )
+            anchor = selected.pinch_anchor
+            pinch_metrics = GesturePinchSampleMetrics(
+                distance=selected.pinch_distance or 0.0,
+                smoothed_distance=selected.pinch_smoothed_distance,
+                tip_distance=selected.pinch_tip_distance,
+                anchor_x=anchor[0] if anchor is not None else None,
+                anchor_y=anchor[1] if anchor is not None else None,
+                contact_pair=list(selected.pinch_contact_pair or ()),
+            )
+
         advisory_recognition = self._select_advisory_recognition(frames)
         most_common_hand = self._most_common_non_null(frame.hand for frame in frames)
         tracking_source = self._most_common_non_null(
@@ -878,6 +1385,7 @@ class GestureService:
             trajectory=trajectory_summary,
             push=push_metrics,
             zoom=zoom_metrics,
+            pinch=pinch_metrics,
             pose=(
                 GesturePoseSnapshot(
                     center_distance=last_frame_with_pose.center_distance or 0.0,
@@ -1394,16 +1902,29 @@ class GestureService:
                             )
                         )
                     detection = self._flush_pending_gesture(observed_at)
-                    if detection is not None and self._cooldown_elapsed(
-                        detection.gesture
-                    ):
-                        self._publish_runtime_detection(
-                            detection=detection,
-                            observation=last_detectable_observation,
-                            trajectory=trajectory_snapshot,
-                            trajectory_timestamps=trajectory_timestamps_snapshot,
-                            hand_size=hand_size_snapshot,
-                        )
+                    published_detection = None
+                    publish_suppressed_reason = None
+                    if detection is not None:
+                        if self._cooldown_elapsed(detection.gesture):
+                            published_detection = detection
+                            self._publish_runtime_detection(
+                                detection=detection,
+                                observation=last_detectable_observation,
+                                trajectory=trajectory_snapshot,
+                                trajectory_timestamps=trajectory_timestamps_snapshot,
+                                hand_size=hand_size_snapshot,
+                            )
+                        else:
+                            publish_suppressed_reason = "cooldown"
+                    self._append_active_dev_capture_frame(
+                        observation=observation,
+                        pose_features=None,
+                        analysis=None,
+                        detection=detection,
+                        published_detection=published_detection,
+                        publish_suppressed_reason=publish_suppressed_reason,
+                        observed_at=observed_at,
+                    )
                     self._reset_sequence_state(missing_observed_at=observed_at)
                     with self._lock:
                         self._lifecycle.reset_motion_window(clear_post_fire=True)
@@ -1413,6 +1934,49 @@ class GestureService:
 
                 hand_count = len(observation.hands) if observation.hands else 1
                 pose_features = extract_hand_pose_features(observation)
+
+                _now = time.monotonic()
+                if _now - self._last_landmark_broadcast >= 1.0 / 15:
+                    self._last_landmark_broadcast = _now
+                    _hands_data = []
+                    _primary_pinch = compute_pinch_contact_metrics(observation)
+                    for _h in observation.hands or [observation]:
+                        if _h.landmarks:
+                            _pinch = compute_pinch_contact_metrics(_h)
+                            _hands_data.append(
+                                {
+                                    "hand": _h.hand,
+                                    "landmarks": {
+                                        k: list(v) for k, v in _h.landmarks.items()
+                                    },
+                                    "pinch_anchor": (
+                                        list(_pinch.anchor)
+                                        if _pinch is not None
+                                        else None
+                                    ),
+                                    "pinch_distance": (
+                                        _pinch.distance if _pinch is not None else None
+                                    ),
+                                }
+                            )
+                    self.realtime.publish_from_thread(
+                        {
+                            "eventType": "HandTrackingUpdated",
+                            "payload": {
+                                "hands": _hands_data,
+                                "pinch_anchor": (
+                                    list(_primary_pinch.anchor)
+                                    if _primary_pinch is not None
+                                    else None
+                                ),
+                                "pinch_distance": (
+                                    _primary_pinch.distance
+                                    if _primary_pinch is not None
+                                    else None
+                                ),
+                            },
+                        }
+                    )
                 with self._lock:
                     self.last_error = None
                     self.last_hand = observation.hand
@@ -1433,6 +1997,15 @@ class GestureService:
                     ) = self._lifecycle.copy_motion_snapshot()
 
                 if recorded_point is None:
+                    self._append_active_dev_capture_frame(
+                        observation=observation,
+                        pose_features=pose_features,
+                        analysis=None,
+                        detection=None,
+                        published_detection=None,
+                        publish_suppressed_reason=None,
+                        observed_at=observed_at,
+                    )
                     time.sleep(settings.GESTURE_IDLE_SLEEP_SECONDS)
                     continue
 
@@ -1461,6 +2034,22 @@ class GestureService:
                 detection = self._advance_pending_gesture(
                     analysis=analysis, observed_at=observed_at
                 )
+                published_detection = None
+                publish_suppressed_reason = None
+                if detection is not None:
+                    if self._cooldown_elapsed(detection.gesture):
+                        published_detection = detection
+                    else:
+                        publish_suppressed_reason = "cooldown"
+                self._append_active_dev_capture_frame(
+                    observation=observation,
+                    pose_features=pose_features,
+                    analysis=analysis,
+                    detection=detection,
+                    published_detection=published_detection,
+                    publish_suppressed_reason=publish_suppressed_reason,
+                    observed_at=observed_at,
+                )
                 try:
                     self._append_active_calibration_capture_frame(
                         observation=observation,
@@ -1473,9 +2062,9 @@ class GestureService:
                         "Calibration capture frame append failed, skipping frame: %s",
                         exc,
                     )
-                if detection is not None and self._cooldown_elapsed(detection.gesture):
+                if published_detection is not None:
                     self._publish_runtime_detection(
-                        detection=detection,
+                        detection=published_detection,
                         observation=observation,
                         trajectory=trajectory_snapshot,
                         trajectory_timestamps=trajectory_timestamps_snapshot,
@@ -1490,6 +2079,7 @@ class GestureService:
                 self.camera_index = None
                 self.camera_name = None
                 self._active_calibration_capture = None
+                self._active_dev_capture = None
             if adapter_to_close is not None:
                 try:
                     adapter_to_close.close()
@@ -1583,6 +2173,10 @@ class GestureService:
             ):
                 self._pending_gesture = None
             return None
+
+        if detection.gesture in {"pinch_close", "pinch_open"}:
+            self._pending_gesture = None
+            return detection
 
         pending = self._pending_gesture
         if pending is None or pending.detection.gesture != detection.gesture:
@@ -1711,6 +2305,13 @@ class GestureService:
         now = time.time()
         with self._lock:
             cooldown_seconds = self._active_config.cooldown_seconds
+            if gesture in {"pinch_close", "pinch_open"}:
+                last_same = self.last_gesture_time_by_name.get(gesture, 0.0)
+                if now - last_same <= cooldown_seconds:
+                    return False
+                self.last_gesture_time_by_name[gesture] = now
+                return True
+
             last_seen = max(self.last_gesture_time_by_name.values(), default=0.0)
             if now - last_seen <= cooldown_seconds:
                 return False
@@ -1749,7 +2350,17 @@ class GestureService:
         if zoom_detection is not None:
             candidates.append(zoom_detection)
 
-        push_detection = self._detect_push_gesture(observation, observed_at)
+        pinch_detection = self._detect_pinch_gesture(observation, observed_at)
+        if pinch_detection is not None:
+            candidates.append(pinch_detection)
+
+        pinch_closed = (
+            self._pinch_state.pinch_closed if self._pinch_state is not None else False
+        )
+
+        push_detection = None
+        if not pinch_closed:
+            push_detection = self._detect_push_gesture(observation, observed_at)
         if push_detection is not None:
             candidates.append(push_detection)
 
@@ -1772,14 +2383,15 @@ class GestureService:
         analysis_timestamps = (
             trajectory_timestamps if hand_count >= 2 else trajectory_window_timestamps
         )
-        candidates.extend(
-            self._collect_runtime_single_hand_candidates(
-                observation=observation,
-                trajectory=trajectory_window,
-                hand_size=hand_size,
-                tracking_source=observation.tracking_source,
+        if not pinch_closed:
+            candidates.extend(
+                self._collect_runtime_single_hand_candidates(
+                    observation=observation,
+                    trajectory=trajectory_window,
+                    hand_size=hand_size,
+                    tracking_source=observation.tracking_source,
+                )
             )
-        )
 
         with self._lock:
             active_config = self._active_config
@@ -2222,6 +2834,24 @@ class GestureService:
         )
         return detection
 
+    def _detect_pinch_gesture(
+        self,
+        observation: GestureObservation,
+        observed_at: float,
+    ) -> GestureDetectionResult | None:
+        with self._lock:
+            active_config = self._active_config
+        pose_features = extract_hand_pose_features(observation)
+        contact_metrics = compute_pinch_contact_metrics(observation)
+        self._pinch_state, detection = detect_pinch_gesture(
+            state=self._pinch_state,
+            pose_features=pose_features,
+            observed_at=observed_at,
+            config=active_config,
+            contact_metrics=contact_metrics,
+        )
+        return detection
+
     def _detect_zoom_gesture(
         self,
         observation: GestureObservation,
@@ -2403,6 +3033,22 @@ class GestureService:
             )
             duration_seconds = self._metric_float(detection.metrics, "duration_seconds")
 
+        contact_metrics = compute_pinch_contact_metrics(observation)
+        pinch_metrics = None
+        if detection.gesture in {"pinch_close", "pinch_open"} and contact_metrics:
+            pinch_metrics = GesturePinchSampleMetrics(
+                distance=contact_metrics.distance,
+                smoothed_distance=(
+                    self._pinch_state.smoothed_distance
+                    if self._pinch_state is not None
+                    else None
+                ),
+                tip_distance=contact_metrics.tip_distance,
+                anchor_x=contact_metrics.anchor[0],
+                anchor_y=contact_metrics.anchor[1],
+                contact_pair=list(contact_metrics.contact_pair),
+            )
+
         return CalibrationCollectedSample(
             sample_id=f"gesture-sample-{detected_at.timestamp():.6f}",
             modality="gesture",
@@ -2419,6 +3065,7 @@ class GestureService:
                 trajectory=trajectory_summary,
                 push=push_metrics,
                 zoom=zoom_metrics,
+                pinch=pinch_metrics,
                 pose=(
                     GesturePoseSnapshot(
                         center_distance=pose_features.center_distance,
@@ -2525,10 +3172,12 @@ class GestureService:
         self.latest_frame_data_url = None
         self.latest_frame_captured_at = None
         self._active_calibration_capture = None
+        self._active_dev_capture = None
         self._lifecycle.reset_all()
         self._pending_gesture = None
         self._last_detectable_observation = None
         self._push_state = None
+        self._pinch_state = None
         self.last_gesture = None
         self.last_gesture_at = None
         self.last_confidence = None
