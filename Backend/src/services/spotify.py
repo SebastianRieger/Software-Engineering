@@ -126,9 +126,7 @@ class SpotifyService:
     async def _get_valid_access_token(self) -> str:
         tokens = self.repository.get_tokens()
         if tokens is None:
-            raise SpotifyServiceError(
-                "Nicht mit Spotify verbunden.", status_code=401
-            )
+            raise SpotifyServiceError("Nicht mit Spotify verbunden.", status_code=401)
 
         expires_at = datetime.fromisoformat(tokens["expires_at"])
         if datetime.now(timezone.utc) >= expires_at:
