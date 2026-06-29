@@ -32,7 +32,9 @@ async def spotify_callback(
         await service.exchange_code(code)
     except SpotifyServiceError as exc:
         raise HTTPException(status_code=exc.status_code, detail=str(exc)) from exc
-    return {"message": "Spotify erfolgreich verbunden! Du kannst dieses Fenster schließen."}
+    return {
+        "message": "Spotify erfolgreich verbunden! Du kannst dieses Fenster schließen."
+    }
 
 
 @router.get("/now-playing", response_model=NowPlayingResponse)

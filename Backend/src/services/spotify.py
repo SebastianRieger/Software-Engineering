@@ -35,23 +35,27 @@ class SpotifyService:
         self.repository = repository or SpotifyRepository()
 
     def get_auth_url(self) -> str:
-        params = urlencode({
-            "client_id": settings.SPOTIFY_CLIENT_ID,
-            "response_type": "code",
-            "redirect_uri": settings.SPOTIFY_REDIRECT_URI,
-            "scope": _SCOPES,
-        })
+        params = urlencode(
+            {
+                "client_id": settings.SPOTIFY_CLIENT_ID,
+                "response_type": "code",
+                "redirect_uri": settings.SPOTIFY_REDIRECT_URI,
+                "scope": _SCOPES,
+            }
+        )
         return f"{_AUTH_URL}?{params}"
 
     def is_authenticated(self) -> bool:
         return self.repository.get_tokens() is not None
 
     async def exchange_code(self, code: str) -> None:
-        tokens = await self._request_tokens({
-            "grant_type": "authorization_code",
-            "code": code,
-            "redirect_uri": settings.SPOTIFY_REDIRECT_URI,
-        })
+        tokens = await self._request_tokens(
+            {
+                "grant_type": "authorization_code",
+                "code": code,
+                "redirect_uri": settings.SPOTIFY_REDIRECT_URI,
+            }
+        )
         self._persist_tokens(tokens)
 
     async def get_now_playing(self) -> dict[str, Any]:
@@ -133,10 +137,12 @@ class SpotifyService:
         return tokens["access_token"]
 
     async def _refresh_access_token(self, refresh_token: str) -> dict:
-        tokens = await self._request_tokens({
-            "grant_type": "refresh_token",
-            "refresh_token": refresh_token,
-        })
+        tokens = await self._request_tokens(
+            {
+                "grant_type": "refresh_token",
+                "refresh_token": refresh_token,
+            }
+        )
         if "refresh_token" not in tokens:
             tokens["refresh_token"] = refresh_token
         self._persist_tokens(tokens)

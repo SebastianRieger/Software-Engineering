@@ -16,7 +16,7 @@ from .endpoints import (
     system,
     trivia,
     weather,
-    spotify
+    spotify,
 )
 
 api_router = APIRouter()
