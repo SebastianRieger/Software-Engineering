@@ -7,10 +7,17 @@ vi.mock('@/services/apiConfig', () => ({
 
 const mockFetch = vi.fn()
 global.fetch = mockFetch
+let visibilityState: 'visible' | 'hidden' = 'visible'
+
+Object.defineProperty(document, 'visibilityState', {
+  configurable: true,
+  get: () => visibilityState,
+})
 
 describe('gestureFrameStream service', () => {
   beforeEach(() => {
     vi.useFakeTimers()
+    visibilityState = 'visible'
     mockFetch.mockResolvedValue({
       ok: true,
       json: async () => ({ image: 'data:image/jpeg;base64,abc' }),
@@ -77,6 +84,23 @@ describe('gestureFrameStream service', () => {
     start()
     await flushPromises()
     expect(frameUrl.value).toBeNull()
+    stop()
+  })
+
+  it('pauses polling while the tab is hidden and resumes on visibilitychange', async () => {
+    visibilityState = 'hidden'
+    const { useGestureFrameStream } = await import('@/services/gestureFrameStream')
+    const { start, stop } = useGestureFrameStream()
+
+    start()
+    await flushPromises()
+    expect(mockFetch).not.toHaveBeenCalled()
+
+    visibilityState = 'visible'
+    document.dispatchEvent(new Event('visibilitychange'))
+    await flushPromises()
+
+    expect(mockFetch).toHaveBeenCalled()
     stop()
   })
 })

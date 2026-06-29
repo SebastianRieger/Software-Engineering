@@ -311,6 +311,28 @@ describe('useActionDispatcher', () => {
     expect(resizeCell).toHaveBeenNthCalledWith(2, 1, 'shrink')
   })
 
+  it('never toggles edit mode on when handling exit_arrange_mode', () => {
+    const setEditMode = vi.fn()
+    const isEditMode = ref(false)
+
+    const dispatcher = useActionDispatcher({
+      isShopOpen: ref(false),
+      openShop: vi.fn(),
+      closeShop: vi.fn(),
+      toggleShop: vi.fn(),
+      isEditMode,
+      setEditMode,
+      visibleCellIds: () => [1, 2, 3, 4],
+      isCellAvailable: () => true,
+      moduleShopRef: ref(null),
+      goToGrid: vi.fn(),
+    })
+
+    expect(dispatcher.dispatchAction(createPayload('exit_arrange_mode'))).toBe(true)
+    expect(setEditMode).toHaveBeenCalledOnce()
+    expect(setEditMode).toHaveBeenCalledWith(false)
+  })
+
   it('returns false for optional actions when the corresponding handlers are missing', () => {
     const dispatcher = useActionDispatcher({
       isShopOpen: ref(false),

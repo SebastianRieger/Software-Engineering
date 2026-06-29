@@ -6,6 +6,7 @@ import ModuleShop from './ModuleShop.vue';
 import GestureCursor from './GestureCursor.vue';
 import GestureContextHUD from './GestureContextHUD.vue';
 import HomeScreen from '../HomeScreen.vue';
+import MicrophoneSelector from './MicrophoneSelector.vue';
 import { useWidgetManager } from '../../composables/useWidgetManager';
 import { useWidgetResize } from '../../composables/useWidgetResize';
 import { useEditMode } from '../../composables/useEditMode';
@@ -35,9 +36,11 @@ const {
   frameUrl,
   error: cameraError,
   loading: cameraLoading,
+  state: homeState,
   slideDirection,
   initializeCamera,
   navigateCamera,
+  setHomeActive,
   stopStream,
 } = useHomeScreen();
 
@@ -181,12 +184,17 @@ setupKeyboardListener({
 });
 
 watch(availableCells, () => { syncFocusedCell(); });
+watch(currentView, (view, previousView) => {
+  setHomeActive(view === 'home');
+  if (view === 'home' && previousView !== 'home') {
+    void initializeCamera();
+  }
+}, { immediate: true });
 
 onMounted(() => {
   void checkExternalApiHealth().catch((error) => {
     console.warn('External API health check failed', error);
   });
-  void initializeCamera();
   syncFocusedCell();
   unsubscribeRealtime = realtimeClient.subscribe((event) => {
     handleRealtimeEvent(event);
@@ -194,6 +202,7 @@ onMounted(() => {
 });
 
 onBeforeUnmount(() => {
+  setHomeActive(false);
   unsubscribeRealtime?.();
   unsubscribeRealtime = null;
   stopStream();
@@ -230,6 +239,7 @@ onBeforeUnmount(() => {
         :frame-url="frameUrl"
         :error="cameraError"
         :loading="cameraLoading"
+        :state="homeState"
         :slide-direction="slideDirection"
         @goto-grid="goToGrid"
         @navigate-camera="navigateCamera"
@@ -267,6 +277,11 @@ onBeforeUnmount(() => {
           @confirm-delete="handleConfirmDelete"
           @cancel-delete="handleCancelDelete"
         />
+
+        <!-- Microphone selection (bottom-left corner) -->
+        <div class="mic-corner">
+          <MicrophoneSelector />
+        </div>
       </div>
     </Transition>
 
@@ -283,6 +298,13 @@ onBeforeUnmount(() => {
 .grid-view {
   position: absolute;
   inset: 0;
+}
+
+.mic-corner {
+  position: absolute;
+  bottom: 20px;
+  left: 20px;
+  z-index: 50;
 }
 
 /* View-Transition: HomeScreen → Grid */

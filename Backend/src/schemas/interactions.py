@@ -9,7 +9,6 @@ UIActionType = Literal[
     "move_focus_up",
     "move_focus_down",
     "focus_grid_cell",
-    "focus_widget_type",
     "toggle_shop",
     "open_shop",
     "close_shop",
@@ -35,7 +34,6 @@ UIActionMode = Literal["grid", "shop", "arrange"]
 
 class UIActionArguments(BaseModel):
     cell_index: int | None = Field(default=None, ge=1)
-    widget_type: str | None = Field(default=None, min_length=1)
     mode: UIActionMode | None = None
 
 
@@ -145,11 +143,6 @@ def build_default_input_action_mappings() -> list[InputActionMapping]:
             input_source="voice",
             raw_input="voice.focus_grid_cell",
             action="focus_grid_cell",
-        ),
-        InputActionMapping(
-            input_source="voice",
-            raw_input="voice.focus_widget_type",
-            action="focus_widget_type",
         ),
     ]
 

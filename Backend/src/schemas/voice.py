@@ -60,13 +60,6 @@ def build_default_voice_signals() -> list[VoiceSignalDefinition]:
     ]
 
 
-def build_default_widget_aliases() -> dict[str, list[str]]:
-    return {
-        widget_type: list(aliases)
-        for widget_type, aliases in settings.VOICE_WIDGET_ALIASES.items()
-    }
-
-
 class VoiceConfig(BaseModel):
     enabled: bool = settings.VOICE_ENABLED
     device_index: int = Field(default=settings.VOICE_DEVICE_INDEX, ge=-1)
@@ -84,9 +77,6 @@ class VoiceConfig(BaseModel):
     commands: list[str] = Field(default_factory=lambda: list(settings.VOICE_COMMANDS))
     signals: list[VoiceSignalDefinition] = Field(
         default_factory=build_default_voice_signals
-    )
-    widget_aliases: dict[str, list[str]] = Field(
-        default_factory=build_default_widget_aliases
     )
     updated_at: datetime | None = None
 

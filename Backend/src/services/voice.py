@@ -3,6 +3,7 @@ from dataclasses import dataclass
 from datetime import datetime, timezone
 import json
 import logging
+from math import gcd
 from pathlib import Path
 import queue
 import re
@@ -26,6 +27,15 @@ try:
 except ImportError:  # pragma: no cover - optional runtime dependency
     KaldiRecognizer = None
     Model = None
+
+try:
+    import numpy as _np
+    from scipy.signal import resample_poly as _scipy_resample_poly
+    _HAS_SCIPY = True
+except ImportError:  # pragma: no cover - scipy is a required dependency
+    _np = None  # type: ignore[assignment]
+    _scipy_resample_poly = None  # type: ignore[assignment]
+    _HAS_SCIPY = False
 
 
 logger = logging.getLogger(__name__)
@@ -95,6 +105,8 @@ class VoiceService:
         self._last_command_at: datetime | None = None
         self._last_command_time_by_name: dict[str, float] = {}
         self._last_error: str | None = self._build_unavailable_message()
+        self._capture_rate: int = settings.VOICE_SAMPLE_RATE
+        self._model_rate: int = settings.VOICE_SAMPLE_RATE
 
     def startup(self) -> None:
         self.reload_config()
@@ -189,10 +201,16 @@ class VoiceService:
             if max_input_channels <= 0:
                 continue
 
+            name = str(device.get("name", f"Input {index}"))
+            # Skip raw ALSA hw:X,Y entries — PipeWire/PulseAudio names for the same
+            # hardware are always present and more reliable; keep those instead.
+            if re.search(r"\(hw:\d+,\d+\)", name):
+                continue
+
             result.append(
                 {
                     "index": index,
-                    "name": str(device.get("name", f"Input {index}")),
+                    "name": name,
                     "max_input_channels": max_input_channels,
                     "default_samplerate": (
                         float(device["default_samplerate"])
@@ -211,34 +229,77 @@ class VoiceService:
 
         with self._lock:
             if self._running:
+                logger.info(
+                    "Voice start requested while already running on device '%s' (index=%s).",
+                    self._device_name or "unknown",
+                    self._device_index,
+                )
                 return self.get_status()
 
         if not config.enabled:
+            message = "Voice service ist per Konfiguration deaktiviert."
             with self._lock:
-                self._last_error = "Voice service ist per Konfiguration deaktiviert."
-            raise VoiceServiceError(
-                "Voice service ist per Konfiguration deaktiviert.", status_code=503
+                self._last_error = message
+            logger.warning(
+                "Voice start rejected for requested device %s: %s",
+                device_index,
+                message,
             )
+            raise VoiceServiceError(message, status_code=503)
 
         if not self.is_available():
             message = self._build_unavailable_message()
             with self._lock:
                 self._last_error = message
+            logger.warning(
+                "Voice start rejected for requested device %s: %s",
+                device_index,
+                message,
+            )
             raise VoiceServiceError(message, status_code=503)
 
         requested_device_index = (
             device_index if device_index >= 0 else config.device_index
         )
-        resolved_device_index, resolved_device_name = self._resolve_input_device(
-            requested_device_index
-        )
+        try:
+            resolved_device_index, resolved_device_name = self._resolve_input_device(
+                requested_device_index
+            )
+        except VoiceServiceError as exc:
+            logger.warning(
+                "Voice device resolution failed for requested device %s: %s",
+                requested_device_index,
+                exc,
+            )
+            raise
+
+        capture_rate = self._probe_device_sample_rate(resolved_device_index)
         model_path = Path(settings.VOICE_MODEL_PATH).expanduser()
+        logger.info(
+            "Starting voice capture on device '%s' (index=%s, capture_rate=%s, model_rate=%s).",
+            resolved_device_name,
+            resolved_device_index,
+            capture_rate,
+            config.sample_rate,
+        )
 
         try:
             model = Model(str(model_path))
-            recognizer = KaldiRecognizer(model, config.sample_rate)
+            vocabulary = self._build_vosk_vocabulary(config)
+            recognizer = KaldiRecognizer(model, config.sample_rate, vocabulary)
+            logger.info(
+                "Vosk started with vocabulary-constraint mode: %d terms. "
+                "Requires a model with dynamic graph support (e.g. vosk-model-de-0.21). "
+                "If recognition quality is poor, verify the model at: %s",
+                len(json.loads(vocabulary)),
+                model_path,
+            )
         except Exception as exc:  # pragma: no cover - depends on runtime model files
-            logger.exception("Voice recognizer initialization failed")
+            logger.exception(
+                "Voice recognizer initialization failed for device '%s' (index=%s).",
+                resolved_device_name,
+                resolved_device_index,
+            )
             with self._lock:
                 self._last_error = str(exc)
             raise VoiceServiceError(
@@ -254,6 +315,8 @@ class VoiceService:
             self._device_name = resolved_device_name
             self._recognizer = recognizer
             self._model = model
+            self._capture_rate = capture_rate
+            self._model_rate = config.sample_rate
             self._chunks_processed = 0
             self._chunks_dropped = 0
             self._last_audio_level = 0.0
@@ -263,21 +326,38 @@ class VoiceService:
             self._thread = threading.Thread(target=self._run_loop, daemon=True)
             self._thread.start()
 
+        logger.info(
+            "Voice capture started on device '%s' (index=%s).",
+            resolved_device_name,
+            resolved_device_index,
+        )
         return self.get_status()
 
     def stop(self) -> dict[str, object]:
         thread = None
         with self._lock:
+            device_index = self._device_index
+            device_name = self._device_name or "unknown"
+            was_running = self._running
             self._running = False
             self._stop_event.set()
             thread = self._thread
             self._thread = None
 
+        if was_running or device_index is not None:
+            logger.info(
+                "Stopping voice capture on device '%s' (index=%s).",
+                device_name,
+                device_index,
+            )
+
         if thread is not None:
             thread.join(timeout=settings.VOICE_STOP_JOIN_TIMEOUT_SECONDS)
             if thread.is_alive():
                 logger.warning(
-                    "Voice thread did not stop within %.2f seconds.",
+                    "Voice thread for device '%s' (index=%s) did not stop within %.2f seconds.",
+                    device_name,
+                    device_index,
                     settings.VOICE_STOP_JOIN_TIMEOUT_SECONDS,
                 )
 
@@ -288,17 +368,16 @@ class VoiceService:
             self._model = None
             status = self.get_status()
 
+        if was_running or device_index is not None:
+            logger.info(
+                "Voice capture stopped on device '%s' (index=%s).",
+                device_name,
+                device_index,
+            )
         return {
             **status,
             "message": "Voice stopped",
         }
-
-    def note_command(self, command: str, transcript: str | None = None) -> None:
-        with self._lock:
-            self._last_command = command
-            self._last_command_at = datetime.now(timezone.utc)
-            if transcript is not None:
-                self._last_transcript = transcript
 
     def shutdown(self) -> None:
         self.stop()
@@ -307,10 +386,11 @@ class VoiceService:
         with self._lock:
             config = self._active_config
             device_index = self._device_index
+            capture_rate = self._capture_rate
 
         try:
             with sd.RawInputStream(
-                samplerate=config.sample_rate,
+                samplerate=capture_rate,
                 blocksize=config.block_size,
                 device=device_index,
                 channels=1,
@@ -329,7 +409,11 @@ class VoiceService:
             RuntimeError,
             ValueError,
         ) as exc:  # pragma: no cover - depends on audio hardware
-            logger.exception("Voice capture loop failed")
+            logger.exception(
+                "Voice capture loop failed for device '%s' (index=%s).",
+                self._device_name or "unknown",
+                device_index,
+            )
             with self._lock:
                 self._last_error = str(exc)
                 self._running = False
@@ -346,6 +430,11 @@ class VoiceService:
             logger.warning("Voice stream status: %s", status)
 
         chunk = bytes(indata)
+
+        # Resample from capture rate (e.g. 48000 Hz) to model rate (16000 Hz)
+        if self._capture_rate != self._model_rate:
+            chunk = self._resample_audio(chunk, self._capture_rate, self._model_rate)
+
         audio_level = self._compute_audio_level(chunk)
         with self._lock:
             self._last_audio_level = audio_level
@@ -464,30 +553,27 @@ class VoiceService:
         if not normalized_transcript:
             return None
 
+        # Strip [unk] tokens produced by Vosk vocabulary-constraint mode
+        clean_transcript = self._strip_unk(normalized_transcript)
+        if not clean_transcript:
+            return None
+
         with self._lock:
             config = self._active_config.model_copy(deep=True)
 
-        targeted_resize_match = self._match_targeted_resize(
-            normalized_transcript, config
-        )
+        targeted_resize_match = self._match_targeted_resize(clean_transcript, config)
         if targeted_resize_match is not None:
             return targeted_resize_match
 
-        focus_cell_match = self._match_focus_grid_cell(normalized_transcript, config)
+        focus_cell_match = self._match_focus_grid_cell(clean_transcript, config)
         if focus_cell_match is not None:
             return focus_cell_match
 
-        widget_type_match = self._match_focus_widget_type(normalized_transcript, config)
-        if widget_type_match is not None:
-            return widget_type_match
-
-        signal_match = self._match_defined_signal(normalized_transcript, config)
+        signal_match = self._match_defined_signal(clean_transcript, config)
         if signal_match is not None:
             return signal_match
 
-        legacy_command = self._match_legacy_command(
-            normalized_transcript, config.commands
-        )
+        legacy_command = self._match_legacy_command(clean_transcript, config.commands)
         if legacy_command is None:
             return None
 
@@ -500,16 +586,40 @@ class VoiceService:
     def _match_defined_signal(
         self, normalized_transcript: str, config: VoiceConfig
     ) -> VoiceCommandMatch | None:
-        for signal in config.signals:
-            for phrase in signal.phrases:
-                if normalized_transcript != self._normalize_text(phrase):
-                    continue
+        # Expects pre-stripped transcript — caller (_match_command) ensures no [unk] tokens.
+        if not normalized_transcript:
+            return None
 
-                return VoiceCommandMatch(
-                    command=signal.raw_input,
-                    raw_input=signal.raw_input,
-                    action_args=signal.action_args.model_dump(exclude_none=True),
-                )
+        # Match longest phrases first to prevent "links" from shadowing "nach links"
+        signals_sorted = sorted(
+            config.signals,
+            key=lambda s: max((len(p) for p in s.phrases), default=0),
+            reverse=True,
+        )
+
+        transcript_word_count = len(normalized_transcript.split())
+
+        for signal in signals_sorted:
+            for phrase in signal.phrases:
+                norm_phrase = self._normalize_text(phrase)
+                if normalized_transcript == norm_phrase:
+                    return VoiceCommandMatch(
+                        command=signal.raw_input,
+                        raw_input=signal.raw_input,
+                        action_args=signal.action_args.model_dump(exclude_none=True),
+                    )
+                # Containment match: only for multi-word phrases (≥ 2 words).
+                # Single-word phrases ("okay", "links", "beenden") must use exact match
+                # to prevent false positives when those words appear mid-sentence.
+                phrase_word_count = len(norm_phrase.split())
+                if (phrase_word_count >= 2
+                        and norm_phrase in normalized_transcript
+                        and transcript_word_count <= phrase_word_count * 3):
+                    return VoiceCommandMatch(
+                        command=signal.raw_input,
+                        raw_input=signal.raw_input,
+                        action_args=signal.action_args.model_dump(exclude_none=True),
+                    )
 
         return None
 
@@ -526,24 +636,6 @@ class VoiceService:
             command=f"voice.focus_grid_cell[{cell_index}]",
             raw_input="voice.focus_grid_cell",
             action_args={"cell_index": cell_index, "mode": "grid"},
-        )
-
-    def _match_focus_widget_type(
-        self, normalized_transcript: str, config: VoiceConfig
-    ) -> VoiceCommandMatch | None:
-        normalized_alias_map = {
-            self._normalize_text(alias): widget_type
-            for widget_type, aliases in config.widget_aliases.items()
-            for alias in aliases
-        }
-        widget_type = normalized_alias_map.get(normalized_transcript)
-        if widget_type is None:
-            return None
-
-        return VoiceCommandMatch(
-            command=f"voice.focus_widget_type[{widget_type}]",
-            raw_input="voice.focus_widget_type",
-            action_args={"widget_type": widget_type},
         )
 
     def _match_targeted_resize(
@@ -598,6 +690,88 @@ class VoiceService:
                 return command
 
         return None
+
+    @staticmethod
+    def _build_vosk_vocabulary(config: "VoiceConfig") -> str:
+        """Build Vosk vocabulary JSON from config signals + grid navigation words."""
+        vocab: set[str] = set()
+
+        for signal in config.signals:
+            for phrase in signal.phrases:
+                phrase_lower = phrase.lower()
+                vocab.add(phrase_lower)
+                # Add natural German umlaut form so Vosk finds it in its model dictionary
+                german = (phrase_lower
+                    .replace("ae", "ä").replace("oe", "ö")
+                    .replace("ue", "ü").replace("ss", "ß"))
+                if german != phrase_lower:
+                    vocab.add(german)
+                # Also add individual words so single-word utterances match
+                for word in phrase_lower.split():
+                    vocab.add(word)
+                    german_word = (word
+                        .replace("ae", "ä").replace("oe", "ö")
+                        .replace("ue", "ü").replace("ss", "ß"))
+                    if german_word != word:
+                        vocab.add(german_word)
+
+        # Grid navigation words
+        vocab.update(["feld", "zelle"])
+        for aliases in GERMAN_NUMBER_WORDS.values():
+            for alias in aliases:
+                vocab.add(alias)
+                german = (alias.replace("ue", "ü").replace("oe", "ö")
+                               .replace("ae", "ä").replace("ss", "ß"))
+                if german != alias:
+                    vocab.add(german)
+        vocab.update(str(i) for i in range(1, 17))
+        vocab.add("[unk]")  # required sentinel for Vosk vocabulary-constraint mode
+
+        return json.dumps(sorted(vocab))
+
+    @staticmethod
+    def _strip_unk(transcript: str) -> str:
+        """Remove [unk] noise tokens produced by Vosk vocabulary-constraint mode.
+
+        After _normalize_text, '[unk]' becomes 'unk' (brackets stripped by regex).
+        """
+        return " ".join(w for w in transcript.split() if w != "unk")
+
+    def _probe_device_sample_rate(self, device_index: int | None) -> int:
+        """Returns the device's native sample rate, falling back to 48000."""
+        if sd is None:
+            return settings.VOICE_SAMPLE_RATE
+        try:
+            info = sd.query_devices(device_index, "input")
+            native = int(info.get("default_samplerate") or 0)
+            if native > 0:
+                return native
+        except Exception:
+            pass
+        return 48000
+
+    @staticmethod
+    def _resample_audio(chunk: bytes, from_rate: int, to_rate: int) -> bytes:
+        """Resample int16 mono audio using scipy polyphase resampling.
+
+        Stateless: each chunk is resampled independently. For the typical
+        3:1 downsampling (48000→16000 Hz) with 2048-sample chunks, edge
+        artefacts are inaudible and have no impact on Vosk recognition.
+        """
+        if from_rate == to_rate:
+            return chunk
+        if not _HAS_SCIPY or _np is None:
+            logger.error(
+                "scipy is not installed; cannot resample %d Hz → %d Hz. "
+                "Install scipy: pip install 'scipy>=1.12.0'",
+                from_rate,
+                to_rate,
+            )
+            return chunk
+        g = gcd(from_rate, to_rate)
+        audio = _np.frombuffer(chunk, dtype=_np.int16).astype(_np.float32)
+        resampled = _scipy_resample_poly(audio, to_rate // g, from_rate // g)
+        return _np.clip(resampled, -32768, 32767).astype(_np.int16).tobytes()
 
     def _resolve_input_device(self, requested_index: int) -> tuple[int, str]:
         if sd is None:
@@ -734,10 +908,7 @@ class VoiceService:
     def _normalize_text(text: str) -> str:
         normalized = text.lower()
         normalized = (
-            normalized.replace("ae", "ae")
-            .replace("oe", "oe")
-            .replace("ue", "ue")
-            .replace("ss", "ss")
+            normalized
             .replace("ä", "ae")
             .replace("ö", "oe")
             .replace("ü", "ue")
