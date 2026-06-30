@@ -1,23 +1,16 @@
-# Smart Mirror – Projekt „Nimrag“
+# Smart Mirror – Projekt „Nimrag"
 
 ## Software-Entscheidung
 
-### Option 1: Eigene Software
-**Anforderungen:**
-- Eigenes HUD
-- Eigenes Modul-System
-- Eigene Hardwareanbindung
+Das Team hat sich für eine **vollständig eigene Software-Lösung** entschieden (keine MagicMirror²-Basis), um maximale Flexibilität und eigene Architekturentscheidungen zu ermöglichen.
 
-**Bemerkung:**
-- Es ist technisch möglich und bietet maximale Flexibilität.
-
-### Option 2: MagicMirror²
-**Systemanforderungen:**
-- Raspberry Pi 2, 3, 4 oder 5
-- Neueste vollständige Version von Raspberry Pi OS
-- Desktop-Umgebung zur Ausführung von Electron
-- Internetverbindung erforderlich
-- Optionale Steuerung über Smartphone denkbar
+**Eigene Software – Umgesetzte Architektur:**
+- **Frontend:** Vue 3 + TypeScript + Vite (Grid-basiertes Widget-System mit Drag & Drop)
+- **Backend:** Python 3.12 + FastAPI + uvicorn (REST-API + WebSocket-Realtime-Hub)
+- **Kommunikation:** Event-driven Architecture via WebSocket (`/ws`) und MQTT
+- **Gestensteuerung:** MediaPipe Hand Landmarker (Offline-Modell)
+- **Sprachsteuerung:** Whisper-basierter Audio-Service
+- **Datenbank:** SQLite via SQLAlchemy
 
 ---
 
@@ -25,15 +18,15 @@
 
 ### Grundausstattung
 - Fernseher + Wandhalterung *(bereits vorhanden)*
-- Raspberry Pi (Modell 2, 3, 4 oder 5)
+- **Raspberry Pi** (Modell 2, 3, 4 oder 5)
 - Holzrahmen zur Verkleidung des Fernsehers
 - Zwei-Wege-Spiegel:
-  - [Supreme Tech Acryl See-Through Spiegel](https://www.amazon.de/Supreme-Tech-x18-Acryl-See-Through-Spiegel/dp/B07XTRCTQL) - **€50.48**
+  - [Supreme Tech Acryl See-Through Spiegel](https://www.amazon.de/Supreme-Tech-x18-Acryl-See-Through-Spiegel/dp/B07XTRCTQL) – **€50.48**
   - Maße sollten zum Fernseher passen
 
 ### Zubehör für Raspberry Pi
 - Micro HDMI zu HDMI Kabel:
-  - [Amazon-Link](https://www.amazon.de/dp/B0BP29QTJ6) - **€9.79**
+  - [Amazon-Link](https://www.amazon.de/dp/B0BP29QTJ6) – **€9.79**
 - Stromkabel für den Pi
 - Gehäuse für den Pi
 
@@ -51,8 +44,6 @@
 - Eleganter dunkler Rahmen
 - Klare, gut lesbare Benutzeroberfläche
 
-Dieses Beispiel zeigt die typischen Module eines MagicMirror² Systems in einem ansprechenden Layout. Der Spiegel fügt sich natürlich in den Wohnraum ein und bietet alle wichtigen Informationen auf einen Blick.
-
 ---
 
 ## LED Setup & Elektronik
@@ -62,32 +53,26 @@ Dieses Beispiel zeigt die typischen Module eines MagicMirror² Systems in einem 
 ### Erforderliche Komponenten
 
 **LED-Beleuchtung:**
-- **LED Strip** (schneidbar, RGB): [TP-Link Tapo LED-Streifen](https://www.amazon.de/TP-Link-Tapo-schneidbar-kompatibel-energiesparend/dp/B098FJ6LXB) - **€14.99**
-  - Ermöglicht Hintergrundbeleuchtung des Spiegels
+- **LED Strip** (schneidbar, RGB): [TP-Link Tapo LED-Streifen](https://www.amazon.de/TP-Link-Tapo-schneidbar-kompatibel-energiesparend/dp/B098FJ6LXB) – **€14.99**
+  - Hintergrundbeleuchtung des Spiegels
   - Schneidbar für individuelle Anpassung
   - Smart-Home-Kompatibilität
 
 **Elektronische Steuerung:**
-- **N-Channel MOSFET**: [Amazon-Link](https://www.amazon.com/gp/product/B07CTF1JVD) - **€6.02**
-  - Zur Steuerung der LED-Streifen über den Raspberry Pi
-  - Ermöglicht PWM-Kontrolle für Helligkeitsregelung
-  
-- **Sonoff Smart Switch**: [Amazon-Link](https://www.amazon.com/gp/product/B07KP8THFG) - **€11.03**
+- **N-Channel MOSFET**: [Amazon-Link](https://www.amazon.com/gp/product/B07CTF1JVD) – **€6.43**
+  - Steuerung des LED-Streifens über Raspberry Pi GPIO
+  - PWM-Kontrolle für Helligkeitsregelung
+
+- **Sonoff Smart Switch**: [Amazon-Link](https://www.amazon.com/gp/product/B07KP8THFG) – **€11.79**
   - Ein/Ausschalten des gesamten Spiegels
-  - Smart-Home-Integration
-  - Fernsteuerung möglich
+  - Smart-Home-Integration via MQTT
 
 **Verkabelung & Prototyping:**
-- **Steckplatine + Kabel-Set**: [Amazon-Link](https://www.amazon.com/dp/B08Y59P6D1) - **€9.60**
-  - Für Prototyping und Verkabelung
-  - Jumperkabel verschiedener Längen
-  - Breadboard für Testschaltungen
+- **Steckplatine + Kabel-Set**: [Amazon-Link](https://www.amazon.com/dp/B08Y59P6D1) – **€9.19**
+  - Breadboard für Testschaltungen und Jumperkabel
 
 **Stromversorgung:**
-- **Mehrfachsteckdose** (3 Anschlüsse ausreichend)
-  - 1x Raspberry Pi
-  - 1x LED-Beleuchtung
-  - 1x Reserve/Zubehör
+- Mehrfachsteckdose (3 Anschlüsse): Raspberry Pi + LED + Reserve
 
 ---
 
@@ -97,39 +82,48 @@ Dieses Beispiel zeigt die typischen Module eines MagicMirror² Systems in einem 
 
 ---
 
-## Mögliche Module & Features
+## Umgesetzte Module & Features
 
-Basierend auf [diesem YouTube-Tutorial](https://www.youtube.com/watch?v=q7wqm8h3PnA) sind folgende Module implementierbar:
+### Implementierte Widgets
 
-### Standard-Module
-- **Karten/Navigation** - Verkehrslage und Routenplanung
-- **Notizen** - Erinnerungen und To-Do-Listen
-- **Wetter** - Aktuelle Bedingungen und Vorhersage
-- **Kalender** - Termine und Ereignisse
-- **Uhrzeit** - Digitale Zeitanzeige
-- **Raumtemperatur/Sensordaten** - Umgebungsüberwachung -> erstmal Dummy Daten
+| Widget | API-Key | Beschreibung |
+|---|---|---|
+| **Uhr** | Nein | Analog/Digital umschaltbar |
+| **Wetter** | OpenWeatherMap | Aktuelle Bedingungen & Vorhersage |
+| **News (Tagesschau)** | Nein | Nachrichten nach Ressort & Region |
+| **Markt** | Twelve Data | Aktien- und Kryptokurse |
+| **Spotify** | Spotify OAuth | Aktuelle Wiedergabe & Steuerung |
+| **NINA-Warnungen** | Nein (ARS-Code) | Amtliche Katastrophenschutzmeldungen |
+| **Kamera** | Nein | Live-Webcam-Preview |
+| **Zufälliges Meme** | Nein | Zufälliges Bild aus dem Meme-Pool |
+| **Nutzlose Fakten** | Nein | Täglicher Fun-Fact |
+| **Frage des Tages** | Nein | Tägliche Trivia-Frage |
+| **Corporate Bullshit** | Nein | Stündlich generierter Corporate-Satz |
 
-### Erweiterte Module
-- **Musik** - Wiedergabesteuerung und Informationen
-- **Smart Home Integration** - Gerätesteuerung
-- **Nachrichten** - RSS-Feeds und Updates
+### Steuerungsarten
 
-### Mögliche Mockups
+- **Gestensteuerung** – MediaPipe-basierte Handerkennung (Wischen, Pinch, Push)
+- **Sprachsteuerung** – Whisper-basierter Audio-Service
+- **Web-Interface** – Grid-Editor mit Drag & Drop, Größenanpassung, LocalStorage-Persistenz
+- **Smartphone-Konfiguration** – Einstellungen über das Web-Frontend erreichbar
 
-**Mockup 1 - Grundlayout:**
-![Mockup 1](pics/Mockup1.jpg)
+### Frontend-Architektur
 
-**Mockup 2 - Mit Beispielen:**
-![Mockup 2](pics/Mockup2.jpg)
+- Grid-basiertes Widget-System (GridBoard, ModuleManager, ModuleShop)
+- Widget-Shop per `E`-Taste öffnbar
+- Widgets per Drag & Drop platzierbar und in der Größe skalierbar
+- Widget-Zustände und -Positionen werden per LocalStorage gespeichert
 
 ---
 
-## Überlegungen
-- Die Wahl zwischen eigener Software und MagicMirror² hängt stark von den gewünschten Funktionen und dem Grad der Individualisierung ab.
-- Hardware ist größtenteils vorhanden oder leicht beschaffbar.
-- Eine Smartphone-Steuerung wäre ein spannendes Zusatzfeature.
+## Mockups
 
-## Zuklärende Fragen
-- Können wir für den Spiegel eine vorhandene Grundsoftware verwenden, worauf wir dann Modulbasiert selber eigene Sachen schreiben
-- Vetikale Ausrichtung oder Horizontale
-- Eventueller Surface Monitor
+**Mockup 1 – Grundlayout:**
+![Mockup 1](pics/Mockup1.jpg)
+
+**Mockup 2 – Mit Beispielen:**
+![Mockup 2](pics/Mockup2.jpg)
+
+**Aktuelles Frontend:**
+
+![Frontend](pics/Frontend.png)
