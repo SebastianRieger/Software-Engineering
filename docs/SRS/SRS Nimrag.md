@@ -1,9 +1,9 @@
 # Nimrag – Software Requirements Specification
 
-**Version:** 1.1  
-**Datum:** 20.10.2025  
+**Version:** 1.2  
+**Datum:** 30.06.2026  
 **Autoren:** Sebastian, Jannik, Jan, Louis  
-**Status:** In Entwicklung
+**Status:** Abgeschlossen
 
 ---
 
@@ -14,6 +14,7 @@
 | 17.10.2025  | 0.9     | Erste Dokumentstruktur            | Sebastian, Jannik, Jan, Louis  |
 | 20.10.2025  | 1.0     | Vollständige SRS mit Blogeintrag  | Sebastian, Jannik, Jan, Louis  |
 | 22.12.2025  | 1.1     | Abgeschlossene SRS                | Louis                          |
+| 30.06.2026  | 1.2     | Update: neue Features Sprint 5 (LocalStorage-Persistenz, Clock-Widget-Modi, adaptiver Widget-Shop, NINA-Warnungen, Markt-Widget, Pi-Image-Validierung) | Jannik |
 
 ---
 
@@ -145,21 +146,35 @@ Das Nimrag-System ist ein eigenständiges Smart-Home-Gerät, das als zentrale In
 
 ### 2.2 Product Functions
 
-**Kernfunktionen (MVP):**
-- **Zeit und Datum**: Aktuelle Uhrzeit und Datum mit anpassbaren Formaten
-- **Wetterinformationen**: Aktuelle Bedingungen und Vorhersage
-- **Kalenderintegration**: Anstehende Termine und Ereignisse
-- **Multimediakintegration**: Anzeige aktueller Wiedergabe, grundlegende Steuerung
-- **Sprachsteuerung**: Vosk ASR für offline Spracherkennung
+**Implementierte Kernfunktionen:**
+- **Zeit und Datum (Clock-Widget)**: Aktuelle Uhrzeit mit wechselbarem Modus (analog/digital)
+- **Wetterinformationen**: Aktuelle Bedingungen und Vorhersage via OpenWeatherMap
+- **Nachrichten**: Tagesschau-Feed über Backend-Proxy (Ressort- und Regionsfilter)
+- **Spotify-Integration**: Anzeige und Steuerung der aktuellen Wiedergabe (Play/Pause/Skip)
+- **Markt-Widget**: Aktien- und Krypto-Kurse via Twelve Data API
+- **NINA-Warnungen**: Amtliche Katastrophenschutzwarnungen für konfigurierbare Landkreise
+- **Kamera-Widget**: Live-Webcam-Preview mit Permission-Handling im Browser
+- **Sprachsteuerung**: Vosk ASR für offline Spracherkennung (Befehle auf Deutsch)
 - **Gestensteuerung**: MediaPipe und OpenCV für berührungslose Bedienung
 
+**Entertainment-Widgets (keine API-Keys erforderlich):**
+- **Zufälliges Meme**: Meme-Anzeige
+- **Nutzloser Fakt des Tages**: Täglicher Fun-Fact
+- **Frage des Tages**: Tägliche Trivia-Frage
+- **Corporate Bullshit der Stunde**: Stündlich generierter Unternehmenssprech
 
-**Erweiterte Funktionen (geplant):**
+**Infrastruktur-Features (umgesetzt):**
+- **Modulares Grid-Layout**: Drag-and-Drop-ähnliche Widget-Anordnung über Widget-Shop
+- **LocalStorage-Persistenz**: Widget-Layout wird browserübergreifend gespeichert und nach Reload wiederhergestellt
+- **Adaptiver Widget-Shop**: Shop-Layout passt sich dynamisch an die Bildschirmgröße des Nutzers an
+- **Raspberry Pi Image**: Validiertes Pi-Image für direkten Einsatz auf der Zielhardware
+- **CI/CD Pipeline**: Automatisierte Tests, Lint, Build und Release über GitHub Actions
 
-- **LED-Steuerung**: Hintergrundbeleuchtung mit RGB-LEDs
-- **Smart-Home-Integration**: MQTT-basierte Gerätesteuerung und -status
-- **erweiterte Sprachverarbeitung**
-- **Widget für persönliche Notizen und To-Do-Listen**
+**Erweiterte Funktionen (geplant / nicht final umgesetzt):**
+- **LED-Steuerung**: Hintergrundbeleuchtung mit RGB-LEDs (Backend vorbereitet, Hardware-Validierung offen)
+- **Smart-Home-Integration**: MQTT-basierte Gerätesteuerung und -status (Grundgerüst vorhanden)
+- **Kalenderintegration**: Google Calendar API (Endpunkt als Placeholder vorhanden)
+- **Erweiterte Sprachverarbeitung**: Cloud-basierte LLM-Verarbeitung (nicht implementiert)
 
 ### 2.3 Technology Stack Decision
 
@@ -239,6 +254,7 @@ Phase 4: Polish & Deployment
 - Datum mit Wochentag in deutscher/englischer Sprache
 - Automatische Zeitzonenerkennung und Sommerzeit
 - Anpassbare Schriftgrößen und -farben
+- **[Neu v1.2]** Wechsel zwischen analoger und digitaler Uhr via `useClockWidgetMode`-Composable
 
 **Wetter Widget**
 - Aktuelle Wetterbedingungen mit Icons
@@ -304,10 +320,11 @@ Phase 4: Polish & Deployment
 #### 3.2.2 Benutzeroberfläche
 
 **Modulares Layout**
-- Drag-and-Drop Widget-Anordnung
+- Drag-and-Drop Widget-Anordnung über Widget-Shop
 - Responsive Design für verschiedene Bildschirmgrößen
 - Widget-spezifische Konfigurationen
-- Layout-Profile für verschiedene Benutzer
+- **[Neu v1.2]** LocalStorage-Persistenz: Das Widget-Layout bleibt nach Browser-Reload erhalten
+- **[Neu v1.2]** Adaptiver Widget-Shop: Layout passt sich an die Bildschirmgröße des Nutzers an
 
 **Design-Prinzipien:**
 - **Minimalistisch**: Schlichtes, übersichtliches Design

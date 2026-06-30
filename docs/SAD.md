@@ -1,6 +1,6 @@
 # Nimrag Smart Mirror  
 ## Software Architecture Document (SAD)  
-Version 0.1
+Version 1.1
 
 ---
 
@@ -9,6 +9,7 @@ Version 0.1
 | Date      | Version | Description    | Author                 |
 | --------- | ------- | -------------- | ---------------------- |
 | 01/Dec/25 | 1.0     | SAD Completion | Nimrag Team (TINF24B5) |
+| 30/Jun/26 | 1.1     | Update: Composable-Architektur (ModuleManager-Refactoring), LocalStorage-Persistenz, CI/CD-Pipeline, Testabdeckung, neue Widgets (NINA, Markt, Spotify) | Jannik |
 
 ---
 
@@ -175,8 +176,11 @@ Das Usecase Diagramm zeigt die Interaktion zwischen Benutzer und der Software.
 
 | Bereich  | Packages |
 | -------- | -------- |
-| Frontend | `manager` - beinhaltet Manager, die Komponenten validieren und Daten zuweisen. `widgets` - beinhaltet eigens erstellte Komponenten, die in das Gridlayout eingefügt werden können. |
-| Backend  | `tests` - beinhaltet Unit-Tests zum Testen des Backends. `API` - beinhaltet die API-Endpunkte und deren Logik. `Services` - beinhaltet Methoden der Funktionalitäten, wie z. B. Gestensteuerung, der Software |
+| Frontend | `manager` – beinhaltet Orchestrierungskomponenten (GridBoard, ModuleManager, ModuleShop, CellSlot). `widgets` – beinhaltet die Widget-Komponenten (WeatherWidget, ClockWidget, SpotifyWidget, Market, News, NinaWarningsWidget, CameraWidget, …). `composables` – enthält die ausgelagerte Business-Logik als eigenständige, testbare Einheiten (useWidgetManager, useEditMode, useModuleShop, useClockWidgetMode, useAppConfig, useHandTracking, …). `services` – kapselt alle HTTP- und WebSocket-Aufrufe ans Backend (weatherService, newsService, marketService, spotifyService, realtimeService, …). |
+| Backend  | `tests` – beinhaltet 16 Unit- und Integrationstestdateien für alle Backend-Bereiche. `api/api_v1/endpoints` – flacher API-Router mit Endpunkten für Wetter, News, Markt, Spotify, NINA, Gesten, System und Konfiguration. `services` – Implementierung der Fachlogik (WeatherService, NewsService, MarketService, SpotifyService, GestureService, VoiceService, …). `repositories` – Datenzugriffsschicht über Repository Pattern (WeatherRepository, AppConfigRepository, …). `schemas` – Pydantic-Modelle für Request/Response-Validierung. `core` – Konfiguration (pydantic_settings), Datenbankverbindung, Realtime-EventBus. |
+
+**Hinweis zur Composable-Architektur (v1.1):**  
+Im Zuge des ModuleManager-Refactorings (Branch `ModuleManagerRefactor`) wurde die Business-Logik aus `ModuleManager.vue` (172 Zeilen) vollständig in drei Composables ausgelagert. `ModuleManager.vue` ist seitdem eine reine Orchestrierungskomponente ohne eigene Business-Logik. Dies verbessert Single Responsibility, Testbarkeit und Lesbarkeit. Details: [Refactoring-Zusammenfassung.md](./Refactoring-Zusammenfassung.md)
 ---
 
 ## 6. Process View
@@ -279,8 +283,10 @@ Die Implementierung folgt einer klaren Schichtenarchitektur:
 #### Presentation Layer (Client)
 
 - **Vue 3 Single Page Application (SPA)** im Kiosk-Modus.  
-- **Widget Store (Pinia)** als zentraler State-Container.  
-- **WebSocket-Client** für Echtzeit-Updates von Backend-Events.
+- **Composable-basiertes State-Management** statt Pinia für Widget-Lifecycle-Logik: `useWidgetManager` (Singleton-Composable mit Modul-Level-State) verwaltet Grid-Belegung und localStorage-Persistenz; `useEditMode` kapselt Keyboard-Handling; `useModuleShop` die Shop-Logik.  
+- **LocalStorage-Persistenz:** Widget-Layout wird automatisch gespeichert und nach Reload wiederhergestellt (Try/Catch mit Dev-Logging).  
+- **WebSocket-Client** für Echtzeit-Updates von Backend-Events (GestureDetected, SystemStatus).  
+- **Automatische Widget-Registry:** `import.meta.glob` registriert `.vue`-Dateien aus `widgets/` automatisch – kein manuelles Eintragen neuer Widgets nötig.
 
 #### Application Layer (Server)
 
@@ -412,5 +418,16 @@ In diesem Abschnitt wird beschrieben, wie die gewählte Architektur die nicht-fu
 
 **Taktik: Mocking & Dependency Injection**
 
-- Repositories und Services werden über Schnittstellen abstrahiert, sodass sie in Tests durch Mocks ersetzt werden können (z. B. Fake-Wetterservice).  
-- Durch klare Trennung von Frontend/Backend und Infrastruktur lassen sich einzelne Teile isoliert testen (Unit-Tests) sowie End-to-End-Tests über definierte APIs durchführen.
+- Repositories und Services werden über Schnittstellen abstrahiert, sodass sie in Tests durch Mocks ersetzt werden können (z. B. Fake-Wetterservice via FastAPI Dependency Override).  
+- Durch klare Trennung von Frontend/Backend und Infrastruktur lassen sich einzelne Teile isoliert testen.
+
+**Aktueller Teststand (v1.1):**
+- **Backend:** 16 Testdateien (pytest) – Wetter, News, Konfiguration, Gesten, Kalibrierung, LED, Voice, Audio, Interaktionen, externer API-Healthcheck
+- **Frontend:** 37 Testdateien (Vitest) – alle 14 Composables, 10 Komponenten, 13 Services
+- **CI-Integration:** Alle Tests laufen automatisch bei jedem Push auf `main`/`dev` in GitHub Actions
+
+**Taktik: CI/CD als Qualitätsgate**
+
+- GitHub Actions Pipeline erzwingt: Formatierung (black), Linting (flake8), Tests (pytest + Vitest), TypeScript-Build (tsc) und Qualitätsmetriken (radon CC/MI)
+- Kein Merge auf `main` ohne grüne Pipeline
+- Details: [CICD-Setup.md](./CICD-Setup.md)
