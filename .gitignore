@@ -79,3 +79,8 @@ sys
 pics/gesture_capture_*/
 # Claude
 .claude/
+
+# Audio reports / Berichte (privat, nicht committen)
+berichtaudio*
+BerichtAudio*
+Backend/docs/untrackedPrivat/

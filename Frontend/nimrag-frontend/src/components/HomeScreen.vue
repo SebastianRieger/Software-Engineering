@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { ref, computed, watch, onMounted, onBeforeUnmount } from 'vue'
 import { useHandTracking } from '../composables/useHandTracking'
-import type { BackendCamera } from '../composables/useHomeScreen'
+import type { BackendCamera, HomeScreenState } from '../composables/useHomeScreen'
 
 const props = defineProps<{
   cameras: BackendCamera[]
@@ -9,6 +9,7 @@ const props = defineProps<{
   frameUrl: string | null
   error: string | null
   loading: boolean
+  state: HomeScreenState
   slideDirection: 'up' | 'down' | null
 }>()
 
@@ -28,6 +29,12 @@ const slideClass = computed(() => {
   if (!props.slideDirection) return ''
   return props.slideDirection === 'down' ? 'slide-from-bottom' : 'slide-from-top'
 })
+
+const emptyMessage = computed(() => (
+  props.cameras.length === 0
+    ? 'Keine verfügbare Kamera gefunden'
+    : 'Kein Kamerabild verfügbar'
+))
 
 // --- Hand landmark canvas ---
 const canvasRef = ref<HTMLCanvasElement | null>(null)
@@ -134,27 +141,37 @@ watch(trackedHands, drawLandmarks, { deep: true })
 
     <!-- Kamerabild (gespiegelt) -->
     <div class="camera-feed" :class="slideClass">
-      <img
-        v-if="frameUrl"
-        :src="frameUrl"
-        class="camera-video"
-        alt=""
-        draggable="false"
-      />
-      <div v-if="loading || !frameUrl" class="camera-state">
-        <div class="camera-state-inner">
-          <div class="scan-ring" />
-          <div class="scan-dot" />
-        </div>
-      </div>
-      <div v-else-if="error" class="camera-state camera-state--error">
+      <div v-if="state === 'error'" class="camera-state camera-state--error">
         <div class="error-inner">
           <svg class="error-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
             <circle cx="12" cy="12" r="10"/>
             <line x1="12" y1="8" x2="12" y2="12"/>
             <line x1="12" y1="16" x2="12.01" y2="16"/>
           </svg>
-          <span>{{ error }}</span>
+          <span>{{ error ?? 'Kamera konnte nicht geladen werden.' }}</span>
+        </div>
+      </div>
+      <div v-else-if="state === 'loading'" class="camera-state">
+        <div class="camera-state-inner">
+          <div class="scan-ring" />
+          <div class="scan-dot" />
+        </div>
+      </div>
+      <img
+        v-else-if="state === 'ready' && frameUrl"
+        :src="frameUrl"
+        class="camera-video"
+        alt=""
+        draggable="false"
+      />
+      <div v-else class="camera-state camera-state--empty">
+        <div class="empty-inner">
+          <svg class="empty-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+            <path d="M23 7l-7 5 7 5V7z"/>
+            <rect x="1" y="5" width="15" height="14" rx="2" ry="2"/>
+            <line x1="1" y1="1" x2="23" y2="23"/>
+          </svg>
+          <span>{{ emptyMessage }}</span>
         </div>
       </div>
     </div>
@@ -348,6 +365,7 @@ watch(trackedHands, drawLandmarks, { deep: true })
 @keyframes pulse  { from { opacity: 0.3; } to { opacity: 1; } }
 
 .camera-state--error { background: rgba(0, 0, 0, 0.68); }
+.camera-state--empty { background: rgba(0, 0, 0, 0.68); }
 
 .error-inner {
   display: flex;
@@ -367,6 +385,28 @@ watch(trackedHands, drawLandmarks, { deep: true })
 
 .camera-state--error span {
   color: #fca5a5;
+  font-size: 0.88rem;
+  max-width: 28ch;
+  line-height: 1.5;
+}
+
+.empty-inner {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 12px;
+  padding: 24px;
+  text-align: center;
+}
+
+.empty-icon {
+  width: 32px;
+  height: 32px;
+  color: rgba(255, 255, 255, 0.65);
+}
+
+.camera-state--empty span {
+  color: rgba(255, 255, 255, 0.76);
   font-size: 0.88rem;
   max-width: 28ch;
   line-height: 1.5;

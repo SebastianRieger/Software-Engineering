@@ -271,7 +271,7 @@ async def test_get_default_voice_config(client):
     assert response.status_code == 200
     data = response.json()
     assert data["config"]["sample_rate"] == 16000
-    assert data["config"]["commands"]
+    assert data["config"]["commands"] == []
 
 
 @pytest.mark.asyncio
@@ -317,6 +317,11 @@ async def test_get_default_input_action_config(client):
     data = response.json()
     assert any(
         mapping["raw_input"] == "circle" and mapping["action"] == "toggle_edit_mode"
+        for mapping in data["config"]["mappings"]
+    )
+    assert any(
+        mapping["raw_input"] == "voice.exit_arrange_mode"
+        and mapping["action"] == "exit_arrange_mode"
         for mapping in data["config"]["mappings"]
     )
 

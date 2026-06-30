@@ -60,6 +60,9 @@ jobs:
           cache: pip
           cache-dependency-path: Backend/requirements-ci.txt
 
+      - name: Install system audio dependencies
+        run: sudo apt-get update && sudo apt-get install -y libportaudio2
+
       - name: Install dependencies
         run: pip install -r Backend/requirements-ci.txt
 

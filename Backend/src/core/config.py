@@ -161,39 +161,25 @@ class Settings(BaseSettings):
     VOICE_SAMPLE_RATE: int = 16000
     VOICE_BLOCK_SIZE: int = 2048
     VOICE_QUEUE_MAX_CHUNKS: int = 12
-    VOICE_ENERGY_THRESHOLD: float = 200.0
+    VOICE_ENERGY_THRESHOLD: float = 100.0
     VOICE_COMMAND_COOLDOWN_SECONDS: float = 1.5
-    VOICE_PARTIAL_RESULTS_ENABLED: bool = True
+    VOICE_PARTIAL_RESULTS_ENABLED: bool = False
     VOICE_STOP_JOIN_TIMEOUT_SECONDS: float = 2.0
     VOICE_GRID_CELL_COUNT: int = 16
-    VOICE_COMMANDS: list[str] = [
-        "licht an",
-        "licht aus",
-        "naechstes widget",
-        "vorheriges widget",
-    ]
+    VOICE_COMMANDS: list[str] = []
     VOICE_SIGNAL_SYNONYMS: dict[str, list[str]] = {
         "voice.move_focus_left": ["links", "nach links"],
         "voice.move_focus_right": ["rechts", "nach rechts"],
-        "voice.move_focus_up": ["oben", "hoch", "nach oben"],
-        "voice.move_focus_down": ["unten", "runter", "nach unten"],
-        "voice.open_shop": ["shop", "shop auf", "laden", "auswahl"],
-        "voice.close_shop": ["shop zu", "shop schliessen", "auswahl schliessen"],
-        "voice.confirm_selection": ["bestaetigen", "platzieren", "fertig"],
+        "voice.move_focus_up": ["oben", "nach oben", "hoch"],
+        "voice.move_focus_down": ["unten", "nach unten", "runter"],
+        "voice.open_shop": ["shop auf", "shop oeffnen"],
+        "voice.close_shop": ["shop zu", "shop schliessen"],
+        "voice.confirm_selection": ["bestaetigen", "okay"],
         "voice.cancel_selection": ["abbrechen", "zurueck"],
-        "voice.enter_arrange_mode": ["verschieben", "anordnen", "bearbeiten"],
-        "voice.exit_arrange_mode": [
-            "anordnung beenden",
-            "verschieben fertig",
-            "bearbeiten fertig",
-        ],
+        "voice.enter_arrange_mode": ["bearbeiten", "anordnen"],
+        "voice.exit_arrange_mode": ["beenden", "anordnung beenden"],
         "voice.resize_expand": ["groesser", "vergroessern"],
         "voice.resize_shrink": ["kleiner", "verkleinern"],
-    }
-    VOICE_WIDGET_ALIASES: dict[str, list[str]] = {
-        "weather": ["wetter"],
-        "clock": ["uhr", "zeit"],
-        "template": ["hardware"],
     }
     MUSICAL_AUDIO_ENABLED: bool = False
     MUSICAL_AUDIO_DEVICE_INDEX: int = -1

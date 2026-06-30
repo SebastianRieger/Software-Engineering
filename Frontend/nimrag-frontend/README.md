@@ -8,4 +8,4 @@ Learn more about the recommended Project Setup and IDE Support in the [Vue Docs 
 
 The frontend expects the backend API under `VITE_API_BASE_URL` and uses Vite's `/api` proxy during development. News, weather configuration, and startup API health checks are fetched from the backend; widgets should not call external online APIs directly.
 
-The camera widget uses the browser MediaDevices API. Camera access requires `localhost` or HTTPS and a user permission grant. If no camera is available or permission is denied, the widget stays in the grid and shows a non-blocking unavailable state. When no saved widget layout exists, the first grid cell defaults to the camera preview.
+The home-screen camera preview is backend-driven and fetched from the gesture runtime via `gestures/frame`. If no backend camera is available or the gesture service reports an error, the UI shows a backend-derived empty or error state instead of requesting browser `MediaDevices` access. When no saved widget layout exists, the first grid cell defaults to the camera preview.

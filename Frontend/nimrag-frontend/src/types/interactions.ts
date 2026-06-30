@@ -8,7 +8,6 @@ export type UIActionType =
   | 'move_focus_up'
   | 'move_focus_down'
   | 'focus_grid_cell'
-  | 'focus_widget_type'
   | 'toggle_shop'
   | 'open_shop'
   | 'close_shop'
@@ -28,7 +27,6 @@ export type UIActionType =
 
 export interface UIActionArguments {
   cell_index?: number | null
-  widget_type?: string | null
   mode?: UIActionMode | null
 }
 

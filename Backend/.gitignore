@@ -45,6 +45,7 @@ ENV/
 
 # Runtime model assets
 models/*.task
+models/vosk-model-*/
 
 # Logs
 *.log
