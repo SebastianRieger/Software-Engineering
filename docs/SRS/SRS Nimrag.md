@@ -55,7 +55,7 @@
 
 ### 1.1 Purpose
 
-Das Ziel des Nimrag-Projekts ist es, einen „schlauen" Spiegel zu entwickeln, der den Alltag erleichtert. Funktionen wie Wetterbericht, Verkehrshinweise, Kalenderintegration und weitere Informationen sollen über eine intuitive, moderne Oberfläche bereitgestellt werden.
+Das Ziel des Nimrag-Projekts ist es, einen „schlauen" Spiegel zu entwickeln, der den Alltag erleichtert. Funktionen wie Wetterbericht, aktuelle Nachrichten, Marktdaten, Katastrophenschutzwarnungen und Musiksteuerung werden über eine intuitive, moderne Oberfläche bereitgestellt.
 
 Dieses Software Requirements Specification (SRS) Dokument richtet sich an:
 - **Entwicklungsteam** (Sebastian, Jannik, Jan, Louis) zur technischen Umsetzung
@@ -140,7 +140,7 @@ Das Nimrag-System ist ein eigenständiges Smart-Home-Gerät, das als zentrale In
                        ┌─────────────────┐
                        │ User Interaction│
                        │ Voice, Gesture, │
-                       │ Touch, Mobile   │
+                       │ Touch           │
                        └─────────────────┘
 ```
 
@@ -170,11 +170,10 @@ Das Nimrag-System ist ein eigenständiges Smart-Home-Gerät, das als zentrale In
 - **Raspberry Pi Image**: Validiertes Pi-Image für direkten Einsatz auf der Zielhardware
 - **CI/CD Pipeline**: Automatisierte Tests, Lint, Build und Release über GitHub Actions
 
-**Erweiterte Funktionen (geplant / nicht final umgesetzt):**
-- **LED-Steuerung**: Hintergrundbeleuchtung mit RGB-LEDs (Backend vorbereitet, Hardware-Validierung offen)
+**Funktionen nicht im finalen Scope (nicht umgesetzt):**
+- **LED-Steuerung**: Hintergrundbeleuchtung mit RGB-LEDs (Backend vorbereitet, Hardware-Validierung ausstehend)
 - **Smart-Home-Integration**: MQTT-basierte Gerätesteuerung und -status (Grundgerüst vorhanden)
-- **Kalenderintegration**: Google Calendar API (Endpunkt als Placeholder vorhanden)
-- **Erweiterte Sprachverarbeitung**: Cloud-basierte LLM-Verarbeitung (nicht implementiert)
+- **Erweiterte Sprachverarbeitung**: Cloud-basierte LLM-Verarbeitung für vollständige Transkription (nicht implementiert)
 
 ### 2.3 Technology Stack Decision
 
@@ -208,7 +207,7 @@ Damit alle im Team dieselbe Vorstellung vom Projekt haben, wurde eine umfassende
 **Entwicklungsstrategie:**
 1. **Setup Phase**: Frontend und Backend Grundgerüst aufsetzen
 2. **Emulation**: Raspberry Pi emulieren für hardware-nahes Testen
-3. **MVP Development**: Basisfunktionen implementieren (Zeit, Wetter, Kalender, LEDs)
+3. **MVP Development**: Basisfunktionen implementieren (Zeit, Wetter, Widgets, LEDs)
 4. **Feature Expansion**: Erweiterte Features wie Musik, Sprache, Smart-Home
 5. **Hardware Integration**: Testen mit echter Raspberry Pi Hardware
 
@@ -224,7 +223,6 @@ Phase 1: Grundgerüst
 Phase 2: MVP: Frontend mit Dummy-Daten
 ├── Zeit/Datum Widget
 ├── Wetter Widget
-├── Kalender Widget
 └── Basis Testing
 
 Phase 3: Entwicklung rechenintensiverer Backend Prozesse für Kernfunktionen
@@ -263,13 +261,6 @@ Phase 4: Polish & Deployment
 - Wetterwarnung-Integration
 - Konfigurierbare Standorte
 
-**Kalender Widget**
-- Google Calendar Integration via API
-- Anstehende Termine für die nächsten 7 Tage
-- Ganztägige Ereignisse und Geburtstage
-- Farbcodierung nach Kalender-Kategorien
-- Terminbenachrichtigungen
-
 **Multimedia-Integration**
 - Spotify-Integration für aktuelle Wiedergabe
 - Grundlegende Mediensteuerung (Play/Pause/Skip)
@@ -304,7 +295,7 @@ Phase 4: Polish & Deployment
 - vollständige Transkription gesprochenen Textes mit Verarbeitung des Textes auf LLM Basis und generierter Antwort
 - nicht auf Pi, sondern als zusätzlicher Cloud Service verfügbar
 
-**Widget für persönliche Notizen und To-Do-Listen**
+**Widget für persönliche Notizen und To-Do-Listen** *(nicht umgesetzt)*
 - einzelne Notes und To-Dos können angelegt und als Widget beliebig auf der UI angeordnet werden als Erinnerungshilfe
 
 ### 3.2 Usability
@@ -336,7 +327,6 @@ Phase 4: Polish & Deployment
 - **Touch**: Direkte Berührung für Konfiguration
 - **Sprache**: "Spiegel, zeige Wetter" (Vosk ASR)
 - **Gesten**: Hand-Tracking mit MediaPipe
-- **Mobile App**: Remote Control über Smartphone
 
 #### 3.2.3 Bedienbarkeit
 
@@ -372,8 +362,7 @@ Phase 4: Polish & Deployment
 
 **Datengenauigkeit:**
 - Präzise Zeitanzeige mit NTP-Synchronisation
-- Aktuelle Wetterdaten mit max. 10 Minuten Verzögerung
-- Kalender-Synchronisation alle 15 Minuten
+- Aktuelle Wetterdaten mit max. 10 Minuten Verzögerung (Stale-Cache-Fallback)
 - Sensor-Daten mit ±2% Genauigkeit
 
 #### 3.3.3 Fehlerkategorien
@@ -544,7 +533,7 @@ Phase 4: Polish & Deployment
 **Kostenlose Services:**
 - GitHub (öffentliches Repository)
 - OpenWeatherMap API (Free Tier: 1000 calls/day)
-- Google Calendar API (Free Tier)
+- Twelve Data API (Free Tier: Marktdaten)
 - Spotify Web API (Free für Metadaten)
 
 **Optional kostenpflichtig:**
@@ -563,18 +552,19 @@ Phase 4: Polish & Deployment
 - Modulare Widget-Anordnung
 
 **Widget-Kategorien:**
-- Zeit/Datum mit anpassbaren Formaten
+- Zeit/Datum mit anpassbaren Formaten (analog/digital)
 - Wetter mit Icons und Vorhersage
-- Kalender mit Terminen und Erinnerungen
-- Smart-Home-Status und -Steuerung
-- Musik-Player-Informationen
-- Persönliche Notizen und To-Do-Listen
+- Nachrichten (Tagesschau-Feed)
+- Marktdaten (Aktien und Kryptowährungen)
+- NINA-Katastrophenschutzwarnungen
+- Kamera-Livevorschau
+- Spotify-Musiksteuerung
+- Entertainment (Meme, Fakten, Trivia, Corporate Bullshit)
 
 **Interaktionsmethoden:**
-- **Sprachbefehle**: "Spiegel, zeige Wetter" (Vosk ASR)
-- **Handgesten**: MediaPipe-basierte Erkennung (Swipe, Point, etc.)
-- **Touch-Eingabe**: Direkte Berührung für Konfiguration
-- **Mobile Remote**: Smartphone-App für Fernsteuerung
+- **Sprachbefehle**: "Spiegel, zeige Wetter" (Vosk ASR, offline)
+- **Handgesten**: MediaPipe-basierte Erkennung (Swipe, Point etc.)
+- **Touch-Eingabe / Tastatur**: Direkte Interaktion für Konfiguration im Edit-Modus
 
 **Konfiguration-Interface:**
 - Web-basierte Konfigurationsseite
@@ -614,13 +604,15 @@ Phase 4: Polish & Deployment
 - Async/Await für performante I/O
 - JWT-basierte Authentifizierung
 
-**API-Endpunkte:**
+**API-Endpunkte (umgesetzt):**
 ```
-GET /api/v1/weather        - Wetterdaten
-GET /api/v1/calendar       - Kalenderereignisse
-GET /api/v1/smart-home     - Smart-Home-Status
-POST /api/v1/led/control   - LED-Steuerung
+GET /api/v1/weather        - Wetterdaten (OpenWeatherMap)
+GET /api/v1/news           - Nachrichtenfeed (Tagesschau-Proxy)
+GET /api/v1/market         - Marktdaten (Twelve Data)
+GET /api/v1/spotify/...    - Spotify-Steuerung und -Status
+GET /api/v1/nina           - NINA-Katastrophenschutzwarnungen
 GET /api/v1/system/status  - System-Informationen
+WS  /ws                    - WebSocket für Echtzeit-Events
 ```
 
 **WebSocket-Schnittstellen:**
@@ -663,7 +655,7 @@ smart-home/+/status        - Smart-Home-Device-Status
 - Local-only Access für Security-kritische Funktionen
 
 **Offline-Betrieb:**
-- Lokaler Cache für Wetter- und Kalender-Daten
+- Lokaler Cache für Wetter- und API-Daten
 - SQLite-Datenbank für persistente Speicherung
 - Graceful Degradation bei Netzwerkausfällen
 - Automatische Wiederverbindung und Sync
@@ -687,7 +679,7 @@ smart-home/+/status        - Smart-Home-Device-Status
 
 **Kommerzielle API-Services:**
 - OpenWeatherMap: Free Tier für Entwicklung
-- Google Calendar API: Free für persönliche Nutzung
+- Twelve Data: Free Tier für Marktdaten
 - Spotify Web API: Free für Metadaten-Zugriff
 
 **Projektlizenz:**
@@ -752,7 +744,7 @@ Das Nimrag-Projekt entstand aus dem Bedürfnis nach einem flexiblen, modernen Sm
 **Phase 3: Advanced Features**
 - Sprach- und Gestensteuerung
 - Smart-Home MQTT Integration
-- Mobile App Development
+- Erweiterte Widget-Integration (NINA, Markt, Spotify)
 
 **Phase 4: Polish & Deployment**
 - Performance Optimierung
@@ -775,4 +767,4 @@ Das Nimrag-Projekt entstand aus dem Bedürfnis nach einem flexiblen, modernen Sm
 ---
 
 **Ende des Dokuments**  
-*Dieses Dokument umfasst die vollständigen Anforderungen für das Nimrag Smart Mirror System v1.1*
+*Dieses Dokument umfasst die vollständigen Anforderungen für das Nimrag Smart Mirror System v1.2*

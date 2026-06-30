@@ -8,7 +8,7 @@
 
 **Introduce Concurrency** nutzt FastAPI mit AsyncIO. Sprach- und Gestenerkennung laufen parallel; WebSockets ermöglichen Echtzeit-Updates ohne Polling. Events werden asynchron zwischen Services propagiert.
 
-**Maintain Multiple Copies of Data:** Der **Caching-Strategy Pattern** speichert Wetter-, Kalender- und Konfigurationsdaten lokal in SQLite als Fallback bei Netzwerkausfällen.
+**Maintain Multiple Copies of Data:** Der **Caching-Strategy Pattern** speichert Wetter-, Markt- und Konfigurationsdaten lokal in SQLite als Fallback bei Netzwerkausfällen.
 
 ## Verfügbarkeits- und Fehlerbehandlungs-Taktiken
 

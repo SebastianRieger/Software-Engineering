@@ -450,6 +450,6 @@ sequenceDiagram
 
 ### Performance-Optimierungen
 - Event-Batching für häufige Updates
-- Caching von API-Responses (Weather, Calendar)
+- Caching von API-Responses (Weather, News, Market, NINA)
 - Exponential Backoff bei Retries
 
