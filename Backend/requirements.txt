@@ -31,7 +31,7 @@ gpiozero>=2.0
 
 # Date and time handling
 python-dateutil>=2.8.2
-pytz>=2023.3.post1
+pytz>=2026.2
 
 # API integrations
 aiohttp>=3.8.6  # For async HTTP requests
