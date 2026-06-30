@@ -1,0 +1,11 @@
+services:
+  kiosk_imagegen:
+    build: .
+    image: nimrag-imagegen:latest
+    privileged: true
+    user: root
+    environment:
+      - DEBIAN_FRONTEND=noninteractive
+    volumes:
+      - ./output:/output
+      - ./cache:/cache
