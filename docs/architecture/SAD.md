@@ -159,7 +159,7 @@ Wesentliche Randbedingungen, die die Architektur beeinflussen:
 
 ## 4. Use-Case View
 Das Usecase Diagramm zeigt die Interaktion zwischen Benutzer und der Software.
-![Usecase-Diagramm](./Diagramme/UseCase%20Diagramm%20komplette%20Anwendung.png)
+![Usecase-Diagramm](../Diagramme/UseCase%20Diagramm%20komplette%20Anwendung.png)
 
 ---
 
