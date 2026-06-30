@@ -749,16 +749,16 @@ Das Nimrag-Projekt entstand aus dem Bedürfnis nach einem flexiblen, modernen Sm
 - Hardware-Integration testen
 - Basic Testing Suite
 
-**Phase 3: Advanced Features**
+**Phase 3(Aktuell): Advanced Features & Deployment**
 - Sprach- und Gestensteuerung
-- Smart-Home MQTT Integration
-- Mobile App Development
-
-**Phase 4: Polish & Deployment**
-- Performance Optimierung
 - Dokumentation vervollständigen
 - Community Release
 
+**Phase 4: Polish and Future**
+- Performance Optimierung
+- Smart-Home MQTT Integration
+- Mobile App Development
+  
 ### 4.3 Glossar
 
 | **Begriff** | **Definition** | **Kontext** |
