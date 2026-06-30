@@ -11,7 +11,7 @@ Die event-getriebene Architektur ist in fünf Hauptschichten organisiert, die ü
 
 Das Vue.js Frontend fungiert als **Event Consumer und Producer**. Die Hauptkomponenten sind:[^3][^4]
 
-**Vue Components (Widget-Komponenten)**: Zeit/Datum, Wetter, Kalender, LED-Steuerung, Smart Home Kontrolle, Musik-Player und Gesten-Feedback. Diese Komponenten reagieren auf eingehende Events und emittieren Benutzeraktionen als Events.[^3]
+**Vue Components (Widget-Komponenten)**: Zeit/Datum, Wetter, News, Markt, NINA, Spotify, Kamera, LED-Steuerung und Gesten-Feedback. Diese Komponenten reagieren auf eingehende Events und emittieren Benutzeraktionen als Events.[^3]
 
 **Vuex Store (State Management)**: Der zentrale State Container empfängt Events über WebSocket, aktualisiert den globalen State durch Mutations und löst Actions für asynchrone Event-Verarbeitung aus. Jedes Widget-Feature erhält ein eigenes Vuex-Modul für klare Separation.[^4][^5]
 
@@ -51,7 +51,7 @@ Diese zentrale Schicht orchestriert die gesamte Event-Kommunikation:
 
 Spezialisierte Services behandeln spezifische Fachlogik und emittieren Domain Events:[^25][^26]
 
-**Widget Service**: Verwaltet Wetter-, Kalender- und Zeit-Daten. Läuft als periodische Background Task und publiziert `WeatherDataUpdated`, `CalendarEventAdded` Events.[^7]
+**Widget Service**: Verwaltet Wetter-, Markt- und News-Daten. Läuft als periodische Background Task und publiziert `WeatherDataUpdated`, `MarketDataUpdated`, `NewsUpdated` Events.[^7]
 
 **Voice Service (Vosk ASR)**: Verarbeitet Mikrofon-Input offline, erkennt Sprachbefehle und emittiert `VoiceCommandDetected` Events.[^2][^1]
 
@@ -67,7 +67,7 @@ Spezialisierte Services behandeln spezifische Fachlogik und emittieren Domain Ev
 
 ### External Systems \& Hardware
 
-**External APIs**: Weather API (OpenWeatherMap), Google Calendar API, Spotify Web API. Alle Aufrufe erfolgen asynchron mit httpx.[^1]
+**External APIs**: Weather API (OpenWeatherMap), News API (Tagesschau), Market Data API (Twelve Data), Spotify Web API, NINA Warnungen API. Alle Aufrufe erfolgen asynchron mit httpx.[^1]
 
 **Smart Home Devices**: Kommunikation über MQTT mit Geräten wie Philips Hue, Home Assistant, Zigbee-Geräten.[^2]
 

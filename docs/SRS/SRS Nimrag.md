@@ -1,9 +1,9 @@
 # Nimrag – Software Requirements Specification
 
-**Version:** 1.1  
-**Datum:** 20.10.2025  
+**Version:** 1.2  
+**Datum:** 30.06.2026  
 **Autoren:** Sebastian, Jannik, Jan, Louis  
-**Status:** In Entwicklung
+**Status:** Abgeschlossen
 
 ---
 
@@ -14,6 +14,7 @@
 | 17.10.2025  | 0.9     | Erste Dokumentstruktur            | Sebastian, Jannik, Jan, Louis  |
 | 20.10.2025  | 1.0     | Vollständige SRS mit Blogeintrag  | Sebastian, Jannik, Jan, Louis  |
 | 22.12.2025  | 1.1     | Abgeschlossene SRS                | Louis                          |
+| 30.06.2026  | 1.2     | Update: neue Features Sprint 5 (LocalStorage-Persistenz, Clock-Widget-Modi, adaptiver Widget-Shop, NINA-Warnungen, Markt-Widget, Pi-Image-Validierung) | Jannik |
 
 ---
 
@@ -54,7 +55,7 @@
 
 ### 1.1 Purpose
 
-Das Ziel des Nimrag-Projekts ist es, einen „schlauen" Spiegel zu entwickeln, der den Alltag erleichtert. Funktionen wie Wetterbericht, Verkehrshinweise, Kalenderintegration und weitere Informationen sollen über eine intuitive, moderne Oberfläche bereitgestellt werden.
+Das Ziel des Nimrag-Projekts ist es, einen „schlauen" Spiegel zu entwickeln, der den Alltag erleichtert. Funktionen wie Wetterbericht, aktuelle Nachrichten, Marktdaten, Katastrophenschutzwarnungen und Musiksteuerung werden über eine intuitive, moderne Oberfläche bereitgestellt.
 
 Dieses Software Requirements Specification (SRS) Dokument richtet sich an:
 - **Entwicklungsteam** (Sebastian, Jannik, Jan, Louis) zur technischen Umsetzung
@@ -139,27 +140,40 @@ Das Nimrag-System ist ein eigenständiges Smart-Home-Gerät, das als zentrale In
                        ┌─────────────────┐
                        │ User Interaction│
                        │ Voice, Gesture, │
-                       │ Touch, Mobile   │
+                       │ Touch           │
                        └─────────────────┘
 ```
 
 ### 2.2 Product Functions
 
-**Kernfunktionen (MVP):**
-- **Zeit und Datum**: Aktuelle Uhrzeit und Datum mit anpassbaren Formaten
-- **Wetterinformationen**: Aktuelle Bedingungen und Vorhersage
-- **Kalenderintegration**: Anstehende Termine und Ereignisse
-- **Multimediakintegration**: Anzeige aktueller Wiedergabe, grundlegende Steuerung
-- **Sprachsteuerung**: Vosk ASR für offline Spracherkennung
+**Implementierte Kernfunktionen:**
+- **Zeit und Datum (Clock-Widget)**: Aktuelle Uhrzeit mit wechselbarem Modus (analog/digital)
+- **Wetterinformationen**: Aktuelle Bedingungen und Vorhersage via OpenWeatherMap
+- **Nachrichten**: Tagesschau-Feed über Backend-Proxy (Ressort- und Regionsfilter)
+- **Spotify-Integration**: Anzeige und Steuerung der aktuellen Wiedergabe (Play/Pause/Skip)
+- **Markt-Widget**: Aktien- und Krypto-Kurse via Twelve Data API
+- **NINA-Warnungen**: Amtliche Katastrophenschutzwarnungen für konfigurierbare Landkreise
+- **Kamera-Widget**: Live-Webcam-Preview mit Permission-Handling im Browser
+- **Sprachsteuerung**: Vosk ASR für offline Spracherkennung (Befehle auf Deutsch)
 - **Gestensteuerung**: MediaPipe und OpenCV für berührungslose Bedienung
 
+**Entertainment-Widgets (keine API-Keys erforderlich):**
+- **Zufälliges Meme**: Meme-Anzeige
+- **Nutzloser Fakt des Tages**: Täglicher Fun-Fact
+- **Frage des Tages**: Tägliche Trivia-Frage
+- **Corporate Bullshit der Stunde**: Stündlich generierter Unternehmenssprech
 
-**Erweiterte Funktionen (geplant):**
+**Infrastruktur-Features (umgesetzt):**
+- **Modulares Grid-Layout**: Drag-and-Drop-ähnliche Widget-Anordnung über Widget-Shop
+- **LocalStorage-Persistenz**: Widget-Layout wird browserübergreifend gespeichert und nach Reload wiederhergestellt
+- **Adaptiver Widget-Shop**: Shop-Layout passt sich dynamisch an die Bildschirmgröße des Nutzers an
+- **Raspberry Pi Image**: Validiertes Pi-Image für direkten Einsatz auf der Zielhardware
+- **CI/CD Pipeline**: Automatisierte Tests, Lint, Build und Release über GitHub Actions
 
-- **LED-Steuerung**: Hintergrundbeleuchtung mit RGB-LEDs
-- **Smart-Home-Integration**: MQTT-basierte Gerätesteuerung und -status
-- **erweiterte Sprachverarbeitung**
-- **Widget für persönliche Notizen und To-Do-Listen**
+**Funktionen nicht im finalen Scope (nicht umgesetzt):**
+- **LED-Steuerung**: Hintergrundbeleuchtung mit RGB-LEDs (Backend vorbereitet, Hardware-Validierung ausstehend)
+- **Smart-Home-Integration**: MQTT-basierte Gerätesteuerung und -status (Grundgerüst vorhanden)
+- **Erweiterte Sprachverarbeitung**: Cloud-basierte LLM-Verarbeitung für vollständige Transkription (nicht implementiert)
 
 ### 2.3 Technology Stack Decision
 
@@ -193,7 +207,7 @@ Damit alle im Team dieselbe Vorstellung vom Projekt haben, wurde eine umfassende
 **Entwicklungsstrategie:**
 1. **Setup Phase**: Frontend und Backend Grundgerüst aufsetzen
 2. **Emulation**: Raspberry Pi emulieren für hardware-nahes Testen
-3. **MVP Development**: Basisfunktionen implementieren (Zeit, Wetter, Kalender, LEDs)
+3. **MVP Development**: Basisfunktionen implementieren (Zeit, Wetter, Widgets, LEDs)
 4. **Feature Expansion**: Erweiterte Features wie Musik, Sprache, Smart-Home
 5. **Hardware Integration**: Testen mit echter Raspberry Pi Hardware
 
@@ -209,7 +223,6 @@ Phase 1: Grundgerüst
 Phase 2: MVP: Frontend mit Dummy-Daten
 ├── Zeit/Datum Widget
 ├── Wetter Widget
-├── Kalender Widget
 └── Basis Testing
 
 Phase 3: Entwicklung rechenintensiverer Backend Prozesse für Kernfunktionen
@@ -239,6 +252,7 @@ Phase 4: Polish & Deployment
 - Datum mit Wochentag in deutscher/englischer Sprache
 - Automatische Zeitzonenerkennung und Sommerzeit
 - Anpassbare Schriftgrößen und -farben
+- **[Neu v1.2]** Wechsel zwischen analoger und digitaler Uhr via `useClockWidgetMode`-Composable
 
 **Wetter Widget**
 - Aktuelle Wetterbedingungen mit Icons
@@ -246,13 +260,6 @@ Phase 4: Polish & Deployment
 - Temperatur, Luftfeuchtigkeit, Windgeschwindigkeit
 - Wetterwarnung-Integration
 - Konfigurierbare Standorte
-
-**Kalender Widget**
-- Google Calendar Integration via API
-- Anstehende Termine für die nächsten 7 Tage
-- Ganztägige Ereignisse und Geburtstage
-- Farbcodierung nach Kalender-Kategorien
-- Terminbenachrichtigungen
 
 **Multimedia-Integration**
 - Spotify-Integration für aktuelle Wiedergabe
@@ -288,7 +295,7 @@ Phase 4: Polish & Deployment
 - vollständige Transkription gesprochenen Textes mit Verarbeitung des Textes auf LLM Basis und generierter Antwort
 - nicht auf Pi, sondern als zusätzlicher Cloud Service verfügbar
 
-**Widget für persönliche Notizen und To-Do-Listen**
+**Widget für persönliche Notizen und To-Do-Listen** *(nicht umgesetzt)*
 - einzelne Notes und To-Dos können angelegt und als Widget beliebig auf der UI angeordnet werden als Erinnerungshilfe
 
 ### 3.2 Usability
@@ -304,10 +311,11 @@ Phase 4: Polish & Deployment
 #### 3.2.2 Benutzeroberfläche
 
 **Modulares Layout**
-- Drag-and-Drop Widget-Anordnung
+- Drag-and-Drop Widget-Anordnung über Widget-Shop
 - Responsive Design für verschiedene Bildschirmgrößen
 - Widget-spezifische Konfigurationen
-- Layout-Profile für verschiedene Benutzer
+- **[Neu v1.2]** LocalStorage-Persistenz: Das Widget-Layout bleibt nach Browser-Reload erhalten
+- **[Neu v1.2]** Adaptiver Widget-Shop: Layout passt sich an die Bildschirmgröße des Nutzers an
 
 **Design-Prinzipien:**
 - **Minimalistisch**: Schlichtes, übersichtliches Design
@@ -319,7 +327,6 @@ Phase 4: Polish & Deployment
 - **Touch**: Direkte Berührung für Konfiguration
 - **Sprache**: "Spiegel, zeige Wetter" (Vosk ASR)
 - **Gesten**: Hand-Tracking mit MediaPipe
-- **Mobile App**: Remote Control über Smartphone
 
 #### 3.2.3 Bedienbarkeit
 
@@ -355,8 +362,7 @@ Phase 4: Polish & Deployment
 
 **Datengenauigkeit:**
 - Präzise Zeitanzeige mit NTP-Synchronisation
-- Aktuelle Wetterdaten mit max. 10 Minuten Verzögerung
-- Kalender-Synchronisation alle 15 Minuten
+- Aktuelle Wetterdaten mit max. 10 Minuten Verzögerung (Stale-Cache-Fallback)
 - Sensor-Daten mit ±2% Genauigkeit
 
 #### 3.3.3 Fehlerkategorien
@@ -527,7 +533,7 @@ Phase 4: Polish & Deployment
 **Kostenlose Services:**
 - GitHub (öffentliches Repository)
 - OpenWeatherMap API (Free Tier: 1000 calls/day)
-- Google Calendar API (Free Tier)
+- Twelve Data API (Free Tier: Marktdaten)
 - Spotify Web API (Free für Metadaten)
 
 **Optional kostenpflichtig:**
@@ -546,18 +552,19 @@ Phase 4: Polish & Deployment
 - Modulare Widget-Anordnung
 
 **Widget-Kategorien:**
-- Zeit/Datum mit anpassbaren Formaten
+- Zeit/Datum mit anpassbaren Formaten (analog/digital)
 - Wetter mit Icons und Vorhersage
-- Kalender mit Terminen und Erinnerungen
-- Smart-Home-Status und -Steuerung
-- Musik-Player-Informationen
-- Persönliche Notizen und To-Do-Listen
+- Nachrichten (Tagesschau-Feed)
+- Marktdaten (Aktien und Kryptowährungen)
+- NINA-Katastrophenschutzwarnungen
+- Kamera-Livevorschau
+- Spotify-Musiksteuerung
+- Entertainment (Meme, Fakten, Trivia, Corporate Bullshit)
 
 **Interaktionsmethoden:**
-- **Sprachbefehle**: "Spiegel, zeige Wetter" (Vosk ASR)
-- **Handgesten**: MediaPipe-basierte Erkennung (Swipe, Point, etc.)
-- **Touch-Eingabe**: Direkte Berührung für Konfiguration
-- **Mobile Remote**: Smartphone-App für Fernsteuerung
+- **Sprachbefehle**: "Spiegel, zeige Wetter" (Vosk ASR, offline)
+- **Handgesten**: MediaPipe-basierte Erkennung (Swipe, Point etc.)
+- **Touch-Eingabe / Tastatur**: Direkte Interaktion für Konfiguration im Edit-Modus
 
 **Konfiguration-Interface:**
 - Web-basierte Konfigurationsseite
@@ -597,13 +604,15 @@ Phase 4: Polish & Deployment
 - Async/Await für performante I/O
 - JWT-basierte Authentifizierung
 
-**API-Endpunkte:**
+**API-Endpunkte (umgesetzt):**
 ```
-GET /api/v1/weather        - Wetterdaten
-GET /api/v1/calendar       - Kalenderereignisse
-GET /api/v1/smart-home     - Smart-Home-Status
-POST /api/v1/led/control   - LED-Steuerung
+GET /api/v1/weather        - Wetterdaten (OpenWeatherMap)
+GET /api/v1/news           - Nachrichtenfeed (Tagesschau-Proxy)
+GET /api/v1/market         - Marktdaten (Twelve Data)
+GET /api/v1/spotify/...    - Spotify-Steuerung und -Status
+GET /api/v1/nina           - NINA-Katastrophenschutzwarnungen
 GET /api/v1/system/status  - System-Informationen
+WS  /ws                    - WebSocket für Echtzeit-Events
 ```
 
 **WebSocket-Schnittstellen:**
@@ -646,7 +655,7 @@ smart-home/+/status        - Smart-Home-Device-Status
 - Local-only Access für Security-kritische Funktionen
 
 **Offline-Betrieb:**
-- Lokaler Cache für Wetter- und Kalender-Daten
+- Lokaler Cache für Wetter- und API-Daten
 - SQLite-Datenbank für persistente Speicherung
 - Graceful Degradation bei Netzwerkausfällen
 - Automatische Wiederverbindung und Sync
@@ -670,7 +679,7 @@ smart-home/+/status        - Smart-Home-Device-Status
 
 **Kommerzielle API-Services:**
 - OpenWeatherMap: Free Tier für Entwicklung
-- Google Calendar API: Free für persönliche Nutzung
+- Twelve Data: Free Tier für Marktdaten
 - Spotify Web API: Free für Metadaten-Zugriff
 
 **Projektlizenz:**
@@ -732,16 +741,21 @@ Das Nimrag-Projekt entstand aus dem Bedürfnis nach einem flexiblen, modernen Sm
 - Hardware-Integration testen
 - Basic Testing Suite
 
-**Phase 3: Advanced Features**
+**Phase 3(Aktuell): Advanced Features & Deployment**
 - Sprach- und Gestensteuerung
 - Smart-Home MQTT Integration
-- Mobile App Development
+- Erweiterte Widget-Integration (NINA, Markt, Spotify)
 
 **Phase 4: Polish & Deployment**
 - Performance Optimierung
 - Dokumentation vervollständigen
 - Community Release
 
+**Phase 4: Polish and Future**
+- Performance Optimierung
+- Smart-Home MQTT Integration
+- Mobile App Development
+  
 ### 4.3 Glossar
 
 | **Begriff** | **Definition** | **Kontext** |
@@ -758,4 +772,4 @@ Das Nimrag-Projekt entstand aus dem Bedürfnis nach einem flexiblen, modernen Sm
 ---
 
 **Ende des Dokuments**  
-*Dieses Dokument umfasst die vollständigen Anforderungen für das Nimrag Smart Mirror System v1.1*
+*Dieses Dokument umfasst die vollständigen Anforderungen für das Nimrag Smart Mirror System v1.2*

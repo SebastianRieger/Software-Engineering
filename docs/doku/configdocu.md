@@ -13,10 +13,6 @@ Datei liegt im Backend-Wurzelverzeichnis: `Backend/.env`
 WEATHER_API_KEY=
 TWELVE_DATA_API_KEY=
 
-# ── Google (Kalender-Integration) ────────────────────
-GOOGLE_CLIENT_ID=
-GOOGLE_CLIENT_SECRET=
-
 # ── MQTT (Smart Home) ─────────────────────────────────
 MQTT_BROKER=localhost
 MQTT_PORT=1883
@@ -37,7 +33,6 @@ LOG_LEVEL=INFO
 |----------|-------|--------|
 | `WEATHER_API_KEY` | [open-meteo.com](https://open-meteo.com) (kein Account nötig) oder eigener Anbieter | Kostenlos |
 | `TWELVE_DATA_API_KEY` | [twelvedata.com](https://twelvedata.com) → Registrieren → Dashboard → API Key | Kostenlos (800 Req/Tag) |
-| `GOOGLE_CLIENT_ID` / `GOOGLE_CLIENT_SECRET` | [console.cloud.google.com](https://console.cloud.google.com) → Projekt → APIs & Dienste → Anmeldedaten → OAuth 2.0 | Kostenlos |
 | `MQTT_*` | Eigener MQTT-Broker (z.B. Mosquitto) oder Cloud-Broker (z.B. HiveMQ) | Abhängig vom Anbieter |
 | `SECRET_KEY` | Beliebiger langer Zufallsstring, z.B. `openssl rand -hex 32` | – |
 

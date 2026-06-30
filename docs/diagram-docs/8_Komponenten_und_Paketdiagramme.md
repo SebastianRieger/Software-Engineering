@@ -1,5 +1,7 @@
 # Abschnitt 8: Komponentendiagramme und Paketdiagramme
 
+> **Hinweis:** Diese Diagramme zeigen den ursprünglichen Architekturentwurf. `CalendarWidget`, `CalendarService` und der `/api/v1/calendar`-Endpunkt wurden geplant, aber nicht im finalen Produkt umgesetzt. Sie sind in den Diagrammen historisch erhalten, um den Entwurfsprozess nachvollziehbar zu machen, stellen jedoch keine aktive Systemkomponente dar.
+
 ## 8.1 Überblick
 
 Dieses Kapitel präsentiert die Komponenten- und Paketdiagramme des Nimrag Smart Mirror Systems. Diese Diagramme zeigen die logische und physische Struktur der Anwendung sowie die Abhängigkeiten zwischen den verschiedenen Komponenten.

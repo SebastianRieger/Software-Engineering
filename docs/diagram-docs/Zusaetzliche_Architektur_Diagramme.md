@@ -71,8 +71,10 @@ graph TB
         
         subgraph "Public APIs"
             WEATHER_API["OpenWeatherMap API<br/>REST HTTP<br/>api.openweathermap.org"]
-            CALENDAR_API["Google Calendar API<br/>REST HTTP<br/>googleapis.com"]
+            NEWS_API["Tagesschau API<br/>REST HTTP<br/>api.tagesschau.de"]
+            MARKET_API["Twelve Data API<br/>REST HTTP<br/>api.twelvedata.com"]
             SPOTIFY_API["Spotify Web API<br/>REST HTTP<br/>api.spotify.com"]
+            NINA_API["NINA API<br/>REST HTTP<br/>warnung.bund.de"]
         end
         
         subgraph "IoT Integration"
@@ -84,9 +86,7 @@ graph TB
     end
     
     subgraph "User Devices"
-        MOBILE["Mobile App<br/>iPhone/Android<br/>Control Interface"]
-        
-        BROWSER["Web Browser<br/>PC/Tablet<br/>Remote Access"]
+        BROWSER["Web Browser<br/>PC/Tablet/Raspberry Pi<br/>Lokaler Zugriff"]
     end
     
     %% Connections
@@ -102,7 +102,9 @@ graph TB
     FASTAPI_PROC -->|WebSocket| VUE_APP
     
     WEATHER_PROC -->|HTTP| WEATHER_API
-    VOICE_PROC -->|HTTP| CALENDAR_API
+    FASTAPI_PROC -->|HTTP| NEWS_API
+    FASTAPI_PROC -->|HTTP| MARKET_API
+    FASTAPI_PROC -->|HTTP| NINA_API
     LED_PROC -.event.-> WEATHER_PROC
     
     MQTT_PROC -.MQTT Protocol.-> MQTT_BROKER
@@ -116,9 +118,9 @@ graph TB
     
     WIFI -.network.-> MQTT_BROKER
     WIFI -.network.-> WEATHER_API
-    WIFI -.network.-> CALENDAR_API
+    WIFI -.network.-> NEWS_API
+    WIFI -.network.-> MARKET_API
     
-    MOBILE -->|HTTP| NGINX
     BROWSER -->|HTTP| NGINX
     
     class GPIO gpio
@@ -165,7 +167,7 @@ graph LR
     subgraph INPUT["📥 Input Sources"]
         USER["User Input<br/>Touch/Gesture<br/>Voice"]
         EXTERNAL_DEVICE["External Devices<br/>Smart Home<br/>IoT"]
-        PERIODIC["Periodic Updates<br/>Weather<br/>Calendar"]
+        PERIODIC["Periodic Updates<br/>Weather, News<br/>Market, NINA"]
     end
     
     subgraph PROCESSING["⚙️ Processing & Logic"]
@@ -193,7 +195,7 @@ graph LR
         
         IOT_DEVICES["IoT Devices<br/>MQTT Publish<br/>Device Commands"]
         
-        EXTERNAL_API["External APIs<br/>Spotify Control<br/>Calendar Sync"]
+        EXTERNAL_API["External APIs<br/>Spotify Control<br/>News / Market Sync"]
     end
     
     INPUT -->|events| ROUTER
@@ -463,59 +465,115 @@ erDiagram
 
 ---
 
-## A.5 Use Case Diagramm: Gesture Recognition
+## A.5 Use Case Diagramm: Vollständige Systeminteraktionen
 
 ### Beschreibung
 
-Das Use Case Diagramm zeigt alle möglichen Anwendungsfälle der Gestenerkennung.
+Das Use-Case-Diagramm zeigt alle wesentlichen Anwendungsfälle des Nimrag Smart Mirror Systems. Der Fokus liegt auf den zwei berührungslosen Steuerungskanälen – **Gestensteuerung** (MediaPipe) und **Sprachbefehlssteuerung** (Vosk ASR) –, die beide als vollwertige Alternativen zur Touch-/Tastatureingabe dienen.
 
 ```mermaid
-graph TB
-    ACTOR["👤 User"]
-    
-    subgraph SYSTEM["Nimrag Gesture<br/>Recognition System"]
-        UC1["Navigate Left<br/>🔄 View previous"]
-        UC2["Navigate Right<br/>🔄 View next"]
-        UC3["Navigate Down<br/>🔄 Scroll down"]
-        UC4["Navigate Up<br/>🔄 Scroll up"]
-        UC5["Gesture Timeout<br/>Reset recognition"]
-        UC6["Unknown Gesture<br/>Ignore & wait"]
-        UC7["Adjust Sensitivity<br/>Recalibrate"]
+graph LR
+    BENUTZER(("👤 Benutzer"))
+    EXTERN(("🌐 Externe\nDienste"))
+
+    subgraph SYSTEM["Nimrag Smart Mirror System"]
+        direction TB
+
+        subgraph STEUERUNG["Eingabe & Steuerung"]
+            UC_GESTE["Gestensteuerung\nMediaPipe Hand-Tracking"]
+            UC_VOICE["Sprachbefehlssteuerung\nVosk ASR (offline)"]
+            UC_EDIT["Edit-Modus aktivieren\n(Taste E / Geste / Sprache)"]
+        end
+
+        subgraph LAYOUT["Widget-Layout verwalten"]
+            UC_SHOP["Widget aus Shop hinzufügen"]
+            UC_REMOVE["Widget entfernen"]
+            UC_SAVE["Layout speichern\n(LocalStorage)"]
+        end
+
+        subgraph GESTEN_DETAILS["Gesten-Aktionen"]
+            UC_LEFT["Navigation: Links wischen"]
+            UC_RIGHT["Navigation: Rechts wischen"]
+            UC_UP["Navigation: Hoch wischen"]
+            UC_DOWN["Navigation: Runter wischen"]
+            UC_CALIB["Gesten-Empfindlichkeit kalibrieren"]
+        end
+
+        subgraph SPRACHE_DETAILS["Sprach-Aktionen"]
+            UC_V_LIGHT["Befehl: Licht an/aus"]
+            UC_V_WIDGET["Befehl: Widget anzeigen/verbergen"]
+            UC_V_SCROLL["Befehl: Scrollen"]
+        end
+
+        subgraph INFO_WIDGETS["Informations-Widgets"]
+            UC_WEATHER["Wetterdaten anzeigen"]
+            UC_CLOCK["Uhrzeit / Datum (analog/digital)"]
+            UC_NEWS["Nachrichten (Tagesschau)"]
+            UC_MARKET["Marktdaten / Aktien"]
+            UC_NINA["NINA-Warnungen anzeigen"]
+            UC_SPOTIFY["Spotify steuern"]
+            UC_CAMERA["Kamera-Vorschau anzeigen"]
+        end
+
+        subgraph ENTERTAINMENT["Entertainment-Widgets"]
+            UC_MISC["Meme / Fakten / Trivia /\nCorporate Bullshit"]
+        end
     end
-    
-    ACTOR -->|perform| UC1
-    ACTOR -->|perform| UC2
-    ACTOR -->|perform| UC3
-    ACTOR -->|perform| UC4
-    ACTOR -->|adjust| UC7
-    
-    UC1 -.extends.-> UC5
-    UC2 -.extends.-> UC5
-    UC3 -.extends.-> UC5
-    UC4 -.extends.-> UC5
-    UC6 -.extends.-> UC5
-    
-    UC7 -.includes.-> UC5
-    
-    class ACTOR actor
-    class UC1 usecase
-    class UC2 usecase
-    class UC3 usecase
-    class UC4 usecase
-    class UC5 usecase
-    class UC6 usecase
-    class UC7 usecase
+
+    BENUTZER -->|Handgeste ausführen| UC_GESTE
+    BENUTZER -->|Sprachbefehl sprechen| UC_VOICE
+    BENUTZER -->|Taste E drücken| UC_EDIT
+
+    UC_GESTE -->|aktiviert| UC_EDIT
+    UC_VOICE -->|aktiviert| UC_EDIT
+    UC_GESTE -->|auslösen| UC_LEFT
+    UC_GESTE -->|auslösen| UC_RIGHT
+    UC_GESTE -->|auslösen| UC_UP
+    UC_GESTE -->|auslösen| UC_DOWN
+    BENUTZER -->|kalibrieren| UC_CALIB
+
+    UC_VOICE -->|auslösen| UC_V_LIGHT
+    UC_VOICE -->|auslösen| UC_V_WIDGET
+    UC_VOICE -->|auslösen| UC_V_SCROLL
+
+    UC_EDIT --> UC_SHOP
+    UC_EDIT --> UC_REMOVE
+    UC_SHOP --> UC_SAVE
+    UC_REMOVE --> UC_SAVE
+
+    BENUTZER -->|betrachtet| UC_WEATHER
+    BENUTZER -->|betrachtet| UC_CLOCK
+    BENUTZER -->|betrachtet| UC_NEWS
+    BENUTZER -->|betrachtet| UC_MARKET
+    BENUTZER -->|betrachtet| UC_NINA
+    BENUTZER -->|steuert| UC_SPOTIFY
+    BENUTZER -->|betrachtet| UC_CAMERA
+    BENUTZER -->|betrachtet| UC_MISC
+
+    UC_WEATHER -->|HTTP| EXTERN
+    UC_NEWS -->|HTTP| EXTERN
+    UC_MARKET -->|HTTP| EXTERN
+    UC_SPOTIFY -->|OAuth/HTTP| EXTERN
+    UC_NINA -->|HTTP| EXTERN
 ```
 
-**Gesture Use Cases:**
+**Use Case Übersicht:**
 
-| Use Case | Beschreibung | Aktion | Erfolgs-Kriterien |
-|----------|-------------|--------|-------------------|
-| Navigate Left | Wisch nach links | Vorherige Seite | Seitenumbruch < 500ms |
-| Navigate Right | Wisch nach rechts | Nächste Seite | Seitenumbruch < 500ms |
-| Navigate Down | Wisch nach unten | Nach unten scrollen | Smooth scroll |
-| Navigate Up | Wisch nach oben | Nach oben scrollen | Smooth scroll |
-| Adjust Sensitivity | Einstellung ändern | Neukalbrierung | Neue Threshold speichern |
+| Use Case | Eingabekanal | Beschreibung | Erfolgs-Kriterium |
+|----------|-------------|--------------|-------------------|
+| Gestensteuerung | Kamera (MediaPipe) | Berührungslose Navigation per Handgeste | Reaktion < 500 ms |
+| Sprachbefehlssteuerung | Mikrofon (Vosk ASR) | Offline-Spracherkennung, vordefinierte Befehle | Intent-Erkennung < 500 ms |
+| Edit-Modus aktivieren | Tastatur / Geste / Sprache | Wechsel in den Layout-Bearbeitungsmodus | Edit-Overlay erscheint |
+| Widget hinzufügen | Edit-Modus | Widget aus Shop in Grid-Zelle ziehen | Widget sichtbar, Layout gespeichert |
+| Widget entfernen | Edit-Modus | Widget aus Grid entfernen | Widget verschwindet, Layout gespeichert |
+| Navigation Links/Rechts/Hoch/Runter | Geste (Swipe) | Bildschirmnavigation per Handbewegung | Seitenübergang < 500 ms |
+| Licht-Befehl | Sprache | GPIO/LED-Steuerung per Sprachbefehl | Hardware-Reaktion < 1 s |
+| Widget-Befehl | Sprache | Widget ein-/ausblenden per Sprache | Widget-Zustand ändert sich |
+| Gesten kalibrieren | Einstellungen | Empfindlichkeit der Gestenerkennung anpassen | Neuer Threshold gespeichert |
+| Wetterdaten anzeigen | automatisch | Aktuelle Bedingungen + Vorhersage | Daten < 15 min alt |
+| Marktdaten anzeigen | automatisch | Aktien und Kryptokurse in Echtzeit | Kurse aktuell |
+| NINA-Warnungen | automatisch | Katastrophenschutzmeldungen für Landkreis | Warnungen aktuell |
+| Spotify steuern | Benutzer | Play, Pause, Skip, aktuelle Wiedergabe | Reaktion < 200 ms |
 
 ---
 
@@ -634,14 +692,14 @@ graph TD
     GESTURE --> ROUTE["Route to handler"]
     VOICE --> ROUTE
     TOUCH --> ROUTE
-    PERIODIC --> UPDATE_DATA["Update data<br/>Weather, Calendar"]
+    PERIODIC --> UPDATE_DATA["Update data<br/>Weather, News, Market"]
     
     ROUTE --> EXECUTE["Execute command"]
-    EXECUTE --> UPDATE_STATE["Update state<br/>Vuex store"]
+    EXECUTE --> UPDATE_STATE["Update state<br/>(Composables / Pinia)"]
     
     UPDATE_DATA --> UPDATE_STATE
     
-    UPDATE_STATE --> BROADCAST["Broadcast via<br/>WebSocket"]
+    UPDATE_STATE --> BROADCAST["Ereignis via<br/>WebSocket senden"]
     
     BROADCAST --> RENDER["Render UI<br/>Vue components"]
     

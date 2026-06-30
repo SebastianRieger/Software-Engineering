@@ -1,5 +1,7 @@
 # UML Klassendiagramme: Backend & Frontend Struktur
 
+> **Hinweis:** Diese Klassendiagramme zeigen den ursprünglichen Architekturentwurf. `CalendarService` und `CalendarWidget` wurden geplant, aber nicht im finalen Produkt umgesetzt. Sie sind historisch erhalten, um den Entwurfsprozess nachvollziehbar zu machen.
+
 ## 1. Backend UML Klassendiagramm
 
 ### Beschreibung
