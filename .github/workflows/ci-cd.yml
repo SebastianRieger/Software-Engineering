@@ -80,7 +80,7 @@ jobs:
           --cov-report=term-missing
 
       - name: Upload coverage report
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: backend-coverage
           path: Backend/coverage.xml
@@ -110,7 +110,7 @@ jobs:
         run: npm run test:coverage
 
       - name: Upload frontend coverage
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: frontend-coverage
           path: Frontend/nimrag-frontend/coverage/
@@ -141,7 +141,7 @@ jobs:
         run: npm run build
 
       - name: Upload dist artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: frontend-dist
           path: Frontend/nimrag-frontend/dist/
@@ -219,7 +219,7 @@ jobs:
           echo "release_version=${VERSION}" >> "$GITHUB_OUTPUT"
 
       - name: Upload release bundle
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: nimrag-release-${{ steps.package_frontend_release.outputs.release_version }}
           path: |
