@@ -17,6 +17,7 @@ numpy>=1.26.1,<2
 # Speech recognition
 vosk>=0.3.45
 sounddevice>=0.4.7
+scipy>=1.12.0
 
 # Musical audio command recognition
 aubio>=0.4.9; platform_system != "Windows"
