@@ -168,18 +168,18 @@ class Settings(BaseSettings):
     VOICE_GRID_CELL_COUNT: int = 16
     VOICE_COMMANDS: list[str] = []
     VOICE_SIGNAL_SYNONYMS: dict[str, list[str]] = {
-        "voice.move_focus_left":    ["links", "nach links"],
-        "voice.move_focus_right":   ["rechts", "nach rechts"],
-        "voice.move_focus_up":      ["oben", "nach oben", "hoch"],
-        "voice.move_focus_down":    ["unten", "nach unten", "runter"],
-        "voice.open_shop":          ["shop auf", "shop oeffnen"],
-        "voice.close_shop":         ["shop zu", "shop schliessen"],
-        "voice.confirm_selection":  ["bestaetigen", "okay"],
-        "voice.cancel_selection":   ["abbrechen", "zurueck"],
+        "voice.move_focus_left": ["links", "nach links"],
+        "voice.move_focus_right": ["rechts", "nach rechts"],
+        "voice.move_focus_up": ["oben", "nach oben", "hoch"],
+        "voice.move_focus_down": ["unten", "nach unten", "runter"],
+        "voice.open_shop": ["shop auf", "shop oeffnen"],
+        "voice.close_shop": ["shop zu", "shop schliessen"],
+        "voice.confirm_selection": ["bestaetigen", "okay"],
+        "voice.cancel_selection": ["abbrechen", "zurueck"],
         "voice.enter_arrange_mode": ["bearbeiten", "anordnen"],
-        "voice.exit_arrange_mode":  ["beenden", "anordnung beenden"],
-        "voice.resize_expand":      ["groesser", "vergroessern"],
-        "voice.resize_shrink":      ["kleiner", "verkleinern"],
+        "voice.exit_arrange_mode": ["beenden", "anordnung beenden"],
+        "voice.resize_expand": ["groesser", "vergroessern"],
+        "voice.resize_shrink": ["kleiner", "verkleinern"],
     }
     MUSICAL_AUDIO_ENABLED: bool = False
     MUSICAL_AUDIO_DEVICE_INDEX: int = -1

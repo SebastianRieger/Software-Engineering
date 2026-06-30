@@ -103,4 +103,32 @@ describe('gestureFrameStream service', () => {
     expect(mockFetch).toHaveBeenCalled()
     stop()
   })
+
+  it('clears polling when tab becomes hidden while stream is active', async () => {
+    const { useGestureFrameStream } = await import('@/services/gestureFrameStream')
+    const { start, stop } = useGestureFrameStream()
+
+    start()
+    await flushPromises()
+    expect(mockFetch).toHaveBeenCalled()
+
+    mockFetch.mockClear()
+    visibilityState = 'hidden'
+    document.dispatchEvent(new Event('visibilitychange'))
+
+    vi.advanceTimersByTime(200)
+    expect(mockFetch).not.toHaveBeenCalled()
+
+    stop()
+  })
+
+  it('stop() is idempotent when called more times than start()', async () => {
+    const { useGestureFrameStream } = await import('@/services/gestureFrameStream')
+    const { start, stop } = useGestureFrameStream()
+
+    start()
+    await flushPromises()
+    stop()
+    expect(() => stop()).not.toThrow()
+  })
 })

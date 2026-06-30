@@ -76,6 +76,55 @@ describe('useMicrophoneSelection', () => {
     expect(selection.lastBackendError.value).toBe('PortAudio denied')
   })
 
+  it('returns failure when polling times out without running becoming true', async () => {
+    const selection = useMicrophoneSelection()
+
+    const notRunningStatus = {
+      message: 'Voice status',
+      available: true,
+      enabled: true,
+      running: false,
+      device_index: null,
+      device_name: null,
+      last_error: 'Device timeout',
+    }
+
+    mockFetch
+      .mockResolvedValueOnce(jsonResponse({ message: 'Voice stopped' }))
+      .mockResolvedValueOnce(jsonResponse({
+        message: 'Voice starting',
+        available: true,
+        enabled: true,
+        running: false,
+        device_index: null,
+        device_name: null,
+        last_error: null,
+      }))
+
+    for (let i = 0; i < 12; i++) {
+      mockFetch.mockResolvedValueOnce(jsonResponse(notRunningStatus))
+    }
+
+    const resultPromise = selection.selectDevice(0)
+    await vi.advanceTimersByTimeAsync(250 * 13)
+    const result = await resultPromise
+
+    expect(result.ok).toBe(false)
+    expect(result.message).toBe('Device timeout')
+    expect(selection.error.value).toBe('Device timeout')
+  })
+
+  it('returns failure on network error during stop/start', async () => {
+    const selection = useMicrophoneSelection()
+
+    mockFetch.mockRejectedValueOnce(new Error('Network down'))
+
+    const result = await selection.selectDevice(0)
+
+    expect(result.ok).toBe(false)
+    expect(result.message).toContain('Network down')
+  })
+
   it('only reports success after the backend confirms running=true', async () => {
     const selection = useMicrophoneSelection()
 

@@ -132,6 +132,73 @@ describe('MicrophoneSelector', () => {
     wrapper.unmount()
   })
 
+  it('shows the unavailable message when voice is not available', async () => {
+    const unavailableStatus = {
+      message: 'Voice status',
+      available: false,
+      enabled: true,
+      running: false,
+      device_index: null,
+      device_name: null,
+      last_error: 'Vosk-Modell nicht gefunden',
+    }
+
+    mockFetch
+      .mockResolvedValueOnce(jsonResponse({ devices: [] }))
+      .mockResolvedValueOnce(jsonResponse(unavailableStatus))
+      .mockResolvedValueOnce(jsonResponse({ devices: [] }))
+      .mockResolvedValueOnce(jsonResponse(unavailableStatus))
+
+    const wrapper = mount(MicrophoneSelector)
+    await flushPromises()
+
+    await wrapper.find('.mic-trigger').trigger('click')
+    await flushPromises()
+
+    expect(wrapper.text()).toContain('Spracherkennung nicht verfügbar')
+
+    wrapper.unmount()
+  })
+
+  it('shows a checkmark next to the active device', async () => {
+    const activeStatus = {
+      message: 'Voice status',
+      available: true,
+      enabled: true,
+      running: true,
+      device_index: 2,
+      device_name: 'USB Mic',
+      last_error: null,
+    }
+    const deviceList = {
+      devices: [
+        {
+          index: 2,
+          name: 'USB Mic',
+          max_input_channels: 1,
+          default_samplerate: 48000,
+          is_default: true,
+        },
+      ],
+    }
+
+    mockFetch
+      .mockResolvedValueOnce(jsonResponse(deviceList))
+      .mockResolvedValueOnce(jsonResponse(activeStatus))
+      .mockResolvedValueOnce(jsonResponse(deviceList))
+      .mockResolvedValueOnce(jsonResponse(activeStatus))
+
+    const wrapper = mount(MicrophoneSelector)
+    await flushPromises()
+
+    await wrapper.find('.mic-trigger').trigger('click')
+    await flushPromises()
+
+    expect(wrapper.find('.mic-item-check svg').exists()).toBe(true)
+
+    wrapper.unmount()
+  })
+
   it('only shows the green active state when the backend reports running=true', async () => {
     mockFetch
       .mockResolvedValueOnce(jsonResponse({

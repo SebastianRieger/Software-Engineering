@@ -65,6 +65,7 @@ def _make_service_with_defaults() -> tuple[CapturingRealtimeHub, VoiceService]:
 # HTTP API tests
 # ---------------------------------------------------------------------------
 
+
 @pytest.mark.asyncio
 async def test_get_voice_status(client, override_voice_dependency):
     _ = override_voice_dependency
@@ -109,6 +110,7 @@ async def test_stop_voice(client, override_voice_dependency):
 # ---------------------------------------------------------------------------
 # Event-pipeline tests (existing)
 # ---------------------------------------------------------------------------
+
 
 def test_voice_service_publishes_raw_input_and_ui_action_for_mapped_command():
     hub = CapturingRealtimeHub()
@@ -206,6 +208,7 @@ def test_voice_service_parses_targeted_resize_command_with_cell_reference():
 # Default config sanity
 # ---------------------------------------------------------------------------
 
+
 def test_default_voice_commands_is_empty():
     from core.config import settings
 
@@ -222,35 +225,36 @@ def test_default_voice_partial_results_disabled():
 # Parametrized: all canonical signal phrases trigger the correct UIAction
 # ---------------------------------------------------------------------------
 
+
 @pytest.mark.parametrize(
     "phrase,expected_raw_input,expected_action",
     [
-        ("links",             "voice.move_focus_left",    "move_focus_left"),
-        ("nach links",        "voice.move_focus_left",    "move_focus_left"),
-        ("rechts",            "voice.move_focus_right",   "move_focus_right"),
-        ("nach rechts",       "voice.move_focus_right",   "move_focus_right"),
-        ("oben",              "voice.move_focus_up",      "move_focus_up"),
-        ("nach oben",         "voice.move_focus_up",      "move_focus_up"),
-        ("hoch",              "voice.move_focus_up",      "move_focus_up"),
-        ("unten",             "voice.move_focus_down",    "move_focus_down"),
-        ("nach unten",        "voice.move_focus_down",    "move_focus_down"),
-        ("runter",            "voice.move_focus_down",    "move_focus_down"),
-        ("shop auf",          "voice.open_shop",          "open_shop"),
-        ("shop oeffnen",      "voice.open_shop",          "open_shop"),
-        ("shop zu",           "voice.close_shop",         "close_shop"),
-        ("shop schliessen",   "voice.close_shop",         "close_shop"),
-        ("bestaetigen",       "voice.confirm_selection",  "confirm_selection"),
-        ("okay",              "voice.confirm_selection",  "confirm_selection"),
-        ("abbrechen",         "voice.cancel_selection",   "cancel_selection"),
-        ("zurueck",           "voice.cancel_selection",   "cancel_selection"),
-        ("bearbeiten",        "voice.enter_arrange_mode", "enter_arrange_mode"),
-        ("anordnen",          "voice.enter_arrange_mode", "enter_arrange_mode"),
-        ("beenden",           "voice.exit_arrange_mode",  "exit_arrange_mode"),
-        ("anordnung beenden", "voice.exit_arrange_mode",  "exit_arrange_mode"),
-        ("groesser",          "voice.resize_expand",      "resize_expand"),
-        ("vergroessern",      "voice.resize_expand",      "resize_expand"),
-        ("kleiner",           "voice.resize_shrink",      "resize_shrink"),
-        ("verkleinern",       "voice.resize_shrink",      "resize_shrink"),
+        ("links", "voice.move_focus_left", "move_focus_left"),
+        ("nach links", "voice.move_focus_left", "move_focus_left"),
+        ("rechts", "voice.move_focus_right", "move_focus_right"),
+        ("nach rechts", "voice.move_focus_right", "move_focus_right"),
+        ("oben", "voice.move_focus_up", "move_focus_up"),
+        ("nach oben", "voice.move_focus_up", "move_focus_up"),
+        ("hoch", "voice.move_focus_up", "move_focus_up"),
+        ("unten", "voice.move_focus_down", "move_focus_down"),
+        ("nach unten", "voice.move_focus_down", "move_focus_down"),
+        ("runter", "voice.move_focus_down", "move_focus_down"),
+        ("shop auf", "voice.open_shop", "open_shop"),
+        ("shop oeffnen", "voice.open_shop", "open_shop"),
+        ("shop zu", "voice.close_shop", "close_shop"),
+        ("shop schliessen", "voice.close_shop", "close_shop"),
+        ("bestaetigen", "voice.confirm_selection", "confirm_selection"),
+        ("okay", "voice.confirm_selection", "confirm_selection"),
+        ("abbrechen", "voice.cancel_selection", "cancel_selection"),
+        ("zurueck", "voice.cancel_selection", "cancel_selection"),
+        ("bearbeiten", "voice.enter_arrange_mode", "enter_arrange_mode"),
+        ("anordnen", "voice.enter_arrange_mode", "enter_arrange_mode"),
+        ("beenden", "voice.exit_arrange_mode", "exit_arrange_mode"),
+        ("anordnung beenden", "voice.exit_arrange_mode", "exit_arrange_mode"),
+        ("groesser", "voice.resize_expand", "resize_expand"),
+        ("vergroessern", "voice.resize_expand", "resize_expand"),
+        ("kleiner", "voice.resize_shrink", "resize_shrink"),
+        ("verkleinern", "voice.resize_shrink", "resize_shrink"),
     ],
 )
 def test_signal_phrase_triggers_correct_ui_action(
@@ -260,10 +264,14 @@ def test_signal_phrase_triggers_correct_ui_action(
     service._handle_transcript(phrase, partial=False)
 
     event_types = [m["eventType"] for m in hub.messages]
-    assert "VoiceCommandDetected" in event_types, f"No VoiceCommandDetected for '{phrase}'"
+    assert (
+        "VoiceCommandDetected" in event_types
+    ), f"No VoiceCommandDetected for '{phrase}'"
     assert "UIActionRequested" in event_types, f"No UIActionRequested for '{phrase}'"
 
-    voice_event = next(m for m in hub.messages if m["eventType"] == "VoiceCommandDetected")
+    voice_event = next(
+        m for m in hub.messages if m["eventType"] == "VoiceCommandDetected"
+    )
     assert voice_event["payload"]["raw_input"] == expected_raw_input, (
         f"phrase='{phrase}': expected raw_input='{expected_raw_input}', "
         f"got '{voice_event['payload']['raw_input']}'"
@@ -280,14 +288,15 @@ def test_signal_phrase_triggers_correct_ui_action(
 # Umlaut normalisation
 # ---------------------------------------------------------------------------
 
+
 @pytest.mark.parametrize(
     "umlaut_phrase,expected_raw_input",
     [
-        ("größer",     "voice.resize_expand"),
-        ("Größer",     "voice.resize_expand"),
-        ("BEENDEN",    "voice.exit_arrange_mode"),
+        ("größer", "voice.resize_expand"),
+        ("Größer", "voice.resize_expand"),
+        ("BEENDEN", "voice.exit_arrange_mode"),
         ("Bestätigen", "voice.confirm_selection"),
-        ("Zurück",     "voice.cancel_selection"),
+        ("Zurück", "voice.cancel_selection"),
     ],
 )
 def test_umlaut_normalization_triggers_correct_signal(
@@ -296,9 +305,7 @@ def test_umlaut_normalization_triggers_correct_signal(
     hub, service = _make_service_with_defaults()
     service._handle_transcript(umlaut_phrase, partial=False)
 
-    voice_events = [
-        m for m in hub.messages if m["eventType"] == "VoiceCommandDetected"
-    ]
+    voice_events = [m for m in hub.messages if m["eventType"] == "VoiceCommandDetected"]
     assert voice_events, f"No VoiceCommandDetected for '{umlaut_phrase}'"
     assert voice_events[0]["payload"]["raw_input"] == expected_raw_input
 
@@ -307,14 +314,15 @@ def test_umlaut_normalization_triggers_correct_signal(
 # Grid-cell focus
 # ---------------------------------------------------------------------------
 
+
 @pytest.mark.parametrize(
     "phrase,expected_cell_index",
     [
         ("feld drei", 3),
-        ("feld 5",    5),
-        ("zelle 1",   1),
-        ("zelle 12",  12),
-        ("zwei",      2),
+        ("feld 5", 5),
+        ("zelle 1", 1),
+        ("zelle 12", 12),
+        ("zwei", 2),
     ],
 )
 def test_grid_cell_focus(phrase: str, expected_cell_index: int) -> None:
@@ -347,12 +355,13 @@ def test_grid_cell_focus(phrase: str, expected_cell_index: int) -> None:
 # Targeted resize with cell reference
 # ---------------------------------------------------------------------------
 
+
 @pytest.mark.parametrize(
     "phrase,expected_action,expected_cell_index",
     [
-        ("feld drei groesser",  "resize_expand", 3),
-        ("feld 5 kleiner",      "resize_shrink", 5),
-        ("zelle 2 vergroessern","resize_expand", 2),
+        ("feld drei groesser", "resize_expand", 3),
+        ("feld 5 kleiner", "resize_shrink", 5),
+        ("zelle 2 vergroessern", "resize_expand", 2),
     ],
 )
 def test_targeted_resize_with_cell_reference(
@@ -392,6 +401,7 @@ def test_targeted_resize_with_cell_reference(
 # Cooldown prevents double-fire
 # ---------------------------------------------------------------------------
 
+
 def test_command_cooldown_prevents_double_fire() -> None:
     hub, service = _make_service_with_defaults()
 
@@ -405,6 +415,7 @@ def test_command_cooldown_prevents_double_fire() -> None:
 # ---------------------------------------------------------------------------
 # Unknown / removed phrases produce no UIActionRequested
 # ---------------------------------------------------------------------------
+
 
 @pytest.mark.parametrize(
     "unknown_phrase",
@@ -436,15 +447,16 @@ def test_unknown_phrases_produce_no_ui_action(unknown_phrase: str) -> None:
 # Regression: exit_arrange_mode signal must never toggle edit mode back on
 # ---------------------------------------------------------------------------
 
+
 def test_exit_arrange_mode_signal_maps_to_exit_arrange_mode() -> None:
     hub, service = _make_service_with_defaults()
     service._handle_transcript("beenden", partial=False)
 
     ui_events = [m for m in hub.messages if m["eventType"] == "UIActionRequested"]
     assert ui_events, "Expected UIActionRequested for 'beenden'"
-    assert ui_events[0]["payload"]["action"] == "exit_arrange_mode", (
-        f"Expected 'exit_arrange_mode', got '{ui_events[0]['payload']['action']}'"
-    )
+    assert (
+        ui_events[0]["payload"]["action"] == "exit_arrange_mode"
+    ), f"Expected 'exit_arrange_mode', got '{ui_events[0]['payload']['action']}'"
 
 
 def test_anordnung_beenden_maps_to_exit_arrange_mode() -> None:
@@ -459,6 +471,7 @@ def test_anordnung_beenden_maps_to_exit_arrange_mode() -> None:
 # ---------------------------------------------------------------------------
 # Resampling helper
 # ---------------------------------------------------------------------------
+
 
 def test_resample_audio_reduces_chunk_size_3to1() -> None:
     # 48000 Hz → 16000 Hz is a 3:1 ratio; output should be ~1/3 of input samples
@@ -476,6 +489,7 @@ def test_resample_audio_noop_when_rates_equal() -> None:
 
 def test_resample_audio_output_is_plausible_int16() -> None:
     import numpy as np
+
     # Sine wave at 48000 Hz, resample to 16000 Hz; verify output is valid int16
     t = np.linspace(0, 0.1, 4800, endpoint=False)
     sine = (np.sin(2 * np.pi * 440 * t) * 16000).astype(np.int16)
@@ -490,10 +504,13 @@ def test_resample_audio_output_is_plausible_int16() -> None:
 # _probe_device_sample_rate
 # ---------------------------------------------------------------------------
 
+
 def test_probe_device_sample_rate_returns_native(monkeypatch) -> None:
     import sounddevice as sd
 
-    monkeypatch.setattr(sd, "query_devices", lambda idx, kind: {"default_samplerate": 48000.0})
+    monkeypatch.setattr(
+        sd, "query_devices", lambda idx, kind: {"default_samplerate": 48000.0}
+    )
     _, service = _make_service_with_defaults()
     assert service._probe_device_sample_rate(0) == 48000
 
@@ -512,7 +529,9 @@ def test_probe_device_sample_rate_fallback_on_exception(monkeypatch) -> None:
 def test_probe_device_sample_rate_fallback_when_zero(monkeypatch) -> None:
     import sounddevice as sd
 
-    monkeypatch.setattr(sd, "query_devices", lambda idx, kind: {"default_samplerate": 0})
+    monkeypatch.setattr(
+        sd, "query_devices", lambda idx, kind: {"default_samplerate": 0}
+    )
     _, service = _make_service_with_defaults()
     assert service._probe_device_sample_rate(0) == 48000
 
@@ -521,8 +540,10 @@ def test_probe_device_sample_rate_fallback_when_zero(monkeypatch) -> None:
 # _build_vosk_vocabulary
 # ---------------------------------------------------------------------------
 
+
 def test_build_vosk_vocabulary_contains_unk_sentinel() -> None:
     import json
+
     _, service = _make_service_with_defaults()
     vocab = json.loads(service._build_vosk_vocabulary(VoiceConfig()))
     assert "[unk]" in vocab
@@ -530,6 +551,7 @@ def test_build_vosk_vocabulary_contains_unk_sentinel() -> None:
 
 def test_build_vosk_vocabulary_contains_signal_phrase_words() -> None:
     import json
+
     _, service = _make_service_with_defaults()
     vocab = json.loads(service._build_vosk_vocabulary(VoiceConfig()))
     assert "links" in vocab
@@ -539,6 +561,7 @@ def test_build_vosk_vocabulary_contains_signal_phrase_words() -> None:
 
 def test_build_vosk_vocabulary_contains_german_umlaut_forms() -> None:
     import json
+
     _, service = _make_service_with_defaults()
     vocab = json.loads(service._build_vosk_vocabulary(VoiceConfig()))
     # "groesser" → "größer"
@@ -553,6 +576,7 @@ def test_build_vosk_vocabulary_contains_german_umlaut_forms() -> None:
 
 def test_build_vosk_vocabulary_contains_grid_words() -> None:
     import json
+
     _, service = _make_service_with_defaults()
     vocab = json.loads(service._build_vosk_vocabulary(VoiceConfig()))
     assert "feld" in vocab
@@ -563,6 +587,7 @@ def test_build_vosk_vocabulary_contains_grid_words() -> None:
 
 def test_build_vosk_vocabulary_is_valid_json_list() -> None:
     import json
+
     _, service = _make_service_with_defaults()
     raw = service._build_vosk_vocabulary(VoiceConfig())
     vocab = json.loads(raw)
@@ -573,6 +598,7 @@ def test_build_vosk_vocabulary_is_valid_json_list() -> None:
 # ---------------------------------------------------------------------------
 # _strip_unk
 # ---------------------------------------------------------------------------
+
 
 def test_strip_unk_removes_leading_token() -> None:
     assert VoiceService._strip_unk("unk links") == "links"
@@ -597,6 +623,7 @@ def test_strip_unk_empty_string() -> None:
 # ---------------------------------------------------------------------------
 # Containment matching (Bug 2 fix)
 # ---------------------------------------------------------------------------
+
 
 def test_signal_exact_match_still_works() -> None:
     hub, service = _make_service_with_defaults()
@@ -669,7 +696,9 @@ def test_beenden_does_not_trigger_inside_sentence() -> None:
     hub, service = _make_service_with_defaults()
     service._handle_transcript("sitzung beenden", partial=False)
     ui_events = [m for m in hub.messages if m["eventType"] == "UIActionRequested"]
-    assert not ui_events, "'beenden' inside a sentence must not trigger toggle_edit_mode"
+    assert (
+        not ui_events
+    ), "'beenden' inside a sentence must not trigger toggle_edit_mode"
 
 
 def test_multi_word_phrase_containment_still_works() -> None:
@@ -677,7 +706,9 @@ def test_multi_word_phrase_containment_still_works() -> None:
     hub, service = _make_service_with_defaults()
     service._handle_transcript("bitte shop auf", partial=False)
     ui_events = [m for m in hub.messages if m["eventType"] == "UIActionRequested"]
-    assert ui_events, "2-word phrase must still match via containment in a 3-word transcript"
+    assert (
+        ui_events
+    ), "2-word phrase must still match via containment in a 3-word transcript"
     assert ui_events[0]["payload"]["action"] == "open_shop"
 
 
@@ -685,14 +716,27 @@ def test_multi_word_phrase_containment_still_works() -> None:
 # list_input_devices ALSA filter (Bug 3 fix)
 # ---------------------------------------------------------------------------
 
+
 def test_list_input_devices_filters_alsa_hw_entries(monkeypatch) -> None:
     import sounddevice as sd
 
     fake_devices = [
         {"name": "default", "max_input_channels": 1, "default_samplerate": 44100},
-        {"name": "HD-Audio Generic: Mic (hw:0,0)", "max_input_channels": 2, "default_samplerate": 44100},
-        {"name": "PC-LM1E Camera Analog Stereo", "max_input_channels": 1, "default_samplerate": 48000},
-        {"name": "Webcam Audio (hw:1,0)", "max_input_channels": 1, "default_samplerate": 48000},
+        {
+            "name": "HD-Audio Generic: Mic (hw:0,0)",
+            "max_input_channels": 2,
+            "default_samplerate": 44100,
+        },
+        {
+            "name": "PC-LM1E Camera Analog Stereo",
+            "max_input_channels": 1,
+            "default_samplerate": 48000,
+        },
+        {
+            "name": "Webcam Audio (hw:1,0)",
+            "max_input_channels": 1,
+            "default_samplerate": 48000,
+        },
     ]
 
     class FakeDefault:
@@ -707,5 +751,7 @@ def test_list_input_devices_filters_alsa_hw_entries(monkeypatch) -> None:
     names = [d["name"] for d in result]
     assert "default" in names
     assert "PC-LM1E Camera Analog Stereo" in names
-    assert "HD-Audio Generic: Mic (hw:0,0)" not in names, "Raw ALSA entry must be filtered"
+    assert (
+        "HD-Audio Generic: Mic (hw:0,0)" not in names
+    ), "Raw ALSA entry must be filtered"
     assert "Webcam Audio (hw:1,0)" not in names, "Raw ALSA entry must be filtered"

@@ -126,4 +126,57 @@ describe('useHomeScreen', () => {
 
     wrapper.unmount()
   })
+
+  it('restarts camera when frame check fails during initialization', async () => {
+    mockFetch
+      .mockResolvedValueOnce(jsonResponse({
+        devices: [{ index: 0, name: 'Test Cam', available: true }],
+      }))
+      .mockResolvedValueOnce(jsonResponse({ running: true, camera_index: 0 }))
+      .mockResolvedValueOnce(jsonResponse({ detail: 'Frame unavailable' }, false))
+      .mockResolvedValueOnce(jsonResponse({ running: false }))
+      .mockResolvedValueOnce(jsonResponse({ running: true }))
+
+    streamMock.refreshFrame.mockResolvedValue(true)
+
+    const { wrapper, home } = mountHarness()
+    home.setHomeActive(true)
+
+    await home.initializeCamera()
+    await flushPromises()
+
+    expect(home.error.value).toBeNull()
+    expect(streamMock.start).toHaveBeenCalledOnce()
+
+    wrapper.unmount()
+  })
+
+  it('stops running stream when initialization fails mid-way', async () => {
+    mockFetch
+      .mockResolvedValueOnce(jsonResponse({
+        devices: [{ index: 0, name: 'Test Cam', available: true }],
+      }))
+      .mockResolvedValueOnce(jsonResponse({ running: true, camera_index: 0 }))
+      .mockResolvedValueOnce(jsonResponse({ image: 'x', frame_age_ms: 100 }))
+      .mockResolvedValueOnce(jsonResponse({ detail: 'Internal error' }, false))
+
+    streamMock.refreshFrame.mockResolvedValue(true)
+
+    const { wrapper, home } = mountHarness()
+    home.setHomeActive(true)
+
+    await home.initializeCamera()
+    await flushPromises()
+
+    expect(streamMock.start).toHaveBeenCalledOnce()
+
+    await home.initializeCamera()
+    await flushPromises()
+
+    expect(home.error.value).toBeTruthy()
+    expect(home.state.value).toBe('error')
+    expect(streamMock.stop).toHaveBeenCalled()
+
+    wrapper.unmount()
+  })
 })

@@ -31,6 +31,7 @@ except ImportError:  # pragma: no cover - optional runtime dependency
 try:
     import numpy as _np
     from scipy.signal import resample_poly as _scipy_resample_poly
+
     _HAS_SCIPY = True
 except ImportError:  # pragma: no cover - scipy is a required dependency
     _np = None  # type: ignore[assignment]
@@ -612,9 +613,11 @@ class VoiceService:
                 # Single-word phrases ("okay", "links", "beenden") must use exact match
                 # to prevent false positives when those words appear mid-sentence.
                 phrase_word_count = len(norm_phrase.split())
-                if (phrase_word_count >= 2
-                        and norm_phrase in normalized_transcript
-                        and transcript_word_count <= phrase_word_count * 3):
+                if (
+                    phrase_word_count >= 2
+                    and norm_phrase in normalized_transcript
+                    and transcript_word_count <= phrase_word_count * 3
+                ):
                     return VoiceCommandMatch(
                         command=signal.raw_input,
                         raw_input=signal.raw_input,
@@ -701,17 +704,23 @@ class VoiceService:
                 phrase_lower = phrase.lower()
                 vocab.add(phrase_lower)
                 # Add natural German umlaut form so Vosk finds it in its model dictionary
-                german = (phrase_lower
-                    .replace("ae", "ä").replace("oe", "ö")
-                    .replace("ue", "ü").replace("ss", "ß"))
+                german = (
+                    phrase_lower.replace("ae", "ä")
+                    .replace("oe", "ö")
+                    .replace("ue", "ü")
+                    .replace("ss", "ß")
+                )
                 if german != phrase_lower:
                     vocab.add(german)
                 # Also add individual words so single-word utterances match
                 for word in phrase_lower.split():
                     vocab.add(word)
-                    german_word = (word
-                        .replace("ae", "ä").replace("oe", "ö")
-                        .replace("ue", "ü").replace("ss", "ß"))
+                    german_word = (
+                        word.replace("ae", "ä")
+                        .replace("oe", "ö")
+                        .replace("ue", "ü")
+                        .replace("ss", "ß")
+                    )
                     if german_word != word:
                         vocab.add(german_word)
 
@@ -720,8 +729,12 @@ class VoiceService:
         for aliases in GERMAN_NUMBER_WORDS.values():
             for alias in aliases:
                 vocab.add(alias)
-                german = (alias.replace("ue", "ü").replace("oe", "ö")
-                               .replace("ae", "ä").replace("ss", "ß"))
+                german = (
+                    alias.replace("ue", "ü")
+                    .replace("oe", "ö")
+                    .replace("ae", "ä")
+                    .replace("ss", "ß")
+                )
                 if german != alias:
                     vocab.add(german)
         vocab.update(str(i) for i in range(1, 17))
@@ -908,8 +921,7 @@ class VoiceService:
     def _normalize_text(text: str) -> str:
         normalized = text.lower()
         normalized = (
-            normalized
-            .replace("ä", "ae")
+            normalized.replace("ä", "ae")
             .replace("ö", "oe")
             .replace("ü", "ue")
             .replace("ß", "ss")
