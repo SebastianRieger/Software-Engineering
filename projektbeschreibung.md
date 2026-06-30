@@ -7,28 +7,12 @@ Das Team hat sich für eine **vollständig eigene Software-Lösung** entschieden
 **Eigene Software – Umgesetzte Architektur:**
 - **Frontend:** Vue 3 + TypeScript + Vite (Grid-basiertes Widget-System mit Drag & Drop)
 - **Backend:** Python 3.12 + FastAPI + uvicorn (REST-API + WebSocket-Realtime-Hub)
-- **Kommunikation:** Event-driven Architecture via WebSocket (`/ws`) und MQTT
+- **Kommunikation:** Event-driven Architecture via WebSocket (`/ws`)
 - **Gestensteuerung:** MediaPipe Hand Landmarker (Offline-Modell)
 - **Sprachsteuerung:** Whisper-basierter Audio-Service
 - **Datenbank:** SQLite via SQLAlchemy
 
----
-
-## Hardware-Anforderungen
-
-### Grundausstattung
-- Fernseher + Wandhalterung *(bereits vorhanden)*
-- **Raspberry Pi** (Modell 2, 3, 4 oder 5)
-- Holzrahmen zur Verkleidung des Fernsehers
-- Zwei-Wege-Spiegel:
-  - [Supreme Tech Acryl See-Through Spiegel](https://www.amazon.de/Supreme-Tech-x18-Acryl-See-Through-Spiegel/dp/B07XTRCTQL) – **€50.48**
-  - Maße sollten zum Fernseher passen
-
-### Zubehör für Raspberry Pi
-- Micro HDMI zu HDMI Kabel:
-  - [Amazon-Link](https://www.amazon.de/dp/B0BP29QTJ6) – **€9.79**
-- Stromkabel für den Pi
-- Gehäuse für den Pi
+Läuft als Webanwendung im Browser – nicht an Raspberry-Pi-Hardware gebunden und auf jeder Plattform erreichbar.
 
 ---
 
@@ -43,36 +27,6 @@ Das Team hat sich für eine **vollständig eigene Software-Lösung** entschieden
 - Mondphasen-Anzeige
 - Eleganter dunkler Rahmen
 - Klare, gut lesbare Benutzeroberfläche
-
----
-
-## LED Setup & Elektronik
-
-![LED Schaltplan](pics/LED_Circuitboard.png)
-
-### Erforderliche Komponenten
-
-**LED-Beleuchtung:**
-- **LED Strip** (schneidbar, RGB): [TP-Link Tapo LED-Streifen](https://www.amazon.de/TP-Link-Tapo-schneidbar-kompatibel-energiesparend/dp/B098FJ6LXB) – **€14.99**
-  - Hintergrundbeleuchtung des Spiegels
-  - Schneidbar für individuelle Anpassung
-  - Smart-Home-Kompatibilität
-
-**Elektronische Steuerung:**
-- **N-Channel MOSFET**: [Amazon-Link](https://www.amazon.com/gp/product/B07CTF1JVD) – **€6.43**
-  - Steuerung des LED-Streifens über Raspberry Pi GPIO
-  - PWM-Kontrolle für Helligkeitsregelung
-
-- **Sonoff Smart Switch**: [Amazon-Link](https://www.amazon.com/gp/product/B07KP8THFG) – **€11.79**
-  - Ein/Ausschalten des gesamten Spiegels
-  - Smart-Home-Integration via MQTT
-
-**Verkabelung & Prototyping:**
-- **Steckplatine + Kabel-Set**: [Amazon-Link](https://www.amazon.com/dp/B08Y59P6D1) – **€9.19**
-  - Breadboard für Testschaltungen und Jumperkabel
-
-**Stromversorgung:**
-- Mehrfachsteckdose (3 Anschlüsse): Raspberry Pi + LED + Reserve
 
 ---
 

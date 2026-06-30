@@ -1,9 +1,5 @@
 # Nimrag – Smart Mirror
 
-> Ein modularer Smart Mirror auf Raspberry-Pi-Basis mit Vue 3 Frontend, FastAPI Backend, Gestensteuerung, Sprachsteuerung und MQTT-Integration.
-
-![Smart Mirror Example](pics/smart-mirror-example.png)
-
 **Live-Demo (GitHub Pages):** https://sebastianrieger.github.io/Software-Engineering/
 
 ---
@@ -93,7 +89,7 @@ Software-Engineering/
 │   ├── doku/                   # Widget-Doku & Konfigurationsreferenz
 │   ├── diagram-docs/           # UML-Diagramme (Mermaid)
 │   └── Diagramme/              # Diagramm-Bild-Dateien (PNG)
-├── pics/                       # Mockups, Screenshots, Schaltplan
+├── pics/                       # Mockups, Screenshots
 ├── setup.js                    # Universelles Setup-Skript
 └── package.json                # NPM-Scripts
 ```
@@ -131,12 +127,12 @@ Vollständige Widget-Doku: [docs/doku/README.md](docs/doku/README.md)
 | Frontend | Vue 3, TypeScript, Vite |
 | Backend | Python 3.12, FastAPI, uvicorn |
 | Realtime | WebSocket (`/ws`), Event-Driven Architecture |
-| Smart Home | MQTT |
 | Datenbank | SQLite (via SQLAlchemy) |
 | Gestensteuerung | MediaPipe Hand Landmarker (Offline-Modell) |
 | Sprachsteuerung | Whisper / Audio-Service |
-| LED-Steuerung | Raspberry Pi GPIO → N-Channel MOSFET → LED-Strip |
 | CI/CD | GitHub Actions (6 Jobs: Lint, Test Backend, Test Frontend, Quality Gates, Build, Deploy) |
+
+Läuft als Webanwendung im Browser – nicht an Raspberry-Pi-Hardware gebunden und auf jeder Plattform erreichbar.
 
 ### Kommunikationsfluss
 
@@ -148,33 +144,10 @@ Browser (Vue 3)
 FastAPI Backend
     ├── Externe APIs        (OpenWeatherMap, Twelve Data, Tagesschau, NINA, Spotify)
     ├── Gestenservice       (MediaPipe, Sequenzanalyse)
-    ├── Sprachservice       (Whisper)
-    ├── LED-Service         (GPIO / PWM)
-    └── MQTT-Broker         (Smart Home)
+    └── Sprachservice       (Whisper)
 ```
 
 Detaillierte Architektur-Docs: [docs/architecture/SAD.md](docs/architecture/SAD.md) · [docs/Event-driven architecture/](docs/Event-driven%20architecture/)
-
----
-
-## Hardware
-
-### Stückliste (ca. €102)
-
-| Komponente | Link | Preis |
-|---|---|---|
-| Acryl-Zwei-Wege-Spiegel | [Amazon](https://www.amazon.de/Supreme-Tech-x18-Acryl-See-Through-Spiegel/dp/B07XTRCTQL) | €50.48 |
-| Micro-HDMI zu HDMI | [Amazon](https://www.amazon.de/dp/B0BP29QTJ6) | €9.79 |
-| LED-Strip (schneidbar) | [Amazon](https://www.amazon.de/TP-Link-Tapo-schneidbar-kompatibel-energiesparend/dp/B098FJ6LXB) | €14.99 |
-| N-Channel MOSFET | [Amazon](https://www.amazon.com/gp/product/B07CTF1JVD) | €6.43 |
-| Sonoff Smart Switch | [Amazon](https://www.amazon.com/gp/product/B07KP8THFG) | €11.79 |
-| Breadboard + Kabel | [Amazon](https://www.amazon.com/dp/B08Y59P6D1) | €9.19 |
-
-**Schaltplan:** ![LED-Schaltplan](pics/LED_Circuitboard.png)
-
-```
-Raspberry Pi GPIO → N-Channel MOSFET → LED-Strip (12 V)
-```
 
 ---
 
@@ -224,8 +197,6 @@ rm -rf node_modules package-lock.json
 npm install
 npm run dev
 ```
-
-**Raspberry Pi GPIO:** GPIO in `raspi-config` aktivieren und Backend mit `sudo` starten.
 
 Ausführlicheres Troubleshooting: [docs/project/GETTING_STARTED.md](docs/project/GETTING_STARTED.md)
 
