@@ -8,7 +8,12 @@ from typing import Any
 from core.realtime import RealtimeHub, realtime_hub
 from repositories.config import ConfigRepository
 from schemas.commands import CommandProfile
-from schemas.interactions import InputActionConfig, InputSourceType, UIActionArguments
+from schemas.interactions import (
+    InputActionConfig,
+    InputActionMapping,
+    InputSourceType,
+    UIActionArguments,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -37,8 +42,11 @@ class InputOrchestrator:
         self._input_action_config = InputActionConfig()
         self._active_command_profile: CommandProfile | None = None
         self._last_action_at = 0.0
+        self._last_action_name: str | None = None
+        self._last_action_group: str | None = None
         self._last_action_priority = 0
         self._last_action_time_by_name: dict[str, float] = {}
+        self._last_action_time_by_group: dict[str, float] = {}
 
     def reload_config(self) -> InputActionConfig:
         try:
@@ -197,9 +205,11 @@ class InputOrchestrator:
                 )
                 return False
 
-            if (
-                now - self._last_action_at < global_cooldown_seconds
-                and current_priority <= self._last_action_priority
+            if self._should_suppress_for_global_cooldown(
+                mapping=mapping,
+                now=now,
+                global_cooldown_seconds=global_cooldown_seconds,
+                current_priority=current_priority,
             ):
                 self.publish_command_match_evaluated(
                     input_source=input_source,
@@ -214,8 +224,12 @@ class InputOrchestrator:
                 return False
 
             self._last_action_at = now
+            self._last_action_name = mapping.action
+            self._last_action_group = mapping.cooldown_group
             self._last_action_priority = current_priority
             self._last_action_time_by_name[mapping.action] = now
+            if mapping.cooldown_group is not None:
+                self._last_action_time_by_group[mapping.cooldown_group] = now
 
         self.publish_command_match_evaluated(
             input_source=input_source,
@@ -241,6 +255,38 @@ class InputOrchestrator:
             }
         )
         return True
+
+    def _should_suppress_for_global_cooldown(
+        self,
+        *,
+        mapping: InputActionMapping,
+        now: float,
+        global_cooldown_seconds: float,
+        current_priority: int,
+    ) -> bool:
+        if now - self._last_action_at >= global_cooldown_seconds:
+            return False
+
+        if current_priority > self._last_action_priority:
+            return False
+
+        if self._last_action_name in mapping.cooldown_exempt_after:
+            return False
+
+        last_group = self._last_action_group
+        current_group = mapping.cooldown_group
+        if (
+            last_group is not None
+            and current_group is not None
+            and last_group != current_group
+        ):
+            return False
+
+        if current_group is None:
+            return True
+
+        last_same_group_at = self._last_action_time_by_group.get(current_group, 0.0)
+        return now - last_same_group_at < global_cooldown_seconds
 
 
 input_orchestrator = InputOrchestrator()

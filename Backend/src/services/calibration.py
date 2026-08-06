@@ -1251,10 +1251,40 @@ class CalibrationService:
             for sample in circle_samples
             if sample.gesture_payload is not None
         ]
+        return_distances = [
+            float(
+                sample.gesture_payload.feature_windows.get(
+                    "circle_return_distance", 0.0
+                )
+            )
+            for sample in circle_samples
+            if sample.gesture_payload is not None
+        ]
+        start_openness = [
+            float(
+                sample.gesture_payload.feature_windows.get(
+                    "circle_start_hand_openness", 0.0
+                )
+            )
+            for sample in circle_samples
+            if sample.gesture_payload is not None
+        ]
+        end_openness = [
+            float(
+                sample.gesture_payload.feature_windows.get(
+                    "circle_end_hand_openness", 0.0
+                )
+            )
+            for sample in circle_samples
+            if sample.gesture_payload is not None
+        ]
 
         original_sweep = candidate_config.circle_sweep_min
         original_cv = candidate_config.circle_radius_cv_max
         original_radius = candidate_config.circle_min_radius
+        original_return_distance = candidate_config.runtime_circle_return_max_distance
+        original_start_openness = candidate_config.runtime_circle_start_max_openness
+        original_commit_openness = candidate_config.runtime_circle_commit_min_openness
         candidate_config.circle_sweep_min = _clamp(
             (_percentile(sweeps, 0.10) or candidate_config.circle_sweep_min) * 0.85,
             3.2,
@@ -1274,6 +1304,33 @@ class CalibrationService:
             0.01,
             0.35,
         )
+        candidate_config.runtime_circle_return_max_distance = _clamp(
+            (
+                _percentile(return_distances, 0.90)
+                or candidate_config.runtime_circle_return_max_distance
+            )
+            * 1.15,
+            0.02,
+            0.25,
+        )
+        candidate_config.runtime_circle_start_max_openness = _clamp(
+            (
+                _percentile(start_openness, 0.90)
+                or candidate_config.runtime_circle_start_max_openness
+            )
+            * 1.1,
+            0.1,
+            0.8,
+        )
+        candidate_config.runtime_circle_commit_min_openness = _clamp(
+            (
+                _percentile(end_openness, 0.10)
+                or candidate_config.runtime_circle_commit_min_openness
+            )
+            * 0.9,
+            0.2,
+            1.0,
+        )
 
         return CalibrationTargetAnalysis(
             target_id="circle",
@@ -1284,6 +1341,15 @@ class CalibrationService:
                     "radius_stability", [float(value) for value in radius_stability]
                 ),
                 _metric_summary("radius_mean", [float(value) for value in radii]),
+                _metric_summary(
+                    "return_distance", [float(value) for value in return_distances]
+                ),
+                _metric_summary(
+                    "start_hand_openness", [float(value) for value in start_openness]
+                ),
+                _metric_summary(
+                    "end_hand_openness", [float(value) for value in end_openness]
+                ),
                 _metric_summary("confidence", [float(value) for value in confidences]),
             ],
             recommendations=[
@@ -1313,6 +1379,30 @@ class CalibrationService:
                     min_bound=0.01,
                     max_bound=0.35,
                     rationale="Mindest-Radius wurde auf die untere positive Verteilung gesetzt.",
+                ),
+                CalibrationRecommendation(
+                    parameter="runtime_circle_return_max_distance",
+                    current_value=original_return_distance,
+                    recommended_value=candidate_config.runtime_circle_return_max_distance,
+                    min_bound=0.02,
+                    max_bound=0.25,
+                    rationale="Rueckkehrdistanz wurde an erfolgreiche Kreisabschluesse mit Rueckkehr zum Startanker angepasst.",
+                ),
+                CalibrationRecommendation(
+                    parameter="runtime_circle_start_max_openness",
+                    current_value=original_start_openness,
+                    recommended_value=candidate_config.runtime_circle_start_max_openness,
+                    min_bound=0.1,
+                    max_bound=0.8,
+                    rationale="Die kompakte Startpose orientiert sich an erfolgreichen Kreisstarts statt an einer idealisierten Faust.",
+                ),
+                CalibrationRecommendation(
+                    parameter="runtime_circle_commit_min_openness",
+                    current_value=original_commit_openness,
+                    recommended_value=candidate_config.runtime_circle_commit_min_openness,
+                    min_bound=0.2,
+                    max_bound=1.0,
+                    rationale="Die Endoeffnung wird als explizites Commit-Signal auf Basis erfolgreicher Kreisabschluesse empfohlen.",
                 ),
             ],
             artifacts={"family": "circle"},

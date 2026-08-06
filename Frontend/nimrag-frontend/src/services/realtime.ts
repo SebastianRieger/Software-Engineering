@@ -3,6 +3,43 @@ import type { RealtimeEvent } from '../types/realtime'
 
 export type RealtimeListener = (event: RealtimeEvent) => void
 
+function logGestureDebugEvent(event: RealtimeEvent): void {
+  if (!import.meta.env.DEV) {
+    return
+  }
+
+  if (event.eventType === 'GestureDetected') {
+    const payload = event.payload
+    if (payload === null) return
+    console.info('[gesture]', payload.gesture, {
+      hand: payload.hand ?? null,
+      confidence: payload.confidence ?? null,
+      activePhase: payload.active_phase ?? null,
+      trackingSource: payload.tracking_source ?? null,
+      rejectReason: payload.reject_reason ?? null,
+    })
+    return
+  }
+
+  if (event.eventType === 'CommandMatchEvaluated') {
+    const payload = event.payload
+    if (payload === null || payload.input_source !== 'gesture') return
+    console.info('[gesture-match]', `${payload.raw_input} -> ${payload.action ?? 'none'}`, {
+      outcome: payload.outcome,
+      reason: payload.reason,
+    })
+    return
+  }
+
+  if (event.eventType === 'UIActionRequested') {
+    const payload = event.payload
+    if (payload === null || payload.input_source !== 'gesture') return
+    console.info('[gesture-action]', `${payload.raw_input} -> ${payload.action}`, {
+      actionArgs: payload.action_args,
+    })
+  }
+}
+
 class RealtimeClient {
   private socket: WebSocket | null = null
   private listeners = new Set<RealtimeListener>()
@@ -29,6 +66,7 @@ class RealtimeClient {
     this.socket.addEventListener('message', (event) => {
       try {
         const payload = JSON.parse(event.data) as RealtimeEvent
+        logGestureDebugEvent(payload)
         this.listeners.forEach((listener) => listener(payload))
       } catch {
         // Ignore malformed payloads and keep the connection alive.

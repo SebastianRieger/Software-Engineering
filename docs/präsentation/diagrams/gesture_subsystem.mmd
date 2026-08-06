@@ -1,0 +1,13 @@
+graph LR
+    CAM([Kamera]) --> TR["tracking.py — MediaPipe, Landmarks, Cursor"]
+    TR --> RT["runtime.py — Orchestrator-Thread"]
+    subgraph GS["services/gesture/"]
+        RT --> DT["detection.py — Klassifikations-Owner"]
+        RT --> PIN["pinch_runtime.py — Pinch-Zustandsmaschine"]
+        DT --> CT["contracts.py — Gesten-Definitionen"]
+    end
+    RT -->|Event| IO["Input-Orchestrator"]
+    IO -->|WebSocket| FE["Frontend"]
+    style RT fill:#5b21b6,color:#fff
+    style DT fill:#7c3aed,color:#fff
+    style CT fill:#1a1a2e,color:#fff

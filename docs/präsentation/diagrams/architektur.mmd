@@ -1,0 +1,23 @@
+graph LR
+    USER([Nutzer])
+    CAM([Kamera])
+    WEB[("Internet — Wetter, News, Aktien, Alerts")]
+    subgraph RPI["Smart Mirror — Raspberry Pi"]
+        subgraph BE["Backend  FastAPI · Python"]
+            GS[Gestensteuerung]
+            DS[Datendienste]
+        end
+        subgraph FE["Frontend  Vue.js"]
+            GRID[Widget-Grid]
+        end
+        GS -->|WebSocket-Events| GRID
+        DS <-->|REST| GRID
+    end
+    USER -->|Gesten| CAM
+    CAM --> GS
+    DS <-->|API-Calls| WEB
+    GRID -.->|Anzeige| USER
+    style CAM fill:#1a1a2e,color:#fff
+    style GS fill:#5b21b6,color:#fff
+    style GRID fill:#059669,color:#fff
+    style WEB fill:#0369a1,color:#fff

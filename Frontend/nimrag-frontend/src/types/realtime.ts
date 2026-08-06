@@ -40,12 +40,32 @@ export interface HandTrackingUpdatedEvent {
   }
 }
 
+export interface GestureDetectedEvent {
+  eventType: 'GestureDetected'
+  payload: {
+    gesture: string
+    timestamp: string
+    source: 'camera'
+    hand?: string | null
+    confidence?: number | null
+    tracking_source?: string | null
+    tracking_quality?: number | null
+    active_phase?: string | null
+    candidate_scores?: Record<string, number>
+    reject_reason?: string | null
+    spec_id?: string | null
+    dominant_hand_pose?: string | null
+    primitive_hits?: Record<string, number>
+  }
+}
+
 export interface UnknownRealtimeEvent {
   eventType: string
   payload: Record<string, unknown> | null
 }
 
 export type RealtimeEvent =
+  | GestureDetectedEvent
   | UIActionRequestedEvent
   | CommandMatchEvaluatedEvent
   | RawInputDetectedEvent

@@ -36,9 +36,11 @@ from services.gesture.push_runtime import (
     compute_push_pose_snapshot,
     detect_push_gesture,
 )
+from services.gesture.pinch_runtime import PinchGestureState, detect_pinch_gesture
 from services.gesture.runtime import GestureService, GestureServiceError
 from services.gesture.tracking import (
     HAND_LANDMARK_NAMES,
+    FingerState,
     HandPoseFeatures,
     GestureAdapterError,
     GestureObservation,
@@ -46,6 +48,7 @@ from services.gesture.tracking import (
     build_hand_landmark_map,
     compute_hand_size_scale,
     compute_hand_tracking_point,
+    PinchContactMetrics,
     compute_pinch_contact_metrics,
     estimate_hand_size,
     extract_hand_pose_features,
@@ -333,6 +336,154 @@ def make_push_observation(
         hand_size=0.16,
         tracking_source="palm_center",
         captured_at=captured_at,
+    )
+
+
+def make_circle_pose_features(
+    *,
+    hand_openness: float,
+    center_distance: float = 0.05,
+    index_extension_ratio: float = 0.82,
+    hand: str = "right",
+) -> HandPoseFeatures:
+    open_commit = hand_openness >= 0.55
+
+    def finger_state(
+        name: str,
+        *,
+        extended: float,
+        curled: float,
+        label: str,
+    ) -> FingerState:
+        return FingerState(
+            name=name,
+            extended_score=extended,
+            curled_score=curled,
+            spread_score=0.2 if open_commit else 0.05,
+            tip_depth_relative=0.0,
+            tip_to_palm_distance=0.06,
+            label=label,
+        )
+
+    return HandPoseFeatures(
+        hand=hand,
+        point=(0.5, 0.5),
+        palm_center=(0.5, 0.5),
+        hand_size=0.16,
+        palm_span=0.11,
+        center_distance=center_distance,
+        hand_openness=hand_openness,
+        index_extension_ratio=index_extension_ratio,
+        push_depth=0.0,
+        finger_states={
+            "thumb": finger_state(
+                "thumb",
+                extended=0.85 if open_commit else 0.35,
+                curled=0.05 if open_commit else 0.35,
+                label="extended" if open_commit else "neutral",
+            ),
+            "index": finger_state(
+                "index",
+                extended=0.8 if open_commit else 0.2,
+                curled=0.05 if open_commit else 0.5,
+                label="extended" if open_commit else "curled",
+            ),
+            "middle": finger_state(
+                "middle",
+                extended=0.7 if hand_openness > 0.8 else 0.1,
+                curled=0.05 if hand_openness > 0.8 else 0.6,
+                label="extended" if hand_openness > 0.8 else "curled",
+            ),
+            "ring": finger_state(
+                "ring",
+                extended=0.65 if hand_openness > 0.8 else 0.1,
+                curled=0.05 if hand_openness > 0.8 else 0.6,
+                label="extended" if hand_openness > 0.8 else "curled",
+            ),
+            "pinky": finger_state(
+                "pinky",
+                extended=0.6 if hand_openness > 0.8 else 0.1,
+                curled=0.05 if hand_openness > 0.8 else 0.6,
+                label="extended" if hand_openness > 0.8 else "curled",
+            ),
+        },
+        tracking_source="palm_center",
+    )
+
+
+def make_pinch_pose_features(
+    *,
+    hand_openness: float = 0.64,
+    thumb_extended: float = 0.72,
+    index_extended: float = 0.84,
+    support_curled_scores: tuple[float, float, float] = (0.18, 0.16, 0.14),
+) -> HandPoseFeatures:
+    support_labels = [
+        "curled" if score >= 0.6 else "neutral" if score >= 0.35 else "extended"
+        for score in support_curled_scores
+    ]
+
+    def finger_state(
+        name: str,
+        *,
+        extended: float,
+        curled: float,
+        label: str,
+        spread: float = 0.08,
+    ) -> FingerState:
+        return FingerState(
+            name=name,
+            extended_score=extended,
+            curled_score=curled,
+            spread_score=spread,
+            tip_depth_relative=0.0,
+            tip_to_palm_distance=0.06,
+            label=label,
+        )
+
+    return HandPoseFeatures(
+        hand="right",
+        point=(0.5, 0.5),
+        palm_center=(0.5, 0.5),
+        hand_size=0.16,
+        palm_span=0.11,
+        center_distance=0.04,
+        hand_openness=hand_openness,
+        index_extension_ratio=1.08,
+        push_depth=0.0,
+        finger_states={
+            "thumb": finger_state(
+                "thumb",
+                extended=thumb_extended,
+                curled=max(0.0, 1.0 - thumb_extended),
+                label="extended" if thumb_extended >= 0.6 else "neutral",
+            ),
+            "index": finger_state(
+                "index",
+                extended=index_extended,
+                curled=max(0.0, 1.0 - index_extended),
+                label="extended" if index_extended >= 0.6 else "neutral",
+            ),
+            "middle": finger_state(
+                "middle",
+                extended=0.48,
+                curled=support_curled_scores[0],
+                label=support_labels[0],
+            ),
+            "ring": finger_state(
+                "ring",
+                extended=0.44,
+                curled=support_curled_scores[1],
+                label=support_labels[1],
+            ),
+            "pinky": finger_state(
+                "pinky",
+                extended=0.4,
+                curled=support_curled_scores[2],
+                label=support_labels[2],
+            ),
+        },
+        tracking_source="palm_center",
     )
 
 
@@ -1260,6 +1411,28 @@ def test_advance_pending_gesture_fires_pinch_edges_immediately():
     assert getattr(service, "_pending_gesture") is None
 
 
+def test_advance_pending_gesture_fires_circle_commit_immediately():
+    service = GestureService(
+        adapter_factory=lambda: SequenceAdapter(observations=[]),
+        realtime=CapturingRealtimeHub(),
+        config_repository_factory=lambda: StaticGestureConfigRepository(),
+    )
+    service.reload_config()
+    advance_pending_gesture = getattr(service, "_advance_pending_gesture")
+    detection = GestureDetectionResult(
+        gesture="circle",
+        confidence=0.95,
+        tracking_source="palm_center",
+        metrics={"finalize_immediately": True},
+    )
+    analysis = SimpleNamespace(detection=detection, active_phase="releasing")
+
+    finalized = advance_pending_gesture(analysis=analysis, observed_at=1.0)
+
+    assert finalized is detection
+    assert getattr(service, "_pending_gesture") is None
+
+
 def test_dev_capture_metadata_distinguishes_pending_and_published_detections():
     build_metadata = getattr(GestureService, "_build_dev_capture_metadata")
     pending_detection = GestureDetectionResult(
@@ -1294,6 +1467,7 @@ def test_dev_capture_metadata_distinguishes_pending_and_published_detections():
         publish_suppressed_reason="cooldown",
         observed_at=1.1,
         pinch_state=None,
+        circle_state=None,
         image_file=None,
         raw_image_file=None,
     )
@@ -1321,6 +1495,7 @@ def test_dev_capture_metadata_distinguishes_pending_and_published_detections():
         publish_suppressed_reason=None,
         observed_at=1.2,
         pinch_state=None,
+        circle_state=None,
         image_file=None,
         raw_image_file=None,
     )
@@ -2464,6 +2639,81 @@ def test_service_global_cooldown_blocks_immediate_followup_gesture():
     assert service._cooldown_elapsed("swipe_down") is False
 
 
+def test_service_allows_circle_immediately_after_swipe_navigation():
+    service = GestureService(
+        config_repository_factory=lambda: StaticGestureConfigRepository(),
+        realtime=CapturingRealtimeHub(),
+    )
+    service.reload_config()
+
+    assert service._cooldown_elapsed("swipe_right") is True
+    assert service._cooldown_elapsed("circle") is True
+
+
+def test_detect_pinch_gesture_rejects_fist_like_contact_pose():
+    config = GestureConfig()
+    pose_features = make_pinch_pose_features(
+        hand_openness=0.22,
+        thumb_extended=0.34,
+        index_extended=0.42,
+        support_curled_scores=(0.78, 0.75, 0.73),
+    )
+
+    state, detection = detect_pinch_gesture(
+        state=PinchGestureState(
+            pinch_closed=False,
+            spread_window=[],
+            last_fire_at=0.0,
+            anchor=None,
+            raw_distance=None,
+            smoothed_distance=None,
+            contact_pair=None,
+        ),
+        pose_features=pose_features,
+        observed_at=1.0,
+        config=config,
+        contact_metrics=PinchContactMetrics(
+            distance=0.12,
+            anchor=(0.5, 0.5),
+            contact_pair=("thumb_tip", "index_tip"),
+            tip_distance=0.12,
+        ),
+    )
+
+    assert detection is None
+    assert state.pinch_closed is False
+
+
+def test_detect_pinch_gesture_accepts_intentional_open_pinch_pose():
+    config = GestureConfig()
+    pose_features = make_pinch_pose_features()
+
+    state, detection = detect_pinch_gesture(
+        state=PinchGestureState(
+            pinch_closed=False,
+            spread_window=[],
+            last_fire_at=0.0,
+            anchor=None,
+            raw_distance=None,
+            smoothed_distance=None,
+            contact_pair=None,
+        ),
+        pose_features=pose_features,
+        observed_at=1.0,
+        config=config,
+        contact_metrics=PinchContactMetrics(
+            distance=0.12,
+            anchor=(0.5, 0.5),
+            contact_pair=("thumb_tip", "index_tip"),
+            tip_distance=0.12,
+        ),
+    )
+
+    assert detection is not None
+    assert detection.gesture == "pinch_close"
+    assert state.pinch_closed is True
+
+
 def test_service_suppresses_swipe_when_push_commit_is_active():
     service = GestureService(
         config_repository_factory=lambda: StaticGestureConfigRepository(),
@@ -2557,7 +2807,7 @@ def test_service_detects_swipe_down_from_recent_upper_turning_point():
     assert detection.gesture == "swipe_down"
 
 
-def test_service_holds_swipe_when_recent_window_already_looks_circular():
+def test_service_requires_open_commit_before_circle_publication():
     service = GestureService(
         config_repository_factory=lambda: StaticGestureConfigRepository(),
         realtime=CapturingRealtimeHub(),
@@ -2575,18 +2825,164 @@ def test_service_holds_swipe_when_recent_window_already_looks_circular():
     ]
     timestamps = [0.00, 0.12, 0.24, 0.36, 0.48, 0.60, 0.72]
 
-    detection = service._detect_runtime_gesture(
-        observation=GestureObservation(
-            point=trajectory[-1], tracking_source="palm_center"
-        ),
-        observed_at=timestamps[-1],
-        trajectory=trajectory,
-        trajectory_timestamps=timestamps,
-        hand_size=0.16,
+    analysis = None
+    for point, observed_at in zip(trajectory, timestamps):
+        analysis = service._analyze_runtime_gesture(
+            observation=GestureObservation(
+                point=point,
+                hand="right",
+                hand_size=0.16,
+                tracking_source="palm_center",
+            ),
+            observed_at=observed_at,
+            trajectory=[p for p, t in zip(trajectory, timestamps) if t <= observed_at],
+            trajectory_timestamps=[t for t in timestamps if t <= observed_at],
+            hand_size=0.16,
+            pose_features=make_circle_pose_features(hand_openness=0.2),
+        )
+
+    assert analysis is not None
+    assert analysis.detection is None
+    assert analysis.candidate_scores.get("circle", 0.0) > 0.0
+
+
+def test_circle_runtime_state_commits_on_final_open():
+    service = GestureService(
+        config_repository_factory=lambda: StaticGestureConfigRepository(),
+        realtime=CapturingRealtimeHub(),
     )
+    service.reload_config()
+
+    frames = [
+        ((0.417, 0.543), 0.20),
+        ((0.395, 0.620), 0.22),
+        ((0.294, 0.587), 0.20),
+        ((0.257, 0.520), 0.20),
+        ((0.293, 0.375), 0.20),
+        ((0.416, 0.291), 0.20),
+        ((0.533, 0.425), 0.21),
+        ((0.535, 0.572), 0.20),
+        ((0.406, 0.576), 0.62),
+    ]
+
+    detection = None
+    for index, (point, openness) in enumerate(frames):
+        _, detection = service._update_circle_runtime_state(
+            observation=GestureObservation(
+                point=point,
+                hand="right",
+                hand_size=0.16,
+                tracking_source="palm_center",
+            ),
+            observed_at=index * 0.08,
+            hand_size=0.16,
+            pose_features=make_circle_pose_features(hand_openness=openness),
+        )
+        if index < len(frames) - 1:
+            assert detection is None
 
     assert detection is not None
     assert detection.gesture == "circle"
+    assert detection.metrics["finalize_immediately"] is True
+
+
+def test_circle_runtime_state_tolerates_transient_open_spike():
+    service = GestureService(
+        config_repository_factory=lambda: StaticGestureConfigRepository(),
+        realtime=CapturingRealtimeHub(),
+    )
+    service.reload_config()
+
+    frames = [
+        ((0.417, 0.543), 0.20),
+        ((0.395, 0.620), 0.22),
+        ((0.294, 0.587), 0.20),
+        ((0.257, 0.520), 0.20),
+        ((0.293, 0.375), 0.20),
+        ((0.416, 0.291), 0.20),
+        ((0.533, 0.425), 1.00),
+        ((0.535, 0.572), 0.20),
+        ((0.406, 0.576), 0.62),
+    ]
+
+    detection = None
+    for index, (point, openness) in enumerate(frames):
+        state, detection = service._update_circle_runtime_state(
+            observation=GestureObservation(
+                point=point,
+                hand="right",
+                hand_size=0.16,
+                tracking_source="palm_center",
+            ),
+            observed_at=index * 0.08,
+            hand_size=0.16,
+            pose_features=make_circle_pose_features(hand_openness=openness),
+        )
+        if index == 6:
+            assert state is not None
+            assert state.ready_to_commit is False
+
+    assert detection is not None
+    assert detection.gesture == "circle"
+
+
+def test_analyze_runtime_gesture_suppresses_push_during_active_circle(monkeypatch):
+    service = GestureService(
+        config_repository_factory=lambda: StaticGestureConfigRepository(),
+        realtime=CapturingRealtimeHub(),
+    )
+    service.reload_config()
+
+    priming_points = [
+        (0.417, 0.543),
+        (0.395, 0.620),
+        (0.294, 0.587),
+        (0.257, 0.520),
+        (0.293, 0.375),
+        (0.416, 0.291),
+    ]
+    timestamps = [index * 0.08 for index in range(len(priming_points))]
+    for point, observed_at in zip(priming_points, timestamps):
+        service._update_circle_runtime_state(
+            observation=GestureObservation(
+                point=point,
+                hand="right",
+                hand_size=0.16,
+                tracking_source="palm_center",
+            ),
+            observed_at=observed_at,
+            hand_size=0.16,
+            pose_features=make_circle_pose_features(hand_openness=0.2),
+        )
+
+    called = {"push": False}
+
+    def fake_push(_observation, _observed_at):
+        called["push"] = True
+        return GestureDetectionResult(
+            gesture="push_click_long",
+            confidence=1.0,
+            tracking_source="index_push",
+        )
+
+    monkeypatch.setattr(service, "_detect_push_gesture", fake_push)
+
+    analysis = service._analyze_runtime_gesture(
+        observation=GestureObservation(
+            point=(0.533, 0.425),
+            hand="right",
+            hand_size=0.16,
+            tracking_source="palm_center",
+        ),
+        observed_at=0.56,
+        trajectory=priming_points + [(0.533, 0.425)],
+        trajectory_timestamps=timestamps + [0.56],
+        hand_size=0.16,
+        pose_features=make_circle_pose_features(hand_openness=0.2),
+    )
+
+    assert called["push"] is False
+    assert analysis.candidate_scores.get("circle", 0.0) > 0.0
 
 
 def test_service_does_not_prefer_circle_for_open_hand_pose(monkeypatch):
